@@ -70,6 +70,7 @@ class UserAgent(BaseAgent):
         stt: Optional[FrameProcessor] = None,
         tts: Optional[FrameProcessor] = None,
         pipeline_params: Optional[PipelineParams] = None,
+        **kwargs,
     ):
         """Initialize the UserAgent.
 
@@ -91,6 +92,7 @@ class UserAgent(BaseAgent):
             enable_rtvi=True,
             context=context,
             pipeline_params=pipeline_params,
+            **kwargs,
         )
         self._transport = transport
         self._context = context
