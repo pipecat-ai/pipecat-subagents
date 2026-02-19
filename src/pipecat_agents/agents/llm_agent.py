@@ -15,7 +15,7 @@ from typing import List, Optional
 
 from pipecat.adapters.schemas.function_schema import FunctionSchema
 from pipecat.adapters.schemas.tools_schema import ToolsSchema
-from pipecat.frames.frames import LLMMessagesAppendFrame, LLMRunFrame, LLMSetToolsFrame
+from pipecat.frames.frames import LLMMessagesAppendFrame, LLMSetToolsFrame
 from pipecat.pipeline.task import PipelineParams
 from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.frame_processor import FrameProcessor
@@ -51,9 +51,9 @@ class LLMAgent(BaseAgent):
         Args:
             name: Unique name for this agent.
             bus: The `AgentBus` for inter-agent communication.
-            initial_message: Message to queue on agent start to kick off
-                the conversation. When omitted, runs the LLM on the
-                existing context instead.
+            initial_message: Optional message to send on first activation.
+                On subsequent activations, a generic continuation message
+                is sent instead.
             enabled: Whether the agent starts enabled. Defaults to False.
             context: Optional shared `LLMContext`.
             pipeline_params: Optional `PipelineParams` for this agent's task.
@@ -61,23 +61,28 @@ class LLMAgent(BaseAgent):
         super().__init__(
             name, bus=bus, enabled=enabled, context=context, pipeline_params=pipeline_params
         )
+        self._initial_message = initial_message
+        self._started = False
 
         @self.event_handler("on_agent_started")
         async def on_agent_started(agent):
             tools = self.build_tools()
             if tools:
-                await self.queue_frame(
-                    LLMSetToolsFrame(tools=ToolsSchema(standard_tools=tools))
+                await self.queue_frame(LLMSetToolsFrame(tools=ToolsSchema(standard_tools=tools)))
+
+            message = (
+                self._initial_message
+                if not self._started and self._initial_message
+                else "The conversation has been transferred to you. "
+                "Help the user with their latest request."
+            )
+            await self.queue_frame(
+                LLMMessagesAppendFrame(
+                    messages=[{"role": "user", "content": message}],
+                    run_llm=True,
                 )
-            if initial_message:
-                await self.queue_frame(
-                    LLMMessagesAppendFrame(
-                        messages=[{"role": "user", "content": initial_message}],
-                        run_llm=True,
-                    )
-                )
-            else:
-                await self.queue_frame(LLMRunFrame())
+            )
+            self._started = True
 
     def build_tools(self) -> List[FunctionSchema]:
         """Return the function schemas for this agent's LLM tools.
