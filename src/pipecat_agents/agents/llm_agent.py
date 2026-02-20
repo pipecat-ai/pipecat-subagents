@@ -74,7 +74,10 @@ class LLMAgent(BaseAgent):
                 self._initial_message
                 if not self._started and self._initial_message
                 else "The conversation has been transferred to you. "
-                "Help the user with their latest request."
+                "Acknowledge what the user said (if anything) and help "
+                "with their latest request. Only use the functions "
+                "currently available to you — ignore any functions from "
+                "earlier in the conversation."
             )
             await self.queue_frame(
                 LLMMessagesAppendFrame(
