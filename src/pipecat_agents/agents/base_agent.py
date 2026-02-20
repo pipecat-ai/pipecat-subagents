@@ -18,7 +18,6 @@ from loguru import logger
 from pipecat.frames.frames import CancelFrame, FunctionCallResultProperties, StartFrame
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.task import CANCEL_TIMEOUT_SECS, PipelineParams, PipelineTask
-from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.frame_processor import FrameProcessor
 from pipecat.processors.frameworks.rtvi import RTVIObserverParams, RTVIProcessor
 from pipecat.utils.base_object import BaseObject
@@ -53,7 +52,6 @@ class BaseAgent(BaseObject):
         *,
         bus: AgentBus,
         enabled: bool = False,
-        context: Optional[LLMContext] = None,
         enable_bus_output: bool = True,
         enable_rtvi: bool = False,
         rtvi_processor: Optional[RTVIProcessor] = None,
@@ -68,7 +66,6 @@ class BaseAgent(BaseObject):
             name: Unique name for this agent.
             bus: The `AgentBus` for inter-agent communication.
             enabled: Whether the agent starts enabled. Defaults to False.
-            context: Optional shared `LLMContext` for conversation history.
             enable_bus_output: Whether to append a `BusOutputProcessor` to the
                 pipeline. Defaults to True.
             enable_rtvi: Whether to enable RTVI on the pipeline task.
@@ -81,7 +78,6 @@ class BaseAgent(BaseObject):
         super().__init__(name=name)
         self._bus = bus
         self._enabled = enabled
-        self._context = context
         self._enable_bus_output = enable_bus_output
         self._enable_rtvi = enable_rtvi
         self._rtvi_processor = rtvi_processor
@@ -105,11 +101,6 @@ class BaseAgent(BaseObject):
     def enabled(self) -> bool:
         """Whether this agent is enabled and processing frames."""
         return self._enabled
-
-    @property
-    def context(self) -> Optional[LLMContext]:
-        """The shared LLMContext, or None if no context was provided."""
-        return self._context
 
     @property
     def task(self) -> PipelineTask:

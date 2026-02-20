@@ -17,7 +17,6 @@ from pipecat.adapters.schemas.function_schema import FunctionSchema
 from pipecat.adapters.schemas.tools_schema import ToolsSchema
 from pipecat.frames.frames import LLMMessagesAppendFrame, LLMSetToolsFrame
 from pipecat.pipeline.task import PipelineParams
-from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.frame_processor import FrameProcessor
 from pipecat.services.llm_service import LLMService
 
@@ -43,7 +42,6 @@ class LLMAgent(BaseAgent):
         bus: AgentBus,
         initial_message: Optional[str] = None,
         enabled: bool = False,
-        context: Optional[LLMContext] = None,
         pipeline_params: Optional[PipelineParams] = None,
     ):
         """Initialize the LLMAgent.
@@ -55,11 +53,10 @@ class LLMAgent(BaseAgent):
                 On subsequent activations, a generic continuation message
                 is sent instead.
             enabled: Whether the agent starts enabled. Defaults to False.
-            context: Optional shared `LLMContext`.
             pipeline_params: Optional `PipelineParams` for this agent's task.
         """
         super().__init__(
-            name, bus=bus, enabled=enabled, context=context, pipeline_params=pipeline_params
+            name, bus=bus, enabled=enabled, pipeline_params=pipeline_params
         )
         self._initial_message = initial_message
         self._started = False
