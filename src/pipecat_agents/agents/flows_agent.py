@@ -159,4 +159,4 @@ class FlowsAgent(BaseAgent):
         return task
 
     async def _handle_end_conversation(self, action: dict) -> None:
-        await self.end()
+        await self.end(reason=action.get("reason"))

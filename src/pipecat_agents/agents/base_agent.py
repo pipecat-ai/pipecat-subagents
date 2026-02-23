@@ -10,19 +10,16 @@ Provides the `BaseAgent` class that all agents inherit from, handling bus
 subscription, pipeline creation, deferred start, and agent transfer.
 """
 
-import asyncio
 from abc import abstractmethod
-from typing import Any, Callable, List, Optional
+from typing import List, Optional
 
 from loguru import logger
-from pipecat.frames.frames import CancelFrame, EndFrame, FunctionCallResultProperties, StartFrame
+from pipecat.frames.frames import CancelFrame, EndFrame, StartFrame
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.task import CANCEL_TIMEOUT_SECS, PipelineParams, PipelineTask
 from pipecat.processors.frame_processor import FrameProcessor
 from pipecat.processors.frameworks.rtvi import RTVIObserverParams, RTVIProcessor
 from pipecat.utils.base_object import BaseObject
-
-FunctionCallResultCallback = Callable[..., Any]
 
 from pipecat_agents.bus import (
     AgentActivatedArgs,
@@ -167,78 +164,31 @@ class BaseAgent(BaseObject):
         """Broadcast a hard cancel to all agents via the bus."""
         await self.send_message(BusCancelMessage(source=self.name))
 
-    async def end(
-        self,
-        *,
-        result: Optional[Any] = None,
-        result_callback: Optional[FunctionCallResultCallback] = None,
-    ) -> None:
+    async def end(self, *, reason: Optional[str] = None) -> None:
         """Request a graceful end of the entire session.
 
-        When called from a function handler, pass ``params.result_callback``
-        so the LLM generates a final response (e.g. goodbye) before the
-        session ends.
+        Sends a `BusEndMessage` to the bus. The runner handles the
+        shutdown sequence.
 
         Args:
-            result: Optional value to commit as the function-call result.
-                Passed to `result_callback` before ending.
-            result_callback: The ``result_callback`` from `FunctionCallParams`.
-                When provided, the end message is sent after the LLM has
-                processed the result (via ``on_context_updated`` with
-                ``run_llm=True``).
+            reason: Optional human-readable reason for ending (e.g.
+                "customer said goodbye").
         """
-        if result_callback:
-            context_updated = asyncio.Event()
-
-            async def _on_context_updated():
-                context_updated.set()
-
-            await result_callback(
-                result,
-                properties=FunctionCallResultProperties(
-                    run_llm=True,
-                    on_context_updated=_on_context_updated,
-                ),
-            )
-            await context_updated.wait()
-        await self.send_message(BusEndMessage(source=self.name))
+        await self.send_message(BusEndMessage(source=self.name, reason=reason))
 
     async def transfer_to(
         self,
         agent_name: str,
         *,
         args: Optional[AgentActivatedArgs] = None,
-        result_callback: Optional[FunctionCallResultCallback] = None,
     ) -> None:
         """Stop this agent and request transfer to the named agent.
-
-        When called from a function handler, pass ``params.result_callback``
-        so the transfer waits for the function-call result to be committed
-        to the context before activating the target agent.
 
         Args:
             agent_name: The name of the agent to transfer to.
             args: Optional `AgentActivatedArgs` forwarded to the target agent's
                 ``on_agent_activated`` handler.
-            result_callback: The ``result_callback`` from FunctionCallParams.
-                When provided, the transfer is sent after the function result
-                is added to the context (via ``on_context_updated``).
         """
-        if result_callback:
-            context_updated = asyncio.Event()
-
-            async def _on_context_updated():
-                context_updated.set()
-
-            await result_callback(
-                None,
-                properties=FunctionCallResultProperties(
-                    run_llm=False,
-                    on_context_updated=_on_context_updated,
-                ),
-            )
-            await context_updated.wait()
-
         await self.stop_agent()
         await self.send_message(
             BusStartAgentMessage(source=self.name, target=agent_name, args=args)
@@ -331,7 +281,7 @@ class BaseAgent(BaseObject):
         elif isinstance(message, BusEndAgentMessage):
             logger.debug(f"Agent '{self}': received end, ending pipeline")
             if self._task:
-                await self._task.queue_frame(EndFrame())
+                await self._task.queue_frame(EndFrame(reason=message.reason))
         elif isinstance(message, BusCancelMessage):
             logger.debug(f"Agent '{self}': received cancel, cancelling task")
             if self._task:
