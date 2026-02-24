@@ -15,6 +15,7 @@ from typing import List, Optional
 
 from loguru import logger
 from pipecat.frames.frames import CancelFrame, EndFrame, StartFrame
+from pipecat.observers.base_observer import BaseObserver
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.task import CANCEL_TIMEOUT_SECS, PipelineParams, PipelineTask
 from pipecat.processors.frame_processor import FrameProcessor
@@ -80,6 +81,7 @@ class BaseAgent(BaseObject):
         rtvi_processor: Optional[RTVIProcessor] = None,
         rtvi_observer_params: Optional[RTVIObserverParams] = None,
         pipeline_params: Optional[PipelineParams] = None,
+        observers: Optional[List[BaseObserver]] = None,
         cancel_on_idle_timeout: bool = False,
         cancel_timeout_secs: float = CANCEL_TIMEOUT_SECS,
     ):
@@ -97,6 +99,7 @@ class BaseAgent(BaseObject):
             rtvi_observer_params: Optional `RTVIObserverParams` for the
                 pipeline task.
             pipeline_params: Optional `PipelineParams` for this agent's task.
+            observers: Optional list of `BaseObserver` instances for monitoring.
             cancel_on_idle_timeout: Whether to cancel the pipeline task when
                 idle timeout is reached. Defaults to False.
             cancel_timeout_secs: Seconds to wait for graceful cancellation
@@ -110,6 +113,7 @@ class BaseAgent(BaseObject):
         self._rtvi_processor = rtvi_processor
         self._rtvi_observer_params = rtvi_observer_params
         self._pipeline_params = pipeline_params or PipelineParams()
+        self._observers = observers
         self._cancel_on_idle_timeout = cancel_on_idle_timeout
         self._cancel_timeout_secs = cancel_timeout_secs
         self._task: Optional[PipelineTask] = None
@@ -233,6 +237,7 @@ class BaseAgent(BaseObject):
             enable_rtvi=self._enable_rtvi,
             rtvi_processor=self._rtvi_processor,
             rtvi_observer_params=self._rtvi_observer_params,
+            observers=self._observers,
             cancel_on_idle_timeout=self._cancel_on_idle_timeout,
             cancel_timeout_secs=self._cancel_timeout_secs,
         )

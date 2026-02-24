@@ -15,6 +15,7 @@ from typing import List, Optional
 
 from loguru import logger
 from pipecat.audio.vad.vad_analyzer import VADAnalyzer
+from pipecat.observers.base_observer import BaseObserver
 from pipecat.pipeline.task import CANCEL_TIMEOUT_SECS, PipelineParams
 from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.aggregators.llm_response_universal import (
@@ -56,6 +57,7 @@ class UserAgentParams(BaseModel):
         stt: Optional STT service.
         tts: Optional TTS service.
         pipeline_params: Optional `PipelineParams` for the pipeline task.
+        observers: Optional list of `BaseObserver` instances for monitoring.
         user_aggregator_params: Optional `LLMUserAggregatorParams` for the
             user aggregator.
         assistant_aggregator_params: Optional `LLMAssistantAggregatorParams`
@@ -74,6 +76,7 @@ class UserAgentParams(BaseModel):
     stt: Optional[FrameProcessor] = None
     tts: Optional[FrameProcessor] = None
     pipeline_params: Optional[PipelineParams] = None
+    observers: Optional[List[BaseObserver]] = None
     user_aggregator_params: Optional[LLMUserAggregatorParams] = None
     assistant_aggregator_params: Optional[LLMAssistantAggregatorParams] = None
     audio_buffer: Optional[FrameProcessor] = None
@@ -109,14 +112,13 @@ class UserAgent(BaseAgent):
             enable_bus_output=False,
             enable_rtvi=True,
             pipeline_params=params.pipeline_params,
+            observers=params.observers,
             cancel_on_idle_timeout=params.cancel_on_idle_timeout,
             cancel_timeout_secs=params.cancel_timeout_secs,
         )
         self._params = params
 
-        self._context_aggregator_pair = (
-            self._build_aggregators() if params.context else None
-        )
+        self._context_aggregator_pair = self._build_aggregators() if params.context else None
 
         transport = params.transport
 
