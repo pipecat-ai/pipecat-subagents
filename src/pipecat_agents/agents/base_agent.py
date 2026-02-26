@@ -37,9 +37,14 @@ class BaseAgent(BaseObject):
     """Abstract base class for agents in the multi-agent framework.
 
     Each agent owns a pipeline whose processors are defined by subclasses.
-    Bus messages are received by subscribing to the bus `on_message` event;
-    `BusFrameMessage` frames are queued directly to the agent's pipeline task,
-    while other messages are dispatched to `on_bus_message()`.
+    The agent's pipeline is always running once started, regardless of
+    whether the agent is active.
+
+    **Active state**: An agent is *active* when it is currently receiving
+    ``BusFrameMessage`` frames from the bus (user audio, text, etc.).
+    Only active agents have bus frames queued into their pipeline.
+    Non-frame bus messages (activation, end, cancel) are always delivered
+    regardless of active state.
 
     Event handlers:
 
@@ -82,7 +87,9 @@ class BaseAgent(BaseObject):
             parent: Optional name of the parent agent. When set, ``end()``
                 sends a targeted `BusEndAgentMessage` to the parent instead
                 of an untargeted `BusEndMessage`.
-            active: Whether the agent starts active. Defaults to False.
+            active: Whether the agent starts active (receiving bus frames).
+                When True, ``on_agent_activated`` fires after the pipeline
+                starts. Defaults to False.
         """
         super().__init__(name=name)
         self._bus = bus
@@ -90,7 +97,7 @@ class BaseAgent(BaseObject):
         self._active = active
         self._task: Optional[PipelineTask] = None
         self._pipeline_started = False
-        self._pending_activation = False
+        self._pending_activation = active
         self._activation_args: Optional[AgentActivationArgs] = None
 
         self._register_event_handler("on_agent_started", sync=True)
@@ -109,7 +116,11 @@ class BaseAgent(BaseObject):
 
     @property
     def active(self) -> bool:
-        """Whether this agent is active and processing frames."""
+        """Whether this agent is currently receiving bus frames.
+
+        An active agent has ``BusFrameMessage`` frames queued into its
+        pipeline. Non-frame bus messages are delivered regardless.
+        """
         return self._active
 
     @property
@@ -123,32 +134,6 @@ class BaseAgent(BaseObject):
     def activation_args(self) -> Optional[AgentActivationArgs]:
         """The most recent activation arguments, if any."""
         return self._activation_args
-
-    async def send_message(self, message: BusMessage) -> None:
-        """Send a message to the bus.
-
-        Args:
-            message: The `BusMessage` to publish on the agent bus.
-        """
-        await self._bus.send(message)
-
-    async def add_agent(self, agent: "BaseAgent") -> None:
-        """Request the local runner to add a new agent.
-
-        Args:
-            agent: The `BaseAgent` instance to register with the runner.
-        """
-        await self.send_message(BusAddAgentMessage(source=self.name, agent=agent))
-
-    async def deactivate_agent(self) -> None:
-        """Deactivate this agent."""
-        logger.debug(f"Agent '{self}': deactivated")
-        self._active = False
-        await self._call_event_handler("on_agent_deactivated")
-
-    async def cancel(self) -> None:
-        """Broadcast a hard cancel to all agents via the bus."""
-        await self.send_message(BusCancelMessage(source=self.name))
 
     async def end(self, *, reason: Optional[str] = None) -> None:
         """Request a graceful end of the session.
@@ -169,23 +154,23 @@ class BaseAgent(BaseObject):
         else:
             await self.send_message(BusEndMessage(source=self.name, reason=reason))
 
-    async def transfer_to(
-        self,
-        agent_name: str,
-        *,
-        args: Optional[AgentActivationArgs] = None,
-    ) -> None:
-        """Stop this agent and request transfer to the named agent.
+    async def cancel(self) -> None:
+        """Broadcast a hard cancel to all agents via the bus."""
+        await self.send_message(BusCancelMessage(source=self.name))
+
+    async def add_agent(self, agent: "BaseAgent") -> None:
+        """Request the local runner to add a new agent.
 
         Args:
-            agent_name: The name of the agent to transfer to.
-            args: Optional `AgentActivationArgs` forwarded to the target agent's
-                ``on_agent_activated`` handler.
+            agent: The `BaseAgent` instance to register with the runner.
         """
-        await self.deactivate_agent()
-        await self.send_message(
-            BusActivateAgentMessage(source=self.name, target=agent_name, args=args)
-        )
+        await self.send_message(BusAddAgentMessage(source=self.name, agent=agent))
+
+    async def deactivate_agent(self) -> None:
+        """Deactivate this agent so it stops receiving bus frames."""
+        logger.debug(f"Agent '{self}': deactivated")
+        self._active = False
+        await self._call_event_handler("on_agent_deactivated")
 
     async def activate_agent(
         self,
@@ -207,6 +192,32 @@ class BaseAgent(BaseObject):
         await self.send_message(
             BusActivateAgentMessage(source=self.name, target=agent_name, args=args)
         )
+
+    async def transfer_to(
+        self,
+        agent_name: str,
+        *,
+        args: Optional[AgentActivationArgs] = None,
+    ) -> None:
+        """Stop this agent and request transfer to the named agent.
+
+        Args:
+            agent_name: The name of the agent to transfer to.
+            args: Optional `AgentActivationArgs` forwarded to the target agent's
+                ``on_agent_activated`` handler.
+        """
+        await self.deactivate_agent()
+        await self.send_message(
+            BusActivateAgentMessage(source=self.name, target=agent_name, args=args)
+        )
+
+    async def send_message(self, message: BusMessage) -> None:
+        """Send a message to the bus.
+
+        Args:
+            message: The `BusMessage` to publish on the agent bus.
+        """
+        await self._bus.send(message)
 
     @abstractmethod
     async def build_pipeline_task(self) -> PipelineTask:
@@ -310,15 +321,14 @@ class BaseAgent(BaseObject):
 
     async def _handle_bus_message(self, message: BusMessage) -> None:
         """Handle a raw bus message: filter, queue frames, dispatch others."""
-        # Ignore own messages
-        if message.source == self.name:
-            return
         # Ignore targeted messages for other agents
         if message.target and message.target != self.name:
             return
 
         if isinstance(message, BusFrameMessage):
-            if self._active:
-                await self.queue_frame(message.frame)
+            # Ignore own frames to prevent infinite loops
+            if not self._active or message.source == self.name:
+                return
+            await self.queue_frame(message.frame)
         else:
             await self.on_bus_message(message)
