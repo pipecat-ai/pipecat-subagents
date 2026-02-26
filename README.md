@@ -66,54 +66,15 @@ The message bus provides pub/sub communication between agents and the runner.
 
 - **`AgentRunner`** — Orchestrates agent lifecycle, creates pipeline tasks, and coordinates shutdown. Agents can be added dynamically at runtime.
 
-## Quick Start
+## Examples
 
-```python
-from pipecat_agents.agents import BaseAgent, LLMAgent
-from pipecat_agents.bus.messages import AgentActivationArgs
-from pipecat_agents.runner import AgentRunner
+The [examples](examples/) directory includes complete working implementations:
 
+- **[single_agent.py](examples/single_agent.py)** — Simplest usage: one agent running a full voice pipeline through the AgentRunner
+- **[two_llm_agents.py](examples/two_llm_agents.py)** — Two LLM agents (greeter + support) that transfer control between each other
+- **[llm_and_flows_agent.py](examples/llm_and_flows_agent.py)** — Mixing agent types: an LLM agent and a Flows agent with structured conversation nodes
 
-class AnalysisAgent(LLMAgent):
-    def build_llm(self):
-        return OpenAILLMService(api_key="...", model="gpt-4o")
-
-    def build_tools(self):
-        return [analyze_data_schema, generate_report_schema]
-
-
-# Each agent runs its own Pipecat pipeline
-class CoordinatorAgent(BaseAgent):
-    def __init__(self, name, *, bus, **kwargs):
-        super().__init__(name, bus=bus, **kwargs)
-
-        @self.event_handler("on_agent_started")
-        async def on_agent_started(agent):
-            await self.activate_agent(
-                "analysis",
-                args=AgentActivationArgs(
-                    messages=[{"role": "system", "content": "Analyze the latest metrics."}],
-                    metadata={"dataset": "metrics_2024"},
-                ),
-            )
-
-    async def build_pipeline_task(self):
-        # Spawn a specialist agent
-        await self.add_agent(AnalysisAgent("analysis", bus=self.bus))
-
-        # Build any Pipecat pipeline
-        pipeline = Pipeline([...])
-        return PipelineTask(pipeline)
-
-
-# Create the runner and run — agents communicate through the bus
-runner = AgentRunner()
-coordinator = CoordinatorAgent("coordinator", bus=runner.bus, active=True)
-await runner.add_agent(coordinator)
-await runner.run()
-```
-
-For complete working examples with voice, video, and Pipecat Flows, see the [examples](examples/) directory.
+See the [examples README](examples/README.md) for setup and running instructions.
 
 ## Contributing to the framework
 
