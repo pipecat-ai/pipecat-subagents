@@ -100,9 +100,15 @@ class AgentActivatedArgs:
     Parameters:
         messages: LLM context messages to inject on start (e.g. to
             tell the agent why it was activated or transferred to).
+        metadata: Optional structured data for the receiving agent.
+            Unlike ``messages`` (which are injected into LLM context),
+            metadata is opaque to the framework — the receiving agent
+            can inspect it programmatically to pre-populate state,
+            skip steps, etc.
     """
 
     messages: Optional[list] = None
+    metadata: Optional[dict] = None
 
 
 @dataclass
