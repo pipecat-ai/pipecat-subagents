@@ -65,6 +65,8 @@ ignore = [
 # Skip docstring checks for non-source code
 "examples/**/*.py" = ["D"]
 "tests/**/*.py" = ["D"]
+# Skip D104 (missing docstring in public package) for __init__.py files
+"**/__init__.py" = ["D104"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
