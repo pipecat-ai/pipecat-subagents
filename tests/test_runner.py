@@ -6,7 +6,6 @@
 
 import asyncio
 import unittest
-from unittest.mock import AsyncMock, MagicMock, patch
 
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.task import PipelineTask
@@ -19,7 +18,6 @@ from pipecat_agents.bus import (
     BusCancelMessage,
     BusEndAgentMessage,
     BusEndMessage,
-    BusMessage,
     LocalAgentBus,
 )
 from pipecat_agents.runner.runner import AgentRunner
@@ -35,26 +33,16 @@ class StubAgent(BaseAgent):
 
 class TestAgentRunner(unittest.IsolatedAsyncioTestCase):
     async def test_add_agent_registers_agent(self):
-        """add_agent() registers the agent by name."""
+        """add_agent() registers the agent by name (duplicate raises ValueError)."""
         runner = AgentRunner(handle_sigint=False)
         bus = runner.bus
         agent = StubAgent("agent_a", bus=bus)
 
         await runner.add_agent(agent)
 
-        self.assertIn("agent_a", runner._agents)
-        self.assertIs(runner._agents["agent_a"], agent)
-
-    async def test_duplicate_agent_name_raises(self):
-        """Adding an agent with duplicate name raises ValueError."""
-        runner = AgentRunner(handle_sigint=False)
-        bus = runner.bus
-        agent1 = StubAgent("agent_a", bus=bus)
-        agent2 = StubAgent("agent_a", bus=bus)
-
-        await runner.add_agent(agent1)
+        # Verify registration by trying to add a duplicate
         with self.assertRaises(ValueError):
-            await runner.add_agent(agent2)
+            await runner.add_agent(StubAgent("agent_a", bus=bus))
 
     async def test_run_starts_bus_and_agents(self):
         """run() starts bus, starts all agents, fires on_runner_started."""
@@ -213,7 +201,9 @@ class TestAgentRunner(unittest.IsolatedAsyncioTestCase):
 
         await asyncio.wait_for(runner.run(), timeout=5.0)
 
-        self.assertIn("agent_b", runner._agents)
+        # Verify agent_b was added by checking that a duplicate raises ValueError
+        with self.assertRaises(ValueError):
+            await runner.add_agent(StubAgent("agent_b", bus=bus))
 
 
 if __name__ == "__main__":

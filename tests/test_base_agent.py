@@ -6,10 +6,10 @@
 
 import asyncio
 import unittest
-from unittest.mock import AsyncMock, MagicMock
 
 from pipecat.frames.frames import EndFrame, TextFrame
 from pipecat.pipeline.pipeline import Pipeline
+from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineTask
 from pipecat.processors.filters.identity_filter import IdentityFilter
 from pipecat.processors.frame_processor import FrameDirection
@@ -24,7 +24,6 @@ from pipecat_agents.bus import (
     BusEndAgentMessage,
     BusEndMessage,
     BusFrameMessage,
-    BusMessage,
     LocalAgentBus,
 )
 
@@ -35,6 +34,19 @@ class StubAgent(BaseAgent):
     async def build_pipeline_task(self) -> PipelineTask:
         pipeline = Pipeline([IdentityFilter()])
         return PipelineTask(pipeline, cancel_on_idle_timeout=False)
+
+
+def capture_bus(bus):
+    """Monkey-patch bus.send to capture sent messages in a list."""
+    sent = []
+    original_send = bus.send
+
+    async def capture_send(message):
+        sent.append(message)
+        await original_send(message)
+
+    bus.send = capture_send
+    return sent
 
 
 class TestBaseAgentLifecycle(unittest.IsolatedAsyncioTestCase):
@@ -59,22 +71,25 @@ class TestBaseAgentLifecycle(unittest.IsolatedAsyncioTestCase):
 
         task = await agent.create_pipeline_task()
 
-        # Simulate pipeline start
-        agent._pipeline_started = True
-        await agent._call_event_handler("on_agent_started")
-
-        # Send activation message
         args = AgentActivationArgs(messages=["hello"])
-        msg = BusActivateAgentMessage(source="other", target="test", args=args)
-        await agent._handle_bus_message(msg)
 
-        await asyncio.wait_for(activated.wait(), timeout=1.0)
+        async def activate_after_start():
+            await asyncio.sleep(0.05)
+            await bus.send(BusActivateAgentMessage(source="other", target="test", args=args))
+            await asyncio.wait_for(activated.wait(), timeout=2.0)
+            await task.queue_frame(EndFrame())
+
+        await bus.start()
+        runner = PipelineRunner()
+        await asyncio.gather(runner.run(task), activate_after_start())
+        await bus.stop()
+
         self.assertTrue(agent.active)
         self.assertEqual(len(activation_args_received), 1)
         self.assertIs(activation_args_received[0], args)
 
     async def test_active_true_constructor_activates_after_pipeline_start(self):
-        """active=True triggers activation after pipeline starts."""
+        """active=True triggers on_agent_activated after pipeline starts."""
         bus = LocalAgentBus()
         agent = StubAgent("test", bus=bus, active=True)
 
@@ -84,33 +99,25 @@ class TestBaseAgentLifecycle(unittest.IsolatedAsyncioTestCase):
         async def on_activated(agent, args):
             activated.set()
 
-        # active=True sets _pending_activation indirectly — the constructor
-        # sets self._active = True. When _maybe_activate is called after
-        # pipeline start, it checks _pending_activation. Let's simulate
-        # the normal flow: active=True means _pending_activation should be set.
-        agent._pending_activation = True
-
         task = await agent.create_pipeline_task()
-        agent._pipeline_started = True
-        await agent._maybe_activate()
 
-        await asyncio.wait_for(activated.wait(), timeout=1.0)
+        async def wait_and_end():
+            await asyncio.wait_for(activated.wait(), timeout=2.0)
+            await task.queue_frame(EndFrame())
+
+        await bus.start()
+        runner = PipelineRunner()
+        await asyncio.gather(runner.run(task), wait_and_end())
+        await bus.stop()
+
         self.assertTrue(agent.active)
 
     async def test_transfer_to_deactivates_self_and_sends_activate(self):
         """transfer_to() deactivates self and sends BusActivateAgentMessage."""
         bus = LocalAgentBus()
-        sent = []
-        original_send = bus.send
+        sent = capture_bus(bus)
 
-        async def capture_send(message):
-            sent.append(message)
-            await original_send(message)
-
-        bus.send = capture_send
-
-        agent = StubAgent("agent_a", bus=bus)
-        agent._active = True
+        agent = StubAgent("agent_a", bus=bus, active=True)
 
         deactivated = asyncio.Event()
 
@@ -132,17 +139,9 @@ class TestBaseAgentLifecycle(unittest.IsolatedAsyncioTestCase):
     async def test_activate_agent_sends_activate_without_deactivating_self(self):
         """activate_agent() sends BusActivateAgentMessage without deactivating self."""
         bus = LocalAgentBus()
-        sent = []
-        original_send = bus.send
+        sent = capture_bus(bus)
 
-        async def capture_send(message):
-            sent.append(message)
-            await original_send(message)
-
-        bus.send = capture_send
-
-        agent = StubAgent("agent_a", bus=bus)
-        agent._active = True
+        agent = StubAgent("agent_a", bus=bus, active=True)
 
         await agent.activate_agent("agent_b")
 
@@ -154,14 +153,7 @@ class TestBaseAgentLifecycle(unittest.IsolatedAsyncioTestCase):
     async def test_end_without_parent_sends_bus_end_message(self):
         """end() with no parent sends BusEndMessage."""
         bus = LocalAgentBus()
-        sent = []
-        original_send = bus.send
-
-        async def capture_send(message):
-            sent.append(message)
-            await original_send(message)
-
-        bus.send = capture_send
+        sent = capture_bus(bus)
 
         agent = StubAgent("agent_a", bus=bus)
         await agent.end(reason="done")
@@ -174,14 +166,7 @@ class TestBaseAgentLifecycle(unittest.IsolatedAsyncioTestCase):
     async def test_end_with_parent_sends_bus_end_agent_message(self):
         """end() with parent sends BusEndAgentMessage to parent."""
         bus = LocalAgentBus()
-        sent = []
-        original_send = bus.send
-
-        async def capture_send(message):
-            sent.append(message)
-            await original_send(message)
-
-        bus.send = capture_send
+        sent = capture_bus(bus)
 
         agent = StubAgent("child", bus=bus, parent="parent_agent")
         await agent.end()
@@ -194,14 +179,7 @@ class TestBaseAgentLifecycle(unittest.IsolatedAsyncioTestCase):
     async def test_cancel_sends_bus_cancel_message(self):
         """cancel() sends BusCancelMessage."""
         bus = LocalAgentBus()
-        sent = []
-        original_send = bus.send
-
-        async def capture_send(message):
-            sent.append(message)
-            await original_send(message)
-
-        bus.send = capture_send
+        sent = capture_bus(bus)
 
         agent = StubAgent("agent_a", bus=bus)
         await agent.cancel()
@@ -213,14 +191,7 @@ class TestBaseAgentLifecycle(unittest.IsolatedAsyncioTestCase):
     async def test_add_agent_sends_bus_add_agent_message(self):
         """add_agent() sends BusAddAgentMessage."""
         bus = LocalAgentBus()
-        sent = []
-        original_send = bus.send
-
-        async def capture_send(message):
-            sent.append(message)
-            await original_send(message)
-
-        bus.send = capture_send
+        sent = capture_bus(bus)
 
         agent = StubAgent("agent_a", bus=bus)
         new_agent = StubAgent("agent_b", bus=bus)
@@ -242,16 +213,22 @@ class TestBaseAgentLifecycle(unittest.IsolatedAsyncioTestCase):
             started.set()
 
         task = await agent.create_pipeline_task()
-        agent._pipeline_started = True
-        await agent._call_event_handler("on_agent_started")
 
-        await asyncio.wait_for(started.wait(), timeout=1.0)
+        async def wait_and_end():
+            await asyncio.wait_for(started.wait(), timeout=2.0)
+            await task.queue_frame(EndFrame())
+
+        await bus.start()
+        runner = PipelineRunner()
+        await asyncio.gather(runner.run(task), wait_and_end())
+        await bus.stop()
+
+        self.assertTrue(started.is_set())
 
     async def test_on_agent_deactivated_event(self):
         """on_agent_deactivated fires on deactivation."""
         bus = LocalAgentBus()
-        agent = StubAgent("test", bus=bus)
-        agent._active = True
+        agent = StubAgent("test", bus=bus, active=True)
 
         deactivated = asyncio.Event()
 
@@ -265,142 +242,259 @@ class TestBaseAgentLifecycle(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(agent.active)
 
     async def test_bus_frame_message_queued_when_active(self):
-        """BusFrameMessage frames are queued to pipeline when active."""
+        """BusFrameMessage frames reach the pipeline when agent is active."""
         bus = LocalAgentBus()
-        agent = StubAgent("test", bus=bus)
-        agent._active = True
+        agent = StubAgent("test", bus=bus, active=True)
 
-        # Mock the task
-        mock_task = MagicMock()
-        mock_task.queue_frame = AsyncMock()
-        agent._task = mock_task
+        task = await agent.create_pipeline_task()
 
-        frame = TextFrame(text="hello")
-        msg = BusFrameMessage(
-            source="other",
-            frame=frame,
-            direction=FrameDirection.DOWNSTREAM,
-        )
-        await agent._handle_bus_message(msg)
+        received = []
+        task.set_reached_downstream_filter((TextFrame,))
 
-        mock_task.queue_frame.assert_awaited_once_with(frame)
+        @task.event_handler("on_frame_reached_downstream")
+        async def on_frame(task, frame):
+            received.append(frame)
+
+        async def send_frame_via_bus():
+            await asyncio.sleep(0.05)
+            msg = BusFrameMessage(
+                source="other",
+                frame=TextFrame(text="hello"),
+                direction=FrameDirection.DOWNSTREAM,
+            )
+            await bus.send(msg)
+            await asyncio.sleep(0.1)
+            await task.queue_frame(EndFrame())
+
+        await bus.start()
+        runner = PipelineRunner()
+        await asyncio.gather(runner.run(task), send_frame_via_bus())
+        await bus.stop()
+
+        self.assertEqual(len(received), 1)
+        self.assertEqual(received[0].text, "hello")
 
     async def test_bus_frame_message_ignored_when_inactive(self):
         """BusFrameMessage frames are ignored when agent is inactive."""
         bus = LocalAgentBus()
-        agent = StubAgent("test", bus=bus)
-        agent._active = False
+        agent = StubAgent("test", bus=bus)  # inactive by default
 
-        mock_task = MagicMock()
-        mock_task.queue_frame = AsyncMock()
-        agent._task = mock_task
+        task = await agent.create_pipeline_task()
 
-        frame = TextFrame(text="hello")
-        msg = BusFrameMessage(
-            source="other",
-            frame=frame,
-            direction=FrameDirection.DOWNSTREAM,
-        )
-        await agent._handle_bus_message(msg)
+        received = []
+        task.set_reached_downstream_filter((TextFrame,))
 
-        mock_task.queue_frame.assert_not_awaited()
+        @task.event_handler("on_frame_reached_downstream")
+        async def on_frame(task, frame):
+            received.append(frame)
+
+        async def send_frame_via_bus():
+            await asyncio.sleep(0.05)
+            msg = BusFrameMessage(
+                source="other",
+                frame=TextFrame(text="ignored"),
+                direction=FrameDirection.DOWNSTREAM,
+            )
+            await bus.send(msg)
+            await asyncio.sleep(0.1)
+            await task.queue_frame(EndFrame())
+
+        await bus.start()
+        runner = PipelineRunner()
+        await asyncio.gather(runner.run(task), send_frame_via_bus())
+        await bus.stop()
+
+        self.assertEqual(len(received), 0)
 
     async def test_messages_from_self_ignored(self):
-        """Messages from self (source == name) are ignored."""
+        """BusFrameMessage from self (source == name) is ignored."""
         bus = LocalAgentBus()
-        agent = StubAgent("test", bus=bus)
-        agent._active = True
+        agent = StubAgent("test", bus=bus, active=True)
 
-        mock_task = MagicMock()
-        mock_task.queue_frame = AsyncMock()
-        agent._task = mock_task
+        task = await agent.create_pipeline_task()
 
-        msg = BusFrameMessage(
-            source="test",  # same as agent name
-            frame=TextFrame(text="self"),
-            direction=FrameDirection.DOWNSTREAM,
-        )
-        await agent._handle_bus_message(msg)
+        received = []
+        task.set_reached_downstream_filter((TextFrame,))
 
-        mock_task.queue_frame.assert_not_awaited()
+        @task.event_handler("on_frame_reached_downstream")
+        async def on_frame(task, frame):
+            received.append(frame)
+
+        async def send_self_frame():
+            await asyncio.sleep(0.05)
+            msg = BusFrameMessage(
+                source="test",  # same as agent name
+                frame=TextFrame(text="self"),
+                direction=FrameDirection.DOWNSTREAM,
+            )
+            await bus.send(msg)
+            await asyncio.sleep(0.1)
+            await task.queue_frame(EndFrame())
+
+        await bus.start()
+        runner = PipelineRunner()
+        await asyncio.gather(runner.run(task), send_self_frame())
+        await bus.stop()
+
+        self.assertEqual(len(received), 0)
 
     async def test_targeted_messages_for_other_agents_ignored(self):
-        """Messages targeted at another agent are ignored."""
+        """BusFrameMessage targeted at another agent is ignored."""
         bus = LocalAgentBus()
-        agent = StubAgent("test", bus=bus)
-        agent._active = True
+        agent = StubAgent("test", bus=bus, active=True)
 
-        mock_task = MagicMock()
-        mock_task.queue_frame = AsyncMock()
-        agent._task = mock_task
+        task = await agent.create_pipeline_task()
 
-        msg = BusFrameMessage(
-            source="other",
-            target="someone_else",
-            frame=TextFrame(text="not for me"),
-            direction=FrameDirection.DOWNSTREAM,
-        )
-        await agent._handle_bus_message(msg)
+        received = []
+        task.set_reached_downstream_filter((TextFrame,))
 
-        mock_task.queue_frame.assert_not_awaited()
+        @task.event_handler("on_frame_reached_downstream")
+        async def on_frame(task, frame):
+            received.append(frame)
 
-    async def test_bus_end_agent_message_queues_end_frame(self):
-        """BusEndAgentMessage queues EndFrame to pipeline."""
-        bus = LocalAgentBus()
-        agent = StubAgent("test", bus=bus)
+        async def send_targeted_frame():
+            await asyncio.sleep(0.05)
+            msg = BusFrameMessage(
+                source="other",
+                target="someone_else",
+                frame=TextFrame(text="not for me"),
+                direction=FrameDirection.DOWNSTREAM,
+            )
+            await bus.send(msg)
+            await asyncio.sleep(0.1)
+            await task.queue_frame(EndFrame())
 
-        mock_task = MagicMock()
-        mock_task.queue_frame = AsyncMock()
-        agent._task = mock_task
+        await bus.start()
+        runner = PipelineRunner()
+        await asyncio.gather(runner.run(task), send_targeted_frame())
+        await bus.stop()
 
-        msg = BusEndAgentMessage(source="runner", target="test", reason="shutdown")
-        await agent._handle_bus_message(msg)
+        self.assertEqual(len(received), 0)
 
-        mock_task.queue_frame.assert_awaited_once()
-        queued_frame = mock_task.queue_frame.call_args[0][0]
-        self.assertIsInstance(queued_frame, EndFrame)
-
-    async def test_bus_cancel_agent_message_cancels_task(self):
-        """BusCancelAgentMessage cancels the task."""
+    async def test_bus_end_agent_message_ends_pipeline(self):
+        """BusEndAgentMessage causes the pipeline to end gracefully."""
         bus = LocalAgentBus()
         agent = StubAgent("test", bus=bus)
 
-        mock_task = MagicMock()
-        mock_task.cancel = AsyncMock()
-        agent._task = mock_task
+        task = await agent.create_pipeline_task()
 
-        msg = BusCancelAgentMessage(source="runner", target="test")
-        await agent._handle_bus_message(msg)
+        finished = asyncio.Event()
 
-        mock_task.cancel.assert_awaited_once()
+        @task.event_handler("on_pipeline_finished")
+        async def on_finished(task, frame):
+            if isinstance(frame, EndFrame):
+                finished.set()
 
-    async def test_queue_frame_delegates_to_task(self):
-        """queue_frame delegates to task.queue_frame."""
+        async def send_end_message():
+            await asyncio.sleep(0.05)
+            await bus.send(BusEndAgentMessage(source="runner", target="test", reason="shutdown"))
+
+        await bus.start()
+        runner = PipelineRunner()
+        await asyncio.gather(runner.run(task), send_end_message())
+        await bus.stop()
+
+        self.assertTrue(finished.is_set())
+
+    async def test_bus_cancel_agent_message_cancels_pipeline(self):
+        """BusCancelAgentMessage cancels the pipeline task."""
         bus = LocalAgentBus()
         agent = StubAgent("test", bus=bus)
 
-        mock_task = MagicMock()
-        mock_task.queue_frame = AsyncMock()
-        agent._task = mock_task
+        task = await agent.create_pipeline_task()
 
-        frame = TextFrame(text="test")
-        await agent.queue_frame(frame)
+        async def send_cancel_message():
+            await asyncio.sleep(0.05)
+            await bus.send(BusCancelAgentMessage(source="runner", target="test"))
 
-        mock_task.queue_frame.assert_awaited_once_with(frame)
+        await bus.start()
+        runner = PipelineRunner()
+        try:
+            await asyncio.gather(runner.run(task), send_cancel_message())
+        except asyncio.CancelledError:
+            pass
+        await bus.stop()
 
-    async def test_queue_frames_delegates_to_task(self):
-        """queue_frames delegates to task.queue_frames."""
+        self.assertTrue(task.has_finished())
+
+    async def test_queue_frame(self):
+        """queue_frame injects a frame into the pipeline."""
         bus = LocalAgentBus()
         agent = StubAgent("test", bus=bus)
 
-        mock_task = MagicMock()
-        mock_task.queue_frames = AsyncMock()
-        agent._task = mock_task
+        task = await agent.create_pipeline_task()
 
-        frames = [TextFrame(text="a"), TextFrame(text="b")]
-        await agent.queue_frames(frames)
+        received = []
+        task.set_reached_downstream_filter((TextFrame,))
 
-        mock_task.queue_frames.assert_awaited_once_with(frames)
+        @task.event_handler("on_frame_reached_downstream")
+        async def on_frame(task, frame):
+            received.append(frame)
+
+        async def push_frames():
+            await asyncio.sleep(0.05)
+            await agent.queue_frame(TextFrame(text="injected"))
+            await asyncio.sleep(0.05)
+            await agent.queue_frame(EndFrame())
+
+        runner = PipelineRunner()
+        await asyncio.gather(runner.run(task), push_frames())
+
+        self.assertEqual(len(received), 1)
+        self.assertEqual(received[0].text, "injected")
+
+    async def test_queue_frames(self):
+        """queue_frames injects multiple frames into the pipeline."""
+        bus = LocalAgentBus()
+        agent = StubAgent("test", bus=bus)
+
+        task = await agent.create_pipeline_task()
+
+        received = []
+        task.set_reached_downstream_filter((TextFrame,))
+
+        @task.event_handler("on_frame_reached_downstream")
+        async def on_frame(task, frame):
+            received.append(frame)
+
+        async def push_frames():
+            await asyncio.sleep(0.05)
+            await agent.queue_frames([TextFrame(text="a"), TextFrame(text="b")])
+            await asyncio.sleep(0.05)
+            await agent.queue_frame(EndFrame())
+
+        runner = PipelineRunner()
+        await asyncio.gather(runner.run(task), push_frames())
+
+        self.assertEqual(len(received), 2)
+        self.assertEqual(received[0].text, "a")
+        self.assertEqual(received[1].text, "b")
+
+    async def test_self_activation_via_activate_agent(self):
+        """An agent can activate itself via activate_agent(self.name)."""
+        bus = LocalAgentBus()
+        agent = StubAgent("test", bus=bus)
+
+        activated = asyncio.Event()
+
+        @agent.event_handler("on_agent_activated")
+        async def on_activated(agent, args):
+            activated.set()
+
+        task = await agent.create_pipeline_task()
+
+        async def self_activate():
+            await asyncio.sleep(0.05)
+            await agent.activate_agent("test")
+            await asyncio.wait_for(activated.wait(), timeout=2.0)
+            await task.queue_frame(EndFrame())
+
+        await bus.start()
+        runner = PipelineRunner()
+        await asyncio.gather(runner.run(task), self_activate())
+        await bus.stop()
+
+        self.assertTrue(agent.active)
 
 
 if __name__ == "__main__":

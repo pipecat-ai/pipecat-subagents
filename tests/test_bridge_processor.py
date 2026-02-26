@@ -10,7 +10,6 @@ import unittest
 from pipecat.frames.frames import (
     EndFrame,
     Frame,
-    StartFrame,
     TextFrame,
 )
 from pipecat.pipeline.pipeline import Pipeline
@@ -109,70 +108,130 @@ class TestBusBridgeProcessor(unittest.IsolatedAsyncioTestCase):
                 frame=frame,
                 direction=FrameDirection.DOWNSTREAM,
             )
-            await bus._call_event_handler("on_message", msg)
-            await asyncio.sleep(0.05)
+            await bus.send(msg)
+            await asyncio.sleep(0.1)
             await task.queue_frame(EndFrame())
 
+        await bus.start()
         runner = PipelineRunner()
-        await asyncio.gather(
-            runner.run(task),
-            send_bus_frame(),
-        )
+        await asyncio.gather(runner.run(task), send_bus_frame())
+        await bus.stop()
 
         self.assertEqual(len(downstream_frames), 1)
         self.assertEqual(downstream_frames[0].text, "from_bus")
 
-    async def test_frames_buffered_before_start(self):
-        """Frames received before StartFrame are buffered and flushed after start."""
+    async def test_frames_buffered_before_start_then_flushed(self):
+        """Frames received before StartFrame are buffered, then flushed after start."""
         bus = LocalAgentBus()
         processor = BusBridgeProcessor(bus=bus, agent_name="bridge_agent")
 
-        # Simulate a frame arriving before the pipeline starts
-        frame = TextFrame(text="early_frame")
-        msg = BusFrameMessage(
-            source="other_agent",
-            frame=frame,
-            direction=FrameDirection.DOWNSTREAM,
-        )
-        # Dispatch directly to the handler — pipeline hasn't started yet
-        await bus._call_event_handler("on_message", msg)
+        downstream_frames = []
 
-        # The frame should be buffered
-        self.assertEqual(len(processor._pending_frames), 1)
-        self.assertIs(processor._pending_frames[0][0], frame)
+        class CaptureSink(FrameProcessor):
+            async def process_frame(self, frame: Frame, direction: FrameDirection):
+                await super().process_frame(frame, direction)
+                if isinstance(frame, TextFrame):
+                    downstream_frames.append(frame)
+                await self.push_frame(frame, direction)
+
+        pipeline = Pipeline([processor, CaptureSink()])
+        task = PipelineTask(pipeline, cancel_on_idle_timeout=False)
+
+        # Send a frame via bus BEFORE starting the pipeline — it should be buffered
+        early_frame = TextFrame(text="early_frame")
+        await bus.start()
+        await bus.send(
+            BusFrameMessage(
+                source="other_agent",
+                frame=early_frame,
+                direction=FrameDirection.DOWNSTREAM,
+            )
+        )
+        # Give the bus receive loop time to dispatch
+        await asyncio.sleep(0.05)
+
+        # Now start the pipeline — buffered frame should be flushed
+        async def end_after_flush():
+            await asyncio.sleep(0.1)
+            await task.queue_frame(EndFrame())
+
+        runner = PipelineRunner()
+        await asyncio.gather(runner.run(task), end_after_flush())
+        await bus.stop()
+
+        self.assertEqual(len(downstream_frames), 1)
+        self.assertEqual(downstream_frames[0].text, "early_frame")
 
     async def test_messages_from_self_ignored(self):
         """BusFrameMessage from the same agent name is ignored."""
         bus = LocalAgentBus()
         processor = BusBridgeProcessor(bus=bus, agent_name="bridge_agent")
 
-        # Simulate a message from self
-        frame = TextFrame(text="self_msg")
-        msg = BusFrameMessage(
-            source="bridge_agent",  # same as processor agent_name
-            frame=frame,
-            direction=FrameDirection.DOWNSTREAM,
-        )
-        await bus._call_event_handler("on_message", msg)
+        downstream_frames = []
 
-        # Should not be buffered
-        self.assertEqual(len(processor._pending_frames), 0)
+        class CaptureSink(FrameProcessor):
+            async def process_frame(self, frame: Frame, direction: FrameDirection):
+                await super().process_frame(frame, direction)
+                if isinstance(frame, TextFrame):
+                    downstream_frames.append(frame)
+                await self.push_frame(frame, direction)
+
+        pipeline = Pipeline([processor, CaptureSink()])
+        task = PipelineTask(pipeline, cancel_on_idle_timeout=False)
+
+        async def send_self_frame():
+            await asyncio.sleep(0.05)
+            msg = BusFrameMessage(
+                source="bridge_agent",  # same as processor agent_name
+                frame=TextFrame(text="self_msg"),
+                direction=FrameDirection.DOWNSTREAM,
+            )
+            await bus.send(msg)
+            await asyncio.sleep(0.1)
+            await task.queue_frame(EndFrame())
+
+        await bus.start()
+        runner = PipelineRunner()
+        await asyncio.gather(runner.run(task), send_self_frame())
+        await bus.stop()
+
+        self.assertEqual(len(downstream_frames), 0)
 
     async def test_targeted_messages_for_other_agents_ignored(self):
         """BusFrameMessage targeted at another agent is ignored."""
         bus = LocalAgentBus()
         processor = BusBridgeProcessor(bus=bus, agent_name="bridge_agent")
 
-        frame = TextFrame(text="not_for_me")
-        msg = BusFrameMessage(
-            source="other_agent",
-            target="someone_else",  # not bridge_agent
-            frame=frame,
-            direction=FrameDirection.DOWNSTREAM,
-        )
-        await bus._call_event_handler("on_message", msg)
+        downstream_frames = []
 
-        self.assertEqual(len(processor._pending_frames), 0)
+        class CaptureSink(FrameProcessor):
+            async def process_frame(self, frame: Frame, direction: FrameDirection):
+                await super().process_frame(frame, direction)
+                if isinstance(frame, TextFrame):
+                    downstream_frames.append(frame)
+                await self.push_frame(frame, direction)
+
+        pipeline = Pipeline([processor, CaptureSink()])
+        task = PipelineTask(pipeline, cancel_on_idle_timeout=False)
+
+        async def send_targeted_frame():
+            await asyncio.sleep(0.05)
+            msg = BusFrameMessage(
+                source="other_agent",
+                target="someone_else",  # not bridge_agent
+                frame=TextFrame(text="not_for_me"),
+                direction=FrameDirection.DOWNSTREAM,
+            )
+            await bus.send(msg)
+            await asyncio.sleep(0.1)
+            await task.queue_frame(EndFrame())
+
+        await bus.start()
+        runner = PipelineRunner()
+        await asyncio.gather(runner.run(task), send_targeted_frame())
+        await bus.stop()
+
+        self.assertEqual(len(downstream_frames), 0)
 
 
 if __name__ == "__main__":

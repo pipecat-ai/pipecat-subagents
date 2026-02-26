@@ -67,13 +67,25 @@ class TestLocalAgentBus(unittest.IsolatedAsyncioTestCase):
     async def test_start_stop_lifecycle(self):
         """start() begins the receive loop, stop() cancels it cleanly."""
         bus = LocalAgentBus()
+        received = []
+
+        @bus.event_handler("on_message")
+        async def subscriber(bus, message):
+            received.append(message)
+
         await bus.start()
-        # The receive task should be running
-        self.assertIsNotNone(bus._receive_task)
-        self.assertFalse(bus._receive_task.done())
+
+        # Receive loop is running — messages are dispatched
+        await bus.send(BusMessage(source="a"))
+        await asyncio.sleep(0.05)
+        self.assertEqual(len(received), 1)
 
         await bus.stop()
-        self.assertTrue(bus._receive_task.done())
+
+        # After stop, messages are not dispatched
+        await bus.send(BusMessage(source="b"))
+        await asyncio.sleep(0.05)
+        self.assertEqual(len(received), 1)
 
     async def test_multiple_messages_in_order(self):
         """Messages are dispatched in FIFO order."""
