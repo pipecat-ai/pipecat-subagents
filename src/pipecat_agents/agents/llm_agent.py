@@ -78,7 +78,7 @@ class LLMAgent(BaseAgent):
             pipeline_params: Optional `PipelineParams` for this agent's task.
         """
         super().__init__(name, bus=bus, parent=parent, active=active)
-        self._pipeline_params = pipeline_params
+        self._pipeline_params = pipeline_params or PipelineParams()
         self._llm: Optional[LLMService] = None
 
         @self.event_handler("on_agent_activated")
@@ -135,7 +135,9 @@ class LLMAgent(BaseAgent):
             name=f"{self.name}::BusOutput",
         )
         pipeline = Pipeline([self._llm, bus_output])
-        return PipelineTask(pipeline, params=self._pipeline_params or PipelineParams())
+
+        # This agent only has an LLM, so we want disable idle cancellation.
+        return PipelineTask(pipeline, params=self._pipeline_params, cancel_on_idle_timeout=False)
 
     async def end(
         self,
