@@ -135,32 +135,37 @@ class AgentRunner(BaseObject):
 
         Sends `BusEndAgentMessage` to all agents in parallel, waits for
         their pipelines to finish, then shuts down. Agents that need
-        ordered shutdown handle it themselves.
+        ordered shutdown handle it themselves. Idempotent — subsequent
+        calls are ignored.
 
         Args:
             reason: Optional human-readable reason for ending.
         """
+        if self._shutdown_event.is_set():
+            return
         logger.debug(f"AgentRunner: ending gracefully (reason={reason})")
+        self._shutdown_event.set()
         for name in self._agents:
             await self._bus.send(BusEndAgentMessage(source=self.name, target=name, reason=reason))
-        self._shutdown_event.set()
 
     async def cancel(self, reason: Optional[str] = None) -> None:
         """Cancel the runner and all agent tasks.
 
         Sends targeted `BusCancelAgentMessage` to each agent, then cancels
-        the `PipelineRunner`.
+        the `PipelineRunner`. Idempotent — subsequent calls are ignored.
 
         Args:
             reason: Optional human-readable reason for cancelling.
         """
+        if self._shutdown_event.is_set():
+            return
         logger.debug(f"AgentRunner: cancelling (reason={reason})")
+        self._shutdown_event.set()
         for name in self._agents:
             await self._bus.send(
                 BusCancelAgentMessage(source=self.name, target=name, reason=reason)
             )
         await self._pipecat_runner.cancel()
-        self._shutdown_event.set()
 
     async def _handle_bus_message(self, message: BusMessage) -> None:
         """Handle bus messages directed at the runner."""
