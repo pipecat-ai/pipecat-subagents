@@ -18,7 +18,13 @@ message.
 import asyncio
 from typing import List, Optional
 
-from pipecat.frames.frames import LLMContextFrame
+from pipecat.frames.frames import (
+    LLMContextFrame,
+    LLMFullResponseEndFrame,
+    LLMFullResponseStartFrame,
+    LLMTextFrame,
+)
+from pipecat.pipeline.parallel_pipeline import ParallelPipeline
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.task import PipelineParams, PipelineTask
 from pipecat.processors.aggregators.llm_context import LLMContext
@@ -65,7 +71,7 @@ class LLMContextAgent(LLMAgent):
         name: str,
         *,
         bus: AgentBus,
-        system_messages: Optional[List[dict]] = None,
+        system_messages: List[dict] = [],
         parent: Optional[str] = None,
         active: bool = False,
         pipeline_params: Optional[PipelineParams] = None,
@@ -82,13 +88,29 @@ class LLMContextAgent(LLMAgent):
             active: Whether the agent starts active. Defaults to False.
             pipeline_params: Optional ``PipelineParams`` for this agent's task.
         """
-        super().__init__(name, bus=bus, parent=parent, active=active, pipeline_params=pipeline_params)
-        self._system_messages = list(system_messages) if system_messages else []
+        super().__init__(
+            name, bus=bus, parent=parent, active=active, pipeline_params=pipeline_params
+        )
+        self._system_messages = system_messages
 
     async def build_pipeline_task(self) -> PipelineTask:
         """Build the agent pipeline with context processing and assistant aggregation.
 
-        Creates: ``BusInput → AgentContextProcessor → LLM → BusOutput → LLMAssistantAggregator``
+        Creates::
+
+            BusInput → ContextProcessor → LLM → Parallel([BusOutput], [AssistantAgg])
+
+        The ``AgentContextProcessor`` and ``LLMAssistantAggregator`` share
+        the same ``LLMContext`` so that tools and messages set by the
+        aggregator are visible when the context processor builds the LLM
+        request.
+
+        After the LLM, a ``ParallelPipeline`` splits output into two
+        independent legs: ``BusOutput`` sends frames to the bus, while
+        ``AssistantAgg`` captures assistant responses. Only output
+        frames (``LLMTextFrame``, ``LLMFullResponseStartFrame``,
+        ``LLMFullResponseEndFrame``) are sent to the bus via
+        ``output_frames``.
 
         Returns:
             The created ``PipelineTask``.
@@ -101,6 +123,8 @@ class LLMContextAgent(LLMAgent):
             if isinstance(frame, LLMContextFrame):
                 self._context_frame_arrived.set()
 
+        agent_context = LLMContext()
+
         bus_input = BusInputProcessor(
             bus=self._bus,
             agent_name=self.name,
@@ -109,6 +133,7 @@ class LLMContextAgent(LLMAgent):
         )
 
         context_processor = AgentContextProcessor(
+            context=agent_context,
             system_messages=self._system_messages,
             name=f"{self.name}::ContextProcessor",
         )
@@ -116,16 +141,22 @@ class LLMContextAgent(LLMAgent):
         bus_output = BusOutputProcessor(
             bus=self._bus,
             agent_name=self.name,
-            pass_through=True,
+            output_frames=(LLMTextFrame, LLMFullResponseStartFrame, LLMFullResponseEndFrame),
             name=f"{self.name}::BusOutput",
         )
 
-        agent_context = LLMContext()
         assistant_aggregator = LLMAssistantAggregator(
             agent_context,
             name=f"{self.name}::AssistantAgg",
         )
 
-        pipeline = Pipeline([bus_input, context_processor, self._llm, bus_output, assistant_aggregator])
+        pipeline = Pipeline(
+            [
+                bus_input,
+                context_processor,
+                self._llm,
+                ParallelPipeline([bus_output], [assistant_aggregator]),
+            ]
+        )
 
         return PipelineTask(pipeline, params=self._pipeline_params, cancel_on_idle_timeout=False)

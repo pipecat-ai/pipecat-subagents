@@ -163,5 +163,79 @@ class TestBusOutputProcessor(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(down[0].text, "hello")
 
 
+    async def test_output_frames_restricts_bus_output(self):
+        """Only frame types listed in output_frames are sent to the bus."""
+        bus = LocalAgentBus()
+        sent_to_bus = []
+        original_send = bus.send
+
+        async def capture_send(msg):
+            sent_to_bus.append(msg)
+            await original_send(msg)
+
+        bus.send = capture_send
+
+        # Only allow TextFrame to be sent to bus — anything else passes through
+        processor = BusOutputProcessor(
+            bus=bus,
+            agent_name="test_agent",
+            output_frames=(TextFrame,),
+        )
+        pipeline = Pipeline([processor])
+
+        frames_to_send = [TextFrame(text="hello")]
+        # pass_through=False (default), so TextFrame goes to bus only
+        expected_down_frames = []
+
+        await run_test(
+            pipeline,
+            frames_to_send=frames_to_send,
+            expected_down_frames=expected_down_frames,
+        )
+
+        # TextFrame should be on the bus
+        bus_frame_msgs = [m for m in sent_to_bus if isinstance(m, BusFrameMessage)]
+        self.assertEqual(len(bus_frame_msgs), 1)
+        self.assertEqual(bus_frame_msgs[0].frame.text, "hello")
+
+    async def test_output_frames_non_matching_pass_through(self):
+        """Frame types not in output_frames pass through without being sent to bus."""
+        from pipecat.frames.frames import LLMSetToolsFrame
+
+        bus = LocalAgentBus()
+        sent_to_bus = []
+        original_send = bus.send
+
+        async def capture_send(msg):
+            sent_to_bus.append(msg)
+            await original_send(msg)
+
+        bus.send = capture_send
+
+        # Only TextFrame goes to bus
+        processor = BusOutputProcessor(
+            bus=bus,
+            agent_name="test_agent",
+            output_frames=(TextFrame,),
+        )
+        pipeline = Pipeline([processor])
+
+        frames_to_send = [LLMSetToolsFrame(tools=[])]
+        expected_down_frames = [LLMSetToolsFrame]
+
+        down, _ = await run_test(
+            pipeline,
+            frames_to_send=frames_to_send,
+            expected_down_frames=expected_down_frames,
+        )
+
+        # LLMSetToolsFrame should pass through downstream
+        self.assertIsInstance(down[0], LLMSetToolsFrame)
+
+        # But should NOT be on the bus
+        bus_frame_msgs = [m for m in sent_to_bus if isinstance(m, BusFrameMessage)]
+        self.assertEqual(len(bus_frame_msgs), 0)
+
+
 if __name__ == "__main__":
     unittest.main()
