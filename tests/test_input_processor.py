@@ -168,8 +168,8 @@ class TestBusInputProcessor(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(len(downstream_frames), 0)
 
-    async def test_frames_buffered_before_start_then_flushed(self):
-        """Frames received before StartFrame are buffered, then flushed after start."""
+    async def test_frames_before_start_ignored(self):
+        """Frames received before StartFrame are ignored."""
         bus = LocalAgentBus()
         processor = BusInputProcessor(bus=bus, agent_name="test_agent")
 
@@ -185,7 +185,7 @@ class TestBusInputProcessor(unittest.IsolatedAsyncioTestCase):
         pipeline = Pipeline([processor, CaptureSink()])
         task = PipelineTask(pipeline, cancel_on_idle_timeout=False)
 
-        # Send a frame via bus BEFORE starting the pipeline — it should be buffered
+        # Send a frame via bus BEFORE starting the pipeline — it should be ignored
         await bus.start()
         await bus.send(
             BusFrameMessage(
@@ -194,20 +194,18 @@ class TestBusInputProcessor(unittest.IsolatedAsyncioTestCase):
                 direction=FrameDirection.DOWNSTREAM,
             )
         )
-        # Give the bus receive loop time to dispatch
         await asyncio.sleep(0.05)
 
-        # Now start the pipeline — buffered frame should be flushed
-        async def end_after_flush():
+        # Now start the pipeline — early frame should NOT appear
+        async def end_after_start():
             await asyncio.sleep(0.1)
             await task.queue_frame(EndFrame())
 
         runner = PipelineRunner()
-        await asyncio.gather(runner.run(task), end_after_flush())
+        await asyncio.gather(runner.run(task), end_after_start())
         await bus.stop()
 
-        self.assertEqual(len(downstream_frames), 1)
-        self.assertEqual(downstream_frames[0].text, "early_frame")
+        self.assertEqual(len(downstream_frames), 0)
 
     async def test_pipeline_frames_pass_through(self):
         """Pipeline frames pass through BusInputProcessor transparently."""
