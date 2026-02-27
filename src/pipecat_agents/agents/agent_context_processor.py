@@ -56,10 +56,6 @@ class AgentContextProcessor(FrameProcessor):
         """
         await super().process_frame(frame, direction)
 
-        if direction == FrameDirection.UPSTREAM:
-            await self.push_frame(frame, direction)
-            return
-
         if isinstance(frame, LLMContextFrame):
             shared_messages = frame.context.get_messages()
             agent_messages = list(self._system_messages) + list(shared_messages)
