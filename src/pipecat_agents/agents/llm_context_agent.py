@@ -96,6 +96,7 @@ class LLMContextAgent(LLMAgent):
             name, bus=bus, parent=parent, active=active, pipeline_params=pipeline_params
         )
         self._system_messages = system_messages
+        self._agent_context = LLMContext(system_messages)
 
     async def build_pipeline_task(self) -> PipelineTask:
         """Build the agent pipeline with context processing and assistant aggregation.
@@ -127,8 +128,6 @@ class LLMContextAgent(LLMAgent):
             if isinstance(frame, LLMContextFrame):
                 self._context_frame_arrived.set()
 
-        agent_context = LLMContext()
-
         bus_input = BusInputProcessor(
             bus=self._bus,
             agent_name=self.name,
@@ -137,7 +136,7 @@ class LLMContextAgent(LLMAgent):
         )
 
         context_processor = AgentContextProcessor(
-            context=agent_context,
+            context=self._agent_context,
             system_messages=self._system_messages,
             name=f"{self.name}::ContextProcessor",
         )
@@ -150,7 +149,7 @@ class LLMContextAgent(LLMAgent):
         )
 
         assistant_aggregator = LLMAssistantAggregator(
-            agent_context,
+            self._agent_context,
             name=f"{self.name}::AssistantAgg",
         )
 

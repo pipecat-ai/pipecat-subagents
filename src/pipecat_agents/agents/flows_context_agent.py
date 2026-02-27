@@ -29,11 +29,11 @@ from pipecat.processors.aggregators.llm_response_universal import (
     LLMAssistantAggregator,
     LLMContextAggregatorPair,
 )
+from pipecat_flows import FlowManager
 
 from pipecat_agents.agents.agent_context_processor import AgentContextProcessor
 from pipecat_agents.agents.flows_agent import FlowsAgent
 from pipecat_agents.bus import AgentBus, BusInputProcessor, BusOutputProcessor
-from pipecat_flows import FlowManager
 
 
 class FlowsContextAgent(FlowsAgent):
@@ -102,7 +102,7 @@ class FlowsContextAgent(FlowsAgent):
             name, bus=bus, parent=parent, active=active, pipeline_params=pipeline_params, **kwargs
         )
         self._system_messages = system_messages
-        self._agent_context = LLMContext()
+        self._agent_context = LLMContext(system_messages)
         self._llm = self.build_llm()
 
     def build_context_aggregator(self) -> LLMContextAggregatorPair:
