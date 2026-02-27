@@ -28,7 +28,7 @@ from loguru import logger
 from pipecat.adapters.schemas.function_schema import FunctionSchema
 from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import LocalSmartTurnAnalyzerV3
 from pipecat.audio.vad.silero import SileroVADAnalyzer
-from pipecat.frames.frames import EndFrame
+from pipecat.frames.frames import EndFrame, LLMContextFrame
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.task import PipelineParams, PipelineTask
 from pipecat.processors.aggregators.llm_context import LLMContext
@@ -114,7 +114,7 @@ class AcmeLLMAgent(LLMContextAgent):
     async def _handle_transfer(self, params):
         agent = params.arguments["agent"]
         reason = params.arguments["reason"]
-        logger.info(f"Agent '{self.name}': transferring to {agent} ({reason})")
+        logger.info(f"Agent '{self.name}': transferring to '{agent}' ({reason})")
         await self.transfer_to(
             agent,
             args=AgentActivationArgs(
@@ -219,6 +219,8 @@ class AcmeAgent(BaseAgent):
         bus_output = BusOutputProcessor(
             bus=self.bus,
             agent_name=self.name,
+            output_frames=(LLMContextFrame,),
+            pass_through=True,
             name=f"{self.name}::BusOutput",
         )
         bus_input = BusInputProcessor(

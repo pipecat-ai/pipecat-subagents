@@ -27,7 +27,7 @@ from loguru import logger
 from pipecat.adapters.schemas.function_schema import FunctionSchema
 from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import LocalSmartTurnAnalyzerV3
 from pipecat.audio.vad.silero import SileroVADAnalyzer
-from pipecat.frames.frames import EndFrame, LLMMessagesAppendFrame
+from pipecat.frames.frames import EndFrame, LLMContextFrame
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.task import PipelineParams, PipelineTask
 from pipecat.processors.aggregators.llm_context import LLMContext
@@ -364,6 +364,8 @@ class RestaurantAgent(BaseAgent):
             bus=self.bus,
             agent_name=self.name,
             name=f"{self.name}::BusOutput",
+            output_frames=(LLMContextFrame,),
+            pass_through=True,
         )
         bus_input = BusInputProcessor(
             bus=self.bus,
