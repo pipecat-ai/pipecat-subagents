@@ -4,19 +4,11 @@
 # SPDX-License-Identifier: BSD 2-Clause License
 #
 
-import asyncio
 import unittest
 
-from pipecat.frames.frames import (
-    CancelFrame,
-    EndFrame,
-    Frame,
-    StartFrame,
-    StopFrame,
-    TextFrame,
-)
+from pipecat.frames.frames import TextFrame
 from pipecat.pipeline.pipeline import Pipeline
-from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
+from pipecat.processors.frame_processor import FrameDirection
 from pipecat.tests.utils import run_test
 
 from pipecat_agents.bus import BusFrameMessage, BusOutputProcessor, LocalAgentBus
@@ -161,7 +153,6 @@ class TestBusOutputProcessor(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(down), 1)
         self.assertIsInstance(down[0], TextFrame)
         self.assertEqual(down[0].text, "hello")
-
 
     async def test_output_frames_restricts_bus_output(self):
         """Only frame types listed in output_frames are sent to the bus."""

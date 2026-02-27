@@ -65,9 +65,7 @@ class TestBusInputProcessor(unittest.IsolatedAsyncioTestCase):
     async def test_inactive_agent_ignores_frames(self):
         """Frames are ignored when is_active returns False."""
         bus = LocalAgentBus()
-        processor = BusInputProcessor(
-            bus=bus, agent_name="test_agent", is_active=lambda: False
-        )
+        processor = BusInputProcessor(bus=bus, agent_name="test_agent", is_active=lambda: False)
 
         downstream_frames = []
 

@@ -38,13 +38,17 @@ from pipecat_agents.bus import AgentBus, BusInputProcessor, BusOutputProcessor
 class LLMContextAgent(LLMAgent):
     """LLM agent that owns its own context with system messages.
 
-    Pipeline: ``BusInput → AgentContextProcessor → LLM → BusOutput → LLMAssistantAggregator``
+    Pipeline::
+
+        BusInput → ContextProcessor → LLM → Parallel([BusOutput], [AssistantAgg])
 
     On each ``LLMContextFrame`` from the shared context, the
     ``AgentContextProcessor`` prepends the agent's system messages and
-    forwards the combined context to the LLM. The ``LLMAssistantAggregator``
-    captures the LLM's output and adds assistant messages to the agent's
-    context.
+    forwards the combined context to the LLM.  After the LLM, a
+    ``ParallelPipeline`` splits output into two independent legs:
+    ``BusOutput`` sends output frames to the bus, while
+    ``LLMAssistantAggregator`` captures the LLM's response and adds
+    assistant messages to the agent's context.
 
     Use this instead of ``LLMAgent`` when the LLM service doesn't support
     a native ``system_instruction`` parameter (e.g. OpenAI).

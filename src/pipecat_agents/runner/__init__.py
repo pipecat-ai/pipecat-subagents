@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: BSD 2-Clause License
 #
 
-"""Agent runner package."""
+"""Agent runner package -- lifecycle orchestration for multi-agent pipelines."""
 
 from pipecat_agents.runner.runner import AgentRunner
 

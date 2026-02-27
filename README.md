@@ -2,7 +2,7 @@
  <img alt="pipecat agents" width="500px" height="auto" src="https://github.com/pipecat-ai/pipecat-agents/raw/refs/heads/main/pipecat-agents.png">
 </div></h1>
 
-[![PyPI](https://img.shields.io/pypi/v/pipecat-ai-agents)](https://pypi.org/project/pipecat-ai-agents) [![Docs](https://img.shields.io/badge/Documentation-blue)](https://docs.pipecat.ai/guides/features/pipecat-agents) [![Discord](https://img.shields.io/discord/1239284677165056021)](https://discord.gg/pipecat)
+[![PyPI](https://img.shields.io/pypi/v/pipecat-ai-agents)](https://pypi.org/project/pipecat-ai-agents) ![Tests](https://github.com/pipecat-ai/pipecat-agents/actions/workflows/tests.yaml/badge.svg) [![codecov](https://codecov.io/gh/pipecat-ai/pipecat-agents/graph/badge.svg?token=LNVUIVO4Y9)](https://codecov.io/gh/pipecat-ai/pipecat-agents) [![Docs](https://img.shields.io/badge/Documentation-blue)](https://docs.pipecat.ai/guides/features/pipecat-agents) [![Discord](https://img.shields.io/discord/1239284677165056021)](https://discord.gg/pipecat)
 
 Pipecat Agents is a distributed multi-agent framework for [Pipecat](https://github.com/pipecat-ai/pipecat/tree/main#readme). Each agent runs its own Pipecat pipeline and communicates with other agents through a shared message bus, enabling you to decompose complex systems into specialized, coordinating agents that can run locally or across machines.
 

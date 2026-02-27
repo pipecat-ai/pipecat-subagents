@@ -18,7 +18,6 @@ from pipecat_agents.bus import (
     BusCancelMessage,
     BusEndAgentMessage,
     BusEndMessage,
-    LocalAgentBus,
 )
 from pipecat_agents.runner.runner import AgentRunner
 
