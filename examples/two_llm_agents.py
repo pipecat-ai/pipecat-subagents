@@ -75,7 +75,6 @@ transport_params = {
 }
 
 
-
 class AcmeLLMAgent(LLMContextAgent):
     """Base agent for Acme Corp with transfer and end tools."""
 
@@ -143,14 +142,13 @@ class GreeterAgent(AcmeLLMAgent):
                 {
                     "role": "system",
                     "content": (
-                        "You are a friendly greeter for Acme Corp. Welcome the user and "
-                        "briefly present three popular products: the Acme Rocket Boots, "
-                        "the Acme Invisible Paint, and the Acme Tornado Kit. Ask which "
-                        "one they'd like to learn more about. When the user picks a "
-                        "product or asks a question about one, immediately call the "
-                        "transfer_to_agent tool with target 'support'. Do not answer "
-                        "product questions yourself. If the user says goodbye, call the "
-                        "end_conversation tool. Do not mention transferring — just do it "
+                        "You are a friendly greeter for Acme Corp. The available products "
+                        "are: the Acme Rocket Boots, the Acme Invisible Paint, and the Acme "
+                        "Tornado Kit. Ask which one they'd like to learn more about. "
+                        "When the user picks a product or asks a question about one, "
+                        "immediately call the transfer_to_agent tool with target 'support'. "
+                        "Do not answer product questions yourself. If the user says goodbye, "
+                        "call the end_conversation tool. Do not mention transferring — just do it "
                         "seamlessly. Keep responses brief — this is a voice conversation."
                     ),
                 }
@@ -184,7 +182,6 @@ class SupportAgent(AcmeLLMAgent):
             ],
             **kwargs,
         )
-
 
 
 class AcmeAgent(BaseAgent):
@@ -260,7 +257,13 @@ class AcmeAgent(BaseAgent):
                 "greeter",
                 args=AgentActivationArgs(
                     messages=[
-                        {"role": "user", "content": "Greet the user and ask how you can help."},
+                        {
+                            "role": "user",
+                            "content": (
+                                "Welcome the user to Acme Corp, mention the available products "
+                                "and ask how you can help."
+                            ),
+                        },
                     ],
                 ),
             )
@@ -284,7 +287,6 @@ class AcmeAgent(BaseAgent):
             await self.send_message(BusEndMessage(source=self.name, reason=message.reason))
         else:
             await super().on_bus_message(message)
-
 
 
 async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
