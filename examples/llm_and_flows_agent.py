@@ -84,13 +84,12 @@ class MockReservationSystem:
 class ReservationAgent(FlowsContextAgent):
     """Structured reservation flow using Pipecat Flows."""
 
-    def __init__(self, name: str, *, bus: AgentBus, reservation_system, **kwargs):
+    def __init__(self, name: str, *, bus: AgentBus, reservation_system):
         self._reservation_system = reservation_system
         super().__init__(
             name,
             bus=bus,
             global_functions=[self.transfer_to_agent],
-            **kwargs,
         )
 
     def build_llm(self) -> LLMService:
@@ -217,9 +216,10 @@ class ReservationAgent(FlowsContextAgent):
 class RouterAgent(LLMContextAgent):
     """Routes the user to the reservation agent or answers general questions."""
 
-    def __init__(self, name: str, **kwargs):
+    def __init__(self, name: str, *, bus: AgentBus):
         super().__init__(
             name,
+            bus=bus,
             system_messages=[
                 {
                     "role": "system",
@@ -233,7 +233,6 @@ class RouterAgent(LLMContextAgent):
                     ),
                 }
             ],
-            **kwargs,
         )
 
     def build_llm(self) -> LLMService:

@@ -110,9 +110,10 @@ class AcmeLLMAgent(LLMContextAgent):
 class GreeterAgent(AcmeLLMAgent):
     """Greets the user and routes to support when needed."""
 
-    def __init__(self, name: str, **kwargs):
+    def __init__(self, name: str, *, bus: AgentBus):
         super().__init__(
             name,
+            bus=bus,
             system_messages=[
                 {
                     "role": "system",
@@ -128,16 +129,16 @@ class GreeterAgent(AcmeLLMAgent):
                     ),
                 }
             ],
-            **kwargs,
         )
 
 
 class SupportAgent(AcmeLLMAgent):
     """Handles support questions and can transfer back to the greeter."""
 
-    def __init__(self, name: str, **kwargs):
+    def __init__(self, name: str, *, bus: AgentBus):
         super().__init__(
             name,
+            bus=bus,
             system_messages=[
                 {
                     "role": "system",
@@ -155,7 +156,6 @@ class SupportAgent(AcmeLLMAgent):
                     ),
                 }
             ],
-            **kwargs,
         )
 
 
