@@ -88,9 +88,7 @@ class BaseAgent(BaseObject):
         Args:
             name: Unique name for this agent.
             bus: The `AgentBus` for inter-agent communication.
-            parent: Optional name of the parent agent. When set, ``end()``
-                sends a targeted `BusEndAgentMessage` to the parent instead
-                of an untargeted `BusEndMessage`.
+            parent: Optional name of the parent agent.
             active: Whether the agent starts active (receiving bus frames).
                 When True, ``on_agent_activated`` fires after the pipeline
                 starts. Defaults to False.
@@ -119,6 +117,16 @@ class BaseAgent(BaseObject):
     def bus(self) -> AgentBus:
         """The bus instance for agent communication."""
         return self._bus
+
+    @property
+    def parent(self) -> Optional[str]:
+        """The name of the parent agent, or None if this is a root agent."""
+        return self._parent
+
+    @property
+    def children(self) -> list["BaseAgent"]:
+        """The list of child agents added via ``add_agent()``."""
+        return self._children
 
     @property
     def active(self) -> bool:
@@ -238,21 +246,14 @@ class BaseAgent(BaseObject):
     async def end(self, *, reason: Optional[str] = None) -> None:
         """Request a graceful end of the session.
 
-        When a parent is set, sends a targeted `BusEndAgentMessage` to
-        the parent, letting it orchestrate shutdown of its sub-agents.
-        Without a parent, sends an untargeted `BusEndMessage` handled
-        by the runner.
+        Sends a `BusEndMessage` which is handled by the runner. The
+        runner is responsible for orchestrating shutdown of all agents.
 
         Args:
             reason: Optional human-readable reason for ending (e.g.
                 "customer said goodbye").
         """
-        if self._parent:
-            await self.send_message(
-                BusEndAgentMessage(source=self.name, target=self._parent, reason=reason)
-            )
-        else:
-            await self.send_message(BusEndMessage(source=self.name, reason=reason))
+        await self.send_message(BusEndMessage(source=self.name, reason=reason))
 
     async def cancel(self) -> None:
         """Broadcast a hard cancel to all agents via the bus."""
@@ -273,6 +274,13 @@ class BaseAgent(BaseObject):
     async def wait(self) -> None:
         """Wait for this agent's pipeline task to finish."""
         await self._finished.wait()
+
+    def notify_finished(self) -> None:
+        """Signal that this agent's pipeline task has finished.
+
+        Called by the runner when the agent's asyncio task completes.
+        """
+        self._finished.set()
 
     async def activate_agent(
         self,
@@ -362,8 +370,6 @@ class BaseAgent(BaseObject):
         await asyncio.gather(*(child.wait() for child in self._children))
         if self._task:
             await self._task.queue_frame(EndFrame(reason=message.reason))
-        if not self._parent:
-            await self.send_message(BusEndMessage(source=self.name, reason=message.reason))
 
     async def _cancel(self, message: BusCancelAgentMessage) -> None:
         """Propagate cancel to children, then cancel own pipeline."""

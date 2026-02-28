@@ -94,14 +94,14 @@ class TestAgentRunner(unittest.IsolatedAsyncioTestCase):
         except asyncio.CancelledError:
             pass
 
-    async def test_end_sends_end_agent_message_to_all(self):
-        """end() sends BusEndAgentMessage to all agents."""
+    async def test_end_sends_end_agent_message_to_root_agents_only(self):
+        """end() sends BusEndAgentMessage only to root agents (no parent)."""
         runner = AgentRunner(handle_sigint=False)
         bus = runner.bus
-        agent_a = StubAgent("agent_a", bus=bus)
-        agent_b = StubAgent("agent_b", bus=bus)
-        await runner.add_agent(agent_a)
-        await runner.add_agent(agent_b)
+        root = StubAgent("root", bus=bus)
+        child = StubAgent("child", bus=bus, parent="root")
+        await runner.add_agent(root)
+        await runner.add_agent(child)
 
         sent = []
         original_send = bus.send
@@ -112,23 +112,22 @@ class TestAgentRunner(unittest.IsolatedAsyncioTestCase):
 
         bus.send = capture_send
 
-        @runner.event_handler("on_runner_started")
-        async def on_started(runner):
-            await runner.end()
-
-        await asyncio.wait_for(runner.run(), timeout=5.0)
+        # Call end() directly — no need to run the full pipeline lifecycle
+        await runner.end()
 
         end_msgs = [m for m in sent if isinstance(m, BusEndAgentMessage)]
         targets = {m.target for m in end_msgs}
-        self.assertIn("agent_a", targets)
-        self.assertIn("agent_b", targets)
+        self.assertIn("root", targets)
+        self.assertNotIn("child", targets)
 
-    async def test_cancel_sends_cancel_agent_message_to_all(self):
-        """cancel() sends BusCancelAgentMessage to all agents."""
+    async def test_cancel_sends_cancel_agent_message_to_root_agents_only(self):
+        """cancel() sends BusCancelAgentMessage only to root agents (no parent)."""
         runner = AgentRunner(handle_sigint=False)
         bus = runner.bus
-        agent_a = StubAgent("agent_a", bus=bus)
-        await runner.add_agent(agent_a)
+        root = StubAgent("root", bus=bus)
+        child = StubAgent("child", bus=bus, parent="root")
+        await runner.add_agent(root)
+        await runner.add_agent(child)
 
         sent = []
         original_send = bus.send
@@ -139,18 +138,13 @@ class TestAgentRunner(unittest.IsolatedAsyncioTestCase):
 
         bus.send = capture_send
 
-        @runner.event_handler("on_runner_started")
-        async def on_started(runner):
-            await runner.cancel()
-
-        try:
-            await asyncio.wait_for(runner.run(), timeout=5.0)
-        except asyncio.CancelledError:
-            pass
+        # Call cancel() directly — no need to run the full pipeline lifecycle
+        await runner.cancel()
 
         cancel_msgs = [m for m in sent if isinstance(m, BusCancelAgentMessage)]
-        self.assertTrue(len(cancel_msgs) >= 1)
-        self.assertEqual(cancel_msgs[0].target, "agent_a")
+        targets = {m.target for m in cancel_msgs}
+        self.assertIn("root", targets)
+        self.assertNotIn("child", targets)
 
     async def test_bus_end_message_triggers_end(self):
         """BusEndMessage on bus triggers runner.end()."""

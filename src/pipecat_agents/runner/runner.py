@@ -131,12 +131,11 @@ class AgentRunner(BaseObject):
         self._running = False
 
     async def end(self, reason: Optional[str] = None) -> None:
-        """Gracefully end all agent pipelines and shut down.
+        """Gracefully end root agent pipelines and shut down.
 
-        Sends `BusEndAgentMessage` to all agents in parallel, waits for
-        their pipelines to finish, then shuts down. Agents that need
-        ordered shutdown handle it themselves. Idempotent — subsequent
-        calls are ignored.
+        Sends `BusEndAgentMessage` only to root agents (those with no
+        parent). Parent agents propagate end to their children
+        themselves. Idempotent — subsequent calls are ignored.
 
         Args:
             reason: Optional human-readable reason for ending.
@@ -145,14 +144,18 @@ class AgentRunner(BaseObject):
             return
         logger.debug(f"AgentRunner: ending gracefully (reason={reason})")
         self._shutdown_event.set()
-        for name in self._agents:
-            await self._bus.send(BusEndAgentMessage(source=self.name, target=name, reason=reason))
+        for name, agent in self._agents.items():
+            if agent.parent is None:
+                await self._bus.send(
+                    BusEndAgentMessage(source=self.name, target=name, reason=reason)
+                )
 
     async def cancel(self, reason: Optional[str] = None) -> None:
-        """Cancel the runner and all agent tasks.
+        """Cancel root agent tasks and shut down.
 
-        Sends targeted `BusCancelAgentMessage` to each agent, then cancels
-        the `PipelineRunner`. Idempotent — subsequent calls are ignored.
+        Sends targeted `BusCancelAgentMessage` only to root agents
+        (those with no parent). Parent agents propagate cancel to their
+        children themselves. Idempotent — subsequent calls are ignored.
 
         Args:
             reason: Optional human-readable reason for cancelling.
@@ -161,10 +164,11 @@ class AgentRunner(BaseObject):
             return
         logger.debug(f"AgentRunner: cancelling (reason={reason})")
         self._shutdown_event.set()
-        for name in self._agents:
-            await self._bus.send(
-                BusCancelAgentMessage(source=self.name, target=name, reason=reason)
-            )
+        for name, agent in self._agents.items():
+            if agent.parent is None:
+                await self._bus.send(
+                    BusCancelAgentMessage(source=self.name, target=name, reason=reason)
+                )
         await self._pipecat_runner.cancel()
 
     async def _handle_bus_message(self, message: BusMessage) -> None:
@@ -194,4 +198,4 @@ class AgentRunner(BaseObject):
         self._running_agent_tasks.pop(name, None)
         agent = self._agents.get(name)
         if agent:
-            agent._finished.set()
+            agent.notify_finished()

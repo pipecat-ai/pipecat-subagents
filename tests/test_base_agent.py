@@ -161,18 +161,18 @@ class TestBaseAgentLifecycle(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(end_msgs[0].source, "agent_a")
         self.assertEqual(end_msgs[0].reason, "done")
 
-    async def test_end_with_parent_sends_bus_end_agent_message(self):
-        """end() with parent sends BusEndAgentMessage to parent."""
+    async def test_end_with_parent_sends_bus_end_message(self):
+        """end() with parent still sends BusEndMessage (runner handles it)."""
         bus = LocalAgentBus()
         sent = capture_bus(bus)
 
         agent = StubAgent("child", bus=bus, parent="parent_agent")
-        await agent.end()
+        await agent.end(reason="goodbye")
 
-        end_agent_msgs = [m for m in sent if isinstance(m, BusEndAgentMessage)]
-        self.assertEqual(len(end_agent_msgs), 1)
-        self.assertEqual(end_agent_msgs[0].target, "parent_agent")
-        self.assertEqual(end_agent_msgs[0].source, "child")
+        end_msgs = [m for m in sent if isinstance(m, BusEndMessage)]
+        self.assertEqual(len(end_msgs), 1)
+        self.assertEqual(end_msgs[0].source, "child")
+        self.assertEqual(end_msgs[0].reason, "goodbye")
 
     async def test_cancel_sends_bus_cancel_message(self):
         """cancel() sends BusCancelMessage."""
@@ -374,9 +374,9 @@ class TestBaseAgentLifecycle(unittest.IsolatedAsyncioTestCase):
         await parent.add_agent(child_a)
         await parent.add_agent(child_b)
 
-        self.assertEqual(len(parent._children), 2)
-        self.assertIs(parent._children[0], child_a)
-        self.assertIs(parent._children[1], child_b)
+        self.assertEqual(len(parent.children), 2)
+        self.assertIs(parent.children[0], child_a)
+        self.assertIs(parent.children[1], child_b)
 
     async def test_end_propagates_to_children(self):
         """BusEndAgentMessage on parent sends end to each child."""
@@ -390,8 +390,8 @@ class TestBaseAgentLifecycle(unittest.IsolatedAsyncioTestCase):
         await parent.add_agent(child_b)
 
         # Pre-set children as finished so gather returns immediately
-        child_a._finished.set()
-        child_b._finished.set()
+        child_a.notify_finished()
+        child_b.notify_finished()
 
         await parent.on_bus_message(
             BusEndAgentMessage(source="runner", target="parent", reason="shutdown")
@@ -403,7 +403,7 @@ class TestBaseAgentLifecycle(unittest.IsolatedAsyncioTestCase):
         self.assertIn("child_b", targets)
 
     async def test_end_waits_for_children(self):
-        """Parent waits for children's _finished before ending own pipeline."""
+        """Parent waits for children to finish before ending own pipeline."""
         bus = LocalAgentBus()
         parent = StubAgent("parent", bus=bus)
         child = StubAgent("child", bus=bus, parent="parent")
@@ -416,7 +416,7 @@ class TestBaseAgentLifecycle(unittest.IsolatedAsyncioTestCase):
         async def delayed_child_finish():
             await asyncio.sleep(0.1)
             order.append("child_finished")
-            child._finished.set()
+            child.notify_finished()
 
         async def send_end():
             await asyncio.sleep(0.05)
@@ -432,40 +432,6 @@ class TestBaseAgentLifecycle(unittest.IsolatedAsyncioTestCase):
 
         # Child must finish before parent's on_bus_message returns
         self.assertEqual(order, ["child_finished", "parent_end_returned"])
-
-    async def test_root_agent_sends_bus_end_message(self):
-        """Agent without parent sends BusEndMessage after ending."""
-        bus = LocalAgentBus()
-        sent = capture_bus(bus)
-
-        parent = StubAgent("parent", bus=bus)  # no parent set
-        child = StubAgent("child", bus=bus, parent="parent")
-        await parent.add_agent(child)
-        child._finished.set()
-
-        await parent.on_bus_message(
-            BusEndAgentMessage(source="runner", target="parent", reason="done")
-        )
-
-        bus_end_msgs = [m for m in sent if isinstance(m, BusEndMessage)]
-        self.assertEqual(len(bus_end_msgs), 1)
-        self.assertEqual(bus_end_msgs[0].source, "parent")
-        self.assertEqual(bus_end_msgs[0].reason, "done")
-
-    async def test_child_agent_does_not_send_bus_end_message(self):
-        """Agent with parent does NOT send BusEndMessage on end."""
-        bus = LocalAgentBus()
-        sent = capture_bus(bus)
-
-        child = StubAgent("child", bus=bus, parent="parent_agent")
-        child._finished.set()
-
-        await child.on_bus_message(
-            BusEndAgentMessage(source="parent_agent", target="child", reason="done")
-        )
-
-        bus_end_msgs = [m for m in sent if isinstance(m, BusEndMessage)]
-        self.assertEqual(len(bus_end_msgs), 0)
 
     async def test_cancel_propagates_to_children(self):
         """BusCancelAgentMessage on parent sends cancel to each child."""
