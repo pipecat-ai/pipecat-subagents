@@ -26,7 +26,7 @@ from dotenv import load_dotenv
 from loguru import logger
 from pipecat.adapters.schemas.function_schema import FunctionSchema
 from pipecat.audio.vad.silero import SileroVADAnalyzer
-from pipecat.frames.frames import LLMContextFrame
+from pipecat.frames.frames import LLMContextFrame, LLMMessagesAppendFrame
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.task import PipelineParams, PipelineTask
 from pipecat.processors.aggregators.llm_context import LLMContext
@@ -323,7 +323,9 @@ class RouterAgent(LLMContextAgent):
     async def _handle_end(self, params):
         reason = params.arguments["reason"]
         logger.info(f"Agent '{self.name}': ending conversation ({reason})")
-        await params.llm.queue_frame({"role": "system", "content": reason})
+        await params.llm.queue_frame(
+            LLMMessagesAppendFrame(messages=[{"role": "system", "content": reason}], run_llm=True)
+        )
         await self.end(reason=reason, result_callback=params.result_callback)
 
 
