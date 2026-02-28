@@ -85,7 +85,6 @@ class FlowsContextAgent(FlowsAgent):
         *,
         bus: AgentBus,
         system_messages: List[dict] = [],
-        parent: Optional[str] = None,
         active: bool = False,
         pipeline_params: Optional[PipelineParams] = None,
         **kwargs,
@@ -98,13 +97,12 @@ class FlowsContextAgent(FlowsAgent):
             system_messages: List of message dicts (e.g.
                 ``[{"role": "system", "content": "..."}]``) prepended to
                 the agent's context on every LLM turn.
-            parent: Optional name of the parent agent for end routing.
             active: Whether the agent starts active. Defaults to False.
             pipeline_params: Optional ``PipelineParams`` for this agent's task.
             **kwargs: Additional arguments passed to ``FlowsAgent``.
         """
         super().__init__(
-            name, bus=bus, parent=parent, active=active, pipeline_params=pipeline_params, **kwargs
+            name, bus=bus, active=active, pipeline_params=pipeline_params, **kwargs
         )
         self._system_messages = system_messages
         self._agent_context = LLMContext(system_messages)

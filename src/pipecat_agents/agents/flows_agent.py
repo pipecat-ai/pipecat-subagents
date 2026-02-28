@@ -61,7 +61,6 @@ class FlowsAgent(BaseAgent):
         name: str,
         *,
         bus: AgentBus,
-        parent: Optional[str] = None,
         context_strategy: Optional[ContextStrategyConfig] = None,
         global_functions: Optional[List[FlowsFunctionSchema | FlowsDirectFunction]] = None,
         active: bool = False,
@@ -72,7 +71,6 @@ class FlowsAgent(BaseAgent):
         Args:
             name: Unique name for this agent.
             bus: The `AgentBus` for inter-agent communication.
-            parent: Optional name of the parent agent for end routing.
             context_strategy: Optional context strategy forwarded to
                 `FlowManager`.
             global_functions: Optional list of functions available at every
@@ -80,7 +78,7 @@ class FlowsAgent(BaseAgent):
             active: Whether the agent starts active. Defaults to False.
             pipeline_params: Optional `PipelineParams` for this agent's task.
         """
-        super().__init__(name, bus=bus, parent=parent, active=active)
+        super().__init__(name, bus=bus, active=active)
         self._pipeline_params = pipeline_params or PipelineParams()
         self._context_strategy = context_strategy
         self._global_functions = global_functions

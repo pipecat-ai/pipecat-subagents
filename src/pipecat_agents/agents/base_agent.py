@@ -80,7 +80,6 @@ class BaseAgent(BaseObject):
         name: str,
         *,
         bus: AgentBus,
-        parent: Optional[str] = None,
         active: bool = False,
     ):
         """Initialize the BaseAgent.
@@ -88,14 +87,13 @@ class BaseAgent(BaseObject):
         Args:
             name: Unique name for this agent.
             bus: The `AgentBus` for inter-agent communication.
-            parent: Optional name of the parent agent.
             active: Whether the agent starts active (receiving frames
                 from other agents). When True, ``on_agent_activated``
                 fires after the pipeline starts. Defaults to False.
         """
         super().__init__(name=name)
         self._bus = bus
-        self._parent = parent
+        self._parent: Optional[str] = None
         self._active = active
         self._task: Optional[PipelineTask] = None
         self._children: list["BaseAgent"] = []
@@ -262,12 +260,21 @@ class BaseAgent(BaseObject):
     async def add_agent(self, agent: "BaseAgent") -> None:
         """Register a child agent with the runner.
 
-        The child agent's lifecycle (end, cancel) is automatically
-        managed by this parent agent.
+        Sets this agent as the child's parent and registers it with
+        the runner. The child agent's lifecycle (end, cancel) is
+        automatically managed by this parent agent.
 
         Args:
             agent: The child `BaseAgent` instance to add.
+
+        Raises:
+            ValueError: If the agent already has a parent.
         """
+        if agent._parent is not None:
+            raise ValueError(
+                f"Agent '{agent.name}' already has parent '{agent._parent}'"
+            )
+        agent._parent = self.name
         self._children.append(agent)
         await self.send_message(BusAddAgentMessage(source=self.name, agent=agent))
 

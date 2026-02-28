@@ -166,7 +166,9 @@ class TestBaseAgentLifecycle(unittest.IsolatedAsyncioTestCase):
         bus = LocalAgentBus()
         sent = capture_bus(bus)
 
-        agent = StubAgent("child", bus=bus, parent="parent_agent")
+        parent = StubAgent("parent_agent", bus=bus)
+        agent = StubAgent("child", bus=bus)
+        await parent.add_agent(agent)
         await agent.end(reason="goodbye")
 
         end_msgs = [m for m in sent if isinstance(m, BusEndMessage)]
@@ -365,11 +367,11 @@ class TestBaseAgentLifecycle(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(agent.active)
 
     async def test_add_agent_tracks_children(self):
-        """add_agent() populates _children list."""
+        """add_agent() populates children list and sets parent."""
         bus = LocalAgentBus()
         parent = StubAgent("parent", bus=bus)
-        child_a = StubAgent("child_a", bus=bus, parent="parent")
-        child_b = StubAgent("child_b", bus=bus, parent="parent")
+        child_a = StubAgent("child_a", bus=bus)
+        child_b = StubAgent("child_b", bus=bus)
 
         await parent.add_agent(child_a)
         await parent.add_agent(child_b)
@@ -384,8 +386,8 @@ class TestBaseAgentLifecycle(unittest.IsolatedAsyncioTestCase):
         sent = capture_bus(bus)
 
         parent = StubAgent("parent", bus=bus)
-        child_a = StubAgent("child_a", bus=bus, parent="parent")
-        child_b = StubAgent("child_b", bus=bus, parent="parent")
+        child_a = StubAgent("child_a", bus=bus)
+        child_b = StubAgent("child_b", bus=bus)
         await parent.add_agent(child_a)
         await parent.add_agent(child_b)
 
@@ -406,7 +408,7 @@ class TestBaseAgentLifecycle(unittest.IsolatedAsyncioTestCase):
         """Parent waits for children to finish before ending own pipeline."""
         bus = LocalAgentBus()
         parent = StubAgent("parent", bus=bus)
-        child = StubAgent("child", bus=bus, parent="parent")
+        child = StubAgent("child", bus=bus)
         await parent.add_agent(child)
 
         task = await parent.create_pipeline_task()
@@ -439,8 +441,8 @@ class TestBaseAgentLifecycle(unittest.IsolatedAsyncioTestCase):
         sent = capture_bus(bus)
 
         parent = StubAgent("parent", bus=bus)
-        child_a = StubAgent("child_a", bus=bus, parent="parent")
-        child_b = StubAgent("child_b", bus=bus, parent="parent")
+        child_a = StubAgent("child_a", bus=bus)
+        child_b = StubAgent("child_b", bus=bus)
         await parent.add_agent(child_a)
         await parent.add_agent(child_b)
 

@@ -69,7 +69,6 @@ class LLMAgent(BaseAgent):
         name: str,
         *,
         bus: AgentBus,
-        parent: Optional[str] = None,
         active: bool = False,
         pipeline_params: Optional[PipelineParams] = None,
     ):
@@ -78,11 +77,10 @@ class LLMAgent(BaseAgent):
         Args:
             name: Unique name for this agent.
             bus: The `AgentBus` for inter-agent communication.
-            parent: Optional name of the parent agent for end routing.
             active: Whether the agent starts active. Defaults to False.
             pipeline_params: Optional `PipelineParams` for this agent's task.
         """
-        super().__init__(name, bus=bus, parent=parent, active=active)
+        super().__init__(name, bus=bus, active=active)
         self._pipeline_params = pipeline_params or PipelineParams()
         self._llm: Optional[LLMService] = None
 

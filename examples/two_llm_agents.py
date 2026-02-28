@@ -212,8 +212,8 @@ class AcmeAgent(BaseAgent):
         task = PipelineTask(pipeline, params=PipelineParams(allow_interruptions=True))
 
         # Create sub-agents
-        greeter = GreeterAgent("greeter", bus=self.bus, parent=self.name)
-        support = SupportAgent("support", bus=self.bus, parent=self.name)
+        greeter = GreeterAgent("greeter", bus=self.bus)
+        support = SupportAgent("support", bus=self.bus)
         for agent in [greeter, support]:
             await self.add_agent(agent)
 

@@ -308,11 +308,10 @@ class RestaurantAgent(BaseAgent):
         )
 
         # Create sub-agents
-        router = RouterAgent("router", bus=self.bus, parent=self.name)
+        router = RouterAgent("router", bus=self.bus)
         reservation = ReservationAgent(
             "reservation",
             bus=self.bus,
-            parent=self.name,
             reservation_system=MockReservationSystem(),
         )
         for agent in [router, reservation]:

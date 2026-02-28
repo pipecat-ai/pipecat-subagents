@@ -99,7 +99,8 @@ class TestAgentRunner(unittest.IsolatedAsyncioTestCase):
         runner = AgentRunner(handle_sigint=False)
         bus = runner.bus
         root = StubAgent("root", bus=bus)
-        child = StubAgent("child", bus=bus, parent="root")
+        child = StubAgent("child", bus=bus)
+        await root.add_agent(child)
         await runner.add_agent(root)
         await runner.add_agent(child)
 
@@ -125,7 +126,8 @@ class TestAgentRunner(unittest.IsolatedAsyncioTestCase):
         runner = AgentRunner(handle_sigint=False)
         bus = runner.bus
         root = StubAgent("root", bus=bus)
-        child = StubAgent("child", bus=bus, parent="root")
+        child = StubAgent("child", bus=bus)
+        await root.add_agent(child)
         await runner.add_agent(root)
         await runner.add_agent(child)
 
