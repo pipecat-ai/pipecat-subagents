@@ -176,7 +176,7 @@ class FlowsContextAgent(FlowsAgent):
             llm=self._llm,
             context_aggregator=self.build_context_aggregator(),
             context_strategy=self._context_strategy,
-            global_functions=self._global_functions,
+            global_functions=self._build_global_functions(),
         )
         self._flow_manager.register_action("end_conversation", self._handle_end_conversation)
         return task

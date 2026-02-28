@@ -112,7 +112,7 @@ class LLMContextAgent(LLMAgent):
         Returns:
             The created ``PipelineTask``.
         """
-        self._llm = self.build_llm()
+        self._llm = self._build_llm()
 
         bus_input = BusInputProcessor(
             bus=self._bus,

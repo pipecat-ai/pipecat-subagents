@@ -22,6 +22,7 @@ from pipecat_flows import ContextStrategyConfig, FlowManager, FlowsFunctionSchem
 from pipecat_flows.types import FlowsDirectFunction
 
 from pipecat_agents.agents.base_agent import BaseAgent
+from pipecat_agents.agents.tool import _collect_tools
 from pipecat_agents.bus import AgentBus, BusInputProcessor, BusOutputProcessor
 from pipecat_agents.bus.messages import AgentActivationArgs
 
@@ -81,7 +82,7 @@ class FlowsAgent(BaseAgent):
         super().__init__(name, bus=bus, active=active)
         self._pipeline_params = pipeline_params or PipelineParams()
         self._context_strategy = context_strategy
-        self._global_functions = global_functions
+        self._global_functions = global_functions or []
         self._llm: Optional[LLMService] = None
         self._flow_manager: Optional[FlowManager] = None
         self._flow_initialized = False
@@ -152,6 +153,10 @@ class FlowsAgent(BaseAgent):
         """
         return self.build_initial_node()
 
+    def _build_global_functions(self) -> list:
+        """Merge explicit global functions with ``@tool`` decorated methods."""
+        return self._global_functions + _collect_tools(self)
+
     async def build_pipeline_task(self) -> PipelineTask:
         """Build the pipeline task and create the `FlowManager`.
 
@@ -192,7 +197,7 @@ class FlowsAgent(BaseAgent):
             llm=self._llm,
             context_aggregator=self.build_context_aggregator(),
             context_strategy=self._context_strategy,
-            global_functions=self._global_functions,
+            global_functions=self._build_global_functions(),
         )
         self._flow_manager.register_action("end_conversation", self._handle_end_conversation)
         return task

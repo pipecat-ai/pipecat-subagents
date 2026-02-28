@@ -43,7 +43,7 @@ from pipecat.services.openai.llm import OpenAILLMService
 from pipecat.transports.base_transport import BaseTransport, TransportParams
 from pipecat.transports.daily.transport import DailyParams
 
-from pipecat_agents.agents import BaseAgent, LLMContextAgent
+from pipecat_agents.agents import BaseAgent, LLMContextAgent, tool
 from pipecat_agents.bus import (
     AgentActivationArgs,
     AgentBus,
@@ -70,14 +70,9 @@ class AcmeLLMAgent(LLMContextAgent):
     """Base agent for Acme Corp with transfer and end tools."""
 
     def build_llm(self) -> LLMService:
-        llm = OpenAILLMService(api_key=os.getenv("OPENAI_API_KEY"))
-        llm.register_direct_function(self.transfer_to_agent, cancel_on_interruption=False)
-        llm.register_direct_function(self.end_conversation)
-        return llm
+        return OpenAILLMService(api_key=os.getenv("OPENAI_API_KEY"))
 
-    def build_tools(self):
-        return [self.transfer_to_agent, self.end_conversation]
-
+    @tool(cancel_on_interruption=False)
     async def transfer_to_agent(self, params: FunctionCallParams, agent: str, reason: str):
         """Transfer the user to another agent.
 
@@ -94,6 +89,7 @@ class AcmeLLMAgent(LLMContextAgent):
             result_callback=params.result_callback,
         )
 
+    @tool
     async def end_conversation(self, params: FunctionCallParams, reason: str):
         """End the conversation when the user says goodbye.
 

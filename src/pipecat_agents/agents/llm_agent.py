@@ -29,6 +29,7 @@ from pipecat.pipeline.task import PipelineParams, PipelineTask
 from pipecat.services.llm_service import LLMService
 
 from pipecat_agents.agents.base_agent import BaseAgent
+from pipecat_agents.agents.tool import _collect_tools
 from pipecat_agents.bus import AgentBus, BusInputProcessor, BusOutputProcessor
 from pipecat_agents.bus.messages import AgentActivationArgs
 
@@ -103,16 +104,17 @@ class LLMAgent(BaseAgent):
         if args and args.messages:
             await self.queue_frame(LLMMessagesAppendFrame(messages=args.messages, run_llm=True))
 
-    def build_tools(self) -> List[FunctionSchema]:
-        """Return the function schemas for this agent's LLM tools.
+    def build_tools(self) -> list:
+        """Return the tools for this agent's LLM.
 
-        Override in subclasses to register tools. Called on each agent
-        activation via `on_agent_activated`. Default returns an empty list.
+        By default, returns all methods decorated with ``@tool``.
+        Override in subclasses to provide additional or different tools.
+        Called on each agent activation via ``on_agent_activated``.
 
         Returns:
-            List of `FunctionSchema` objects to register with the LLM.
+            List of tools (``FunctionSchema`` objects or direct functions).
         """
-        return []
+        return _collect_tools(self)
 
     @abstractmethod
     def build_llm(self) -> LLMService:
@@ -123,16 +125,26 @@ class LLMAgent(BaseAgent):
         """
         pass
 
+    def _build_llm(self) -> LLMService:
+        """Create the LLM and register ``@tool`` decorated methods."""
+        llm = self.build_llm()
+        for method in _collect_tools(self):
+            llm.register_direct_function(
+                method,
+                cancel_on_interruption=method.cancel_on_interruption,
+            )
+        return llm
+
     async def build_pipeline_task(self) -> PipelineTask:
         """Build the LLM pipeline and create a `PipelineTask`.
 
-        Creates the LLM, a `BusOutputProcessor`, wraps them in a pipeline
-        and task.
+        Creates the LLM, registers any ``@tool`` decorated methods,
+        and wraps the pipeline in a task.
 
         Returns:
             The created `PipelineTask`.
         """
-        self._llm = self.build_llm()
+        self._llm = self._build_llm()
 
         bus_input = BusInputProcessor(
             bus=self._bus,

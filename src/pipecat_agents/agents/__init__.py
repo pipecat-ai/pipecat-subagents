@@ -20,6 +20,7 @@ from pipecat_agents.agents.flows_agent import FlowsAgent
 from pipecat_agents.agents.flows_context_agent import FlowsContextAgent
 from pipecat_agents.agents.llm_agent import LLMAgent
 from pipecat_agents.agents.llm_context_agent import LLMContextAgent
+from pipecat_agents.agents.tool import tool
 
 __all__ = [
     "BaseAgent",
@@ -27,4 +28,5 @@ __all__ = [
     "FlowsContextAgent",
     "LLMAgent",
     "LLMContextAgent",
+    "tool",
 ]

@@ -43,7 +43,7 @@ from pipecat.transports.base_transport import BaseTransport, TransportParams
 from pipecat.transports.daily.transport import DailyParams
 from pipecat_flows import FlowManager, FlowResult, NodeConfig
 
-from pipecat_agents.agents import BaseAgent, FlowsContextAgent, LLMContextAgent
+from pipecat_agents.agents import BaseAgent, FlowsContextAgent, LLMContextAgent, tool
 from pipecat_agents.bus import (
     AgentActivationArgs,
     AgentBus,
@@ -89,7 +89,6 @@ class ReservationAgent(FlowsContextAgent):
         super().__init__(
             name,
             bus=bus,
-            global_functions=[self.transfer_to_agent],
         )
 
     def build_llm(self) -> LLMService:
@@ -194,6 +193,7 @@ class ReservationAgent(FlowsContextAgent):
             "post_actions": [{"type": "end_conversation"}],
         }
 
+    @tool
     async def transfer_to_agent(
         self, flow_manager: FlowManager, agent: str, reason: str
     ) -> tuple[FlowResult, NodeConfig]:
@@ -236,14 +236,9 @@ class RouterAgent(LLMContextAgent):
         )
 
     def build_llm(self) -> LLMService:
-        llm = OpenAILLMService(api_key=os.getenv("OPENAI_API_KEY"))
-        llm.register_direct_function(self.transfer_to_agent, cancel_on_interruption=False)
-        llm.register_direct_function(self.end_conversation)
-        return llm
+        return OpenAILLMService(api_key=os.getenv("OPENAI_API_KEY"))
 
-    def build_tools(self):
-        return [self.transfer_to_agent, self.end_conversation]
-
+    @tool(cancel_on_interruption=False)
     async def transfer_to_agent(self, params: FunctionCallParams, agent: str, reason: str):
         """Transfer the user to another agent.
 
@@ -260,6 +255,7 @@ class RouterAgent(LLMContextAgent):
             result_callback=params.result_callback,
         )
 
+    @tool
     async def end_conversation(self, params: FunctionCallParams, reason: str):
         """End the conversation when the user says goodbye.
 
