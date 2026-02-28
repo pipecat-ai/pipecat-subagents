@@ -25,7 +25,6 @@ import os
 
 from dotenv import load_dotenv
 from loguru import logger
-from pipecat.adapters.schemas.function_schema import FunctionSchema
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.frames.frames import LLMContextFrame, LLMMessagesAppendFrame
 from pipecat.pipeline.pipeline import Pipeline
@@ -39,7 +38,7 @@ from pipecat.runner.types import RunnerArguments
 from pipecat.runner.utils import create_transport
 from pipecat.services.cartesia.tts import CartesiaTTSService
 from pipecat.services.deepgram.stt import DeepgramSTTService
-from pipecat.services.llm_service import LLMService
+from pipecat.services.llm_service import FunctionCallParams, LLMService
 from pipecat.services.openai.llm import OpenAILLMService
 from pipecat.transports.base_transport import BaseTransport, TransportParams
 from pipecat.transports.daily.transport import DailyParams
@@ -72,45 +71,20 @@ class AcmeLLMAgent(LLMContextAgent):
 
     def build_llm(self) -> LLMService:
         llm = OpenAILLMService(api_key=os.getenv("OPENAI_API_KEY"))
-        llm.register_function(
-            "transfer_to_agent", self._handle_transfer, cancel_on_interruption=False
-        )
-        llm.register_function("end_conversation", self._handle_end)
+        llm.register_direct_function(self.transfer_to_agent, cancel_on_interruption=False)
+        llm.register_direct_function(self.end_conversation)
         return llm
 
     def build_tools(self):
-        return [
-            FunctionSchema(
-                name="transfer_to_agent",
-                description="Transfer the user to another agent.",
-                properties={
-                    "agent": {
-                        "type": "string",
-                        "description": "The agent to transfer to (e.g. 'greeter', 'support').",
-                    },
-                    "reason": {
-                        "type": "string",
-                        "description": "Why the user is being transferred.",
-                    },
-                },
-                required=["agent", "reason"],
-            ),
-            FunctionSchema(
-                name="end_conversation",
-                description="End the conversation when the user says goodbye.",
-                properties={
-                    "reason": {
-                        "type": "string",
-                        "description": "Why the conversation is ending.",
-                    },
-                },
-                required=["reason"],
-            ),
-        ]
+        return [self.transfer_to_agent, self.end_conversation]
 
-    async def _handle_transfer(self, params):
-        agent = params.arguments["agent"]
-        reason = params.arguments["reason"]
+    async def transfer_to_agent(self, params: FunctionCallParams, agent: str, reason: str):
+        """Transfer the user to another agent.
+
+        Args:
+            agent (str): The agent to transfer to (e.g. 'greeter', 'support').
+            reason (str): Why the user is being transferred.
+        """
         logger.info(f"Agent '{self.name}': transferring to '{agent}' ({reason})")
         await self.transfer_to(
             agent,
@@ -120,8 +94,12 @@ class AcmeLLMAgent(LLMContextAgent):
             result_callback=params.result_callback,
         )
 
-    async def _handle_end(self, params):
-        reason = params.arguments["reason"]
+    async def end_conversation(self, params: FunctionCallParams, reason: str):
+        """End the conversation when the user says goodbye.
+
+        Args:
+            reason (str): Why the conversation is ending.
+        """
         logger.info(f"Agent '{self.name}': ending conversation ({reason})")
         await params.llm.queue_frame(
             LLMMessagesAppendFrame(messages=[{"role": "system", "content": reason}], run_llm=True)

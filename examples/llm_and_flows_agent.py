@@ -24,7 +24,6 @@ import os
 
 from dotenv import load_dotenv
 from loguru import logger
-from pipecat.adapters.schemas.function_schema import FunctionSchema
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.frames.frames import LLMContextFrame, LLMMessagesAppendFrame
 from pipecat.pipeline.pipeline import Pipeline
@@ -38,17 +37,11 @@ from pipecat.runner.types import RunnerArguments
 from pipecat.runner.utils import create_transport
 from pipecat.services.cartesia.tts import CartesiaTTSService
 from pipecat.services.deepgram.stt import DeepgramSTTService
-from pipecat.services.llm_service import LLMService
+from pipecat.services.llm_service import FunctionCallParams, LLMService
 from pipecat.services.openai.llm import OpenAILLMService
 from pipecat.transports.base_transport import BaseTransport, TransportParams
 from pipecat.transports.daily.transport import DailyParams
-from pipecat_flows import (
-    FlowArgs,
-    FlowManager,
-    FlowResult,
-    FlowsFunctionSchema,
-    NodeConfig,
-)
+from pipecat_flows import FlowManager, FlowResult, NodeConfig
 
 from pipecat_agents.agents import BaseAgent, FlowsContextAgent, LLMContextAgent
 from pipecat_agents.bus import (
@@ -93,54 +86,10 @@ class ReservationAgent(FlowsContextAgent):
 
     def __init__(self, name: str, *, bus: AgentBus, reservation_system, **kwargs):
         self._reservation_system = reservation_system
-        self._party_size_schema = FlowsFunctionSchema(
-            name="collect_party_size",
-            description="Record the number of people in the party.",
-            properties={"size": {"type": "integer", "minimum": 1, "maximum": 12}},
-            required=["size"],
-            handler=self._handle_collect_party_size,
-        )
-        self._availability_schema = FlowsFunctionSchema(
-            name="check_availability",
-            description="Check availability for the requested time.",
-            properties={
-                "time": {
-                    "type": "string",
-                    "description": "Reservation time (e.g., '6:00 PM')",
-                },
-                "party_size": {"type": "integer"},
-            },
-            required=["time", "party_size"],
-            handler=self._handle_check_availability,
-        )
-        self._end_reservation_schema = FlowsFunctionSchema(
-            name="end_reservation",
-            description="Confirm and end the reservation.",
-            properties={},
-            required=[],
-            handler=self._handle_end_reservation,
-        )
-        self._transfer_to_agent_schema = FlowsFunctionSchema(
-            name="transfer_to_agent",
-            description="Transfer the user to another agent.",
-            properties={
-                "agent": {
-                    "type": "string",
-                    "description": "The agent to transfer to (e.g. 'router').",
-                },
-                "reason": {
-                    "type": "string",
-                    "description": "Why the user is being transferred.",
-                },
-            },
-            required=["agent", "reason"],
-            handler=self._handle_transfer_to_agent,
-        )
-
         super().__init__(
             name,
             bus=bus,
-            global_functions=[self._transfer_to_agent_schema],
+            global_functions=[self.transfer_to_agent],
             **kwargs,
         )
 
@@ -165,7 +114,7 @@ class ReservationAgent(FlowsContextAgent):
                     "content": "Ask how many people are in their party.",
                 }
             ],
-            "functions": [self._party_size_schema],
+            "functions": [self.collect_party_size],
         }
 
     def _create_time_selection_node(self) -> NodeConfig:
@@ -177,7 +126,7 @@ class ReservationAgent(FlowsContextAgent):
                     "content": "Ask what time they'd like to dine. The restaurant is open 5 PM to 10 PM.",
                 }
             ],
-            "functions": [self._availability_schema],
+            "functions": [self.check_availability],
         }
 
     def _create_confirmation_node(self) -> NodeConfig:
@@ -189,16 +138,28 @@ class ReservationAgent(FlowsContextAgent):
                     "content": "Confirm the reservation details and ask if there's anything else.",
                 }
             ],
-            "functions": [self._end_reservation_schema],
+            "functions": [self.end_reservation],
         }
 
-    async def _handle_collect_party_size(self, args: FlowArgs) -> tuple[FlowResult, NodeConfig]:
-        size = args["size"]
+    async def collect_party_size(
+        self, flow_manager: FlowManager, size: int
+    ) -> tuple[FlowResult, NodeConfig]:
+        """Record the number of people in the party.
+
+        Args:
+            size (int): Number of people in the party. Must be between 1 and 12.
+        """
         return {"size": size, "status": "success"}, self._create_time_selection_node()
 
-    async def _handle_check_availability(self, args: FlowArgs) -> tuple[FlowResult, NodeConfig]:
-        time = args["time"]
-        party_size = args["party_size"]
+    async def check_availability(
+        self, flow_manager: FlowManager, time: str, party_size: int
+    ) -> tuple[FlowResult, NodeConfig]:
+        """Check availability for the requested time.
+
+        Args:
+            time (str): Reservation time (e.g., '6:00 PM').
+            party_size (int): Number of people in the party.
+        """
         is_available, alternatives = await self._reservation_system.check_availability(
             party_size, time
         )
@@ -218,10 +179,11 @@ class ReservationAgent(FlowsContextAgent):
                         ),
                     }
                 ],
-                "functions": [self._availability_schema, self._end_reservation_schema],
+                "functions": [self.check_availability, self.end_reservation],
             }
 
-    async def _handle_end_reservation(self, args: FlowArgs) -> tuple[None, NodeConfig]:
+    async def end_reservation(self, flow_manager: FlowManager) -> tuple[None, NodeConfig]:
+        """Confirm and end the reservation."""
         return None, {
             "name": "end",
             "task_messages": [
@@ -233,11 +195,15 @@ class ReservationAgent(FlowsContextAgent):
             "post_actions": [{"type": "end_conversation"}],
         }
 
-    async def _handle_transfer_to_agent(
-        self, args: FlowArgs, flow_manager: FlowManager
+    async def transfer_to_agent(
+        self, flow_manager: FlowManager, agent: str, reason: str
     ) -> tuple[FlowResult, NodeConfig]:
-        agent = args["agent"]
-        reason = args.get("reason", "")
+        """Transfer the user to another agent.
+
+        Args:
+            agent (str): The agent to transfer to (e.g. 'router').
+            reason (str): Why the user is being transferred.
+        """
         logger.info(f"Agent '{self.name}': transferring to '{agent}' ({reason})")
         await self.transfer_to(
             agent,
@@ -272,45 +238,20 @@ class RouterAgent(LLMContextAgent):
 
     def build_llm(self) -> LLMService:
         llm = OpenAILLMService(api_key=os.getenv("OPENAI_API_KEY"))
-        llm.register_function(
-            "transfer_to_agent", self._handle_transfer, cancel_on_interruption=False
-        )
-        llm.register_function("end_conversation", self._handle_end)
+        llm.register_direct_function(self.transfer_to_agent, cancel_on_interruption=False)
+        llm.register_direct_function(self.end_conversation)
         return llm
 
     def build_tools(self):
-        return [
-            FunctionSchema(
-                name="transfer_to_agent",
-                description="Transfer the user to another agent.",
-                properties={
-                    "agent": {
-                        "type": "string",
-                        "description": "The agent to transfer to (e.g. 'reservation').",
-                    },
-                    "reason": {
-                        "type": "string",
-                        "description": "Why the user is being transferred.",
-                    },
-                },
-                required=["agent", "reason"],
-            ),
-            FunctionSchema(
-                name="end_conversation",
-                description="End the conversation when the user says goodbye.",
-                properties={
-                    "reason": {
-                        "type": "string",
-                        "description": "Why the conversation is ending.",
-                    },
-                },
-                required=["reason"],
-            ),
-        ]
+        return [self.transfer_to_agent, self.end_conversation]
 
-    async def _handle_transfer(self, params):
-        agent = params.arguments["agent"]
-        reason = params.arguments["reason"]
+    async def transfer_to_agent(self, params: FunctionCallParams, agent: str, reason: str):
+        """Transfer the user to another agent.
+
+        Args:
+            agent (str): The agent to transfer to (e.g. 'reservation').
+            reason (str): Why the user is being transferred.
+        """
         logger.info(f"Agent '{self.name}': transferring to '{agent}' ({reason})")
         await self.transfer_to(
             agent,
@@ -320,8 +261,12 @@ class RouterAgent(LLMContextAgent):
             result_callback=params.result_callback,
         )
 
-    async def _handle_end(self, params):
-        reason = params.arguments["reason"]
+    async def end_conversation(self, params: FunctionCallParams, reason: str):
+        """End the conversation when the user says goodbye.
+
+        Args:
+            reason (str): Why the conversation is ending.
+        """
         logger.info(f"Agent '{self.name}': ending conversation ({reason})")
         await params.llm.queue_frame(
             LLMMessagesAppendFrame(messages=[{"role": "system", "content": reason}], run_llm=True)
