@@ -153,6 +153,7 @@ class FlowsContextAgent(FlowsAgent):
             bus=self._bus,
             agent_name=self.name,
             name=f"{self.name}::BusOutput",
+            output_frames=(LLMFullResponseStartFrame, LLMFullResponseEndFrame, LLMTextFrame),
         )
 
         assistant_aggregator = LLMAssistantAggregator(

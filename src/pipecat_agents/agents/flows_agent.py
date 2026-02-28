@@ -13,6 +13,7 @@ for structured conversation flows (nodes, functions, transitions, actions).
 from abc import abstractmethod
 from typing import List, Optional
 
+from pipecat.frames.frames import LLMFullResponseEndFrame, LLMFullResponseStartFrame, LLMTextFrame
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.task import PipelineParams, PipelineTask
 from pipecat.processors.aggregators.llm_response_universal import LLMContextAggregatorPair
@@ -175,6 +176,7 @@ class FlowsAgent(BaseAgent):
             bus=self._bus,
             agent_name=self.name,
             name=f"{self.name}::BusOutput",
+            output_frames=(LLMFullResponseStartFrame, LLMFullResponseEndFrame, LLMTextFrame),
         )
         pipeline = Pipeline([bus_input, self._llm, bus_output])
 

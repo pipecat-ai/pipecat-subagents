@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "pipecat-ai-agents"
 dynamic = ["version"]
-description = "A Pipecat Framework for Distributed Multi-Agents"
+description = "Distributed Multi-Agent Framework for Pipecat"
 license = { text = "BSD 2-Clause License" }
 readme = "README.md"
 requires-python = ">=3.10"

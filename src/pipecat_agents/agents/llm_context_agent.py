@@ -17,6 +17,7 @@ parameter.
 
 from typing import List, Optional
 
+from pipecat.frames.frames import LLMFullResponseEndFrame, LLMFullResponseStartFrame, LLMTextFrame
 from pipecat.pipeline.parallel_pipeline import ParallelPipeline
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.task import PipelineParams, PipelineTask
@@ -132,6 +133,7 @@ class LLMContextAgent(LLMAgent):
             bus=self._bus,
             agent_name=self.name,
             name=f"{self.name}::BusOutput",
+            output_frames=(LLMFullResponseStartFrame, LLMFullResponseEndFrame, LLMTextFrame),
         )
 
         assistant_aggregator = LLMAssistantAggregator(
