@@ -103,6 +103,8 @@ class BaseAgent(BaseObject):
         self._pipeline_started = False
         self._pending_activation = active
         self._activation_args: Optional[AgentActivationArgs] = None
+        self._message_queue: asyncio.Queue[BusMessage] = asyncio.Queue()
+        self._message_task: Optional[asyncio.Task] = None
 
         self._register_event_handler("on_agent_started")
         self._register_event_handler("on_agent_activated")
@@ -223,6 +225,9 @@ class BaseAgent(BaseObject):
         """
         task = await self.build_pipeline_task()
         self._task = task
+        self._message_task = asyncio.create_task(
+            self._message_loop(), name=f"agent_{self.name}_messages"
+        )
 
         @task.event_handler("on_pipeline_started")
         async def on_pipeline_started(task, frame: StartFrame):
@@ -238,6 +243,8 @@ class BaseAgent(BaseObject):
         @task.event_handler("on_pipeline_finished")
         async def on_pipeline_finished(task, frame):
             logger.debug(f"Agent '{self}': pipeline finished ({frame})")
+            if self._message_task:
+                self._message_task.cancel()
             if isinstance(frame, CancelFrame):
                 await self.cancel()
 
@@ -391,7 +398,12 @@ class BaseAgent(BaseObject):
             await self._call_event_handler("on_agent_activated", self._activation_args)
 
     async def _handle_bus_message(self, message: BusMessage) -> None:
-        """Handle a raw bus message: filter, skip frame messages, dispatch others."""
+        """Handle a raw bus message: filter, skip frame messages, enqueue others.
+
+        Non-frame messages are enqueued for the agent's message loop so
+        that the bus receive loop is never blocked by long-running
+        handlers (e.g. ``_end()`` waiting for children to finish).
+        """
         # Ignore targeted messages for other agents
         if message.target and message.target != self.name:
             return
@@ -400,5 +412,14 @@ class BaseAgent(BaseObject):
         if isinstance(message, BusFrameMessage):
             return
 
-        await self.on_bus_message(message)
-        await self._call_event_handler("on_bus_message", message)
+        await self._message_queue.put(message)
+
+    async def _message_loop(self) -> None:
+        """Process queued bus messages sequentially."""
+        try:
+            while True:
+                message = await self._message_queue.get()
+                await self.on_bus_message(message)
+                await self._call_event_handler("on_bus_message", message)
+        except asyncio.CancelledError:
+            pass
