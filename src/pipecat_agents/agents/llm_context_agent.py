@@ -91,9 +91,7 @@ class LLMContextAgent(LLMAgent):
             active: Whether the agent starts active. Defaults to False.
             pipeline_params: Optional ``PipelineParams`` for this agent's task.
         """
-        super().__init__(
-            name, bus=bus, active=active, pipeline_params=pipeline_params
-        )
+        super().__init__(name, bus=bus, active=active, pipeline_params=pipeline_params)
         self._system_messages = system_messages
         self._agent_context = LLMContext(system_messages)
 

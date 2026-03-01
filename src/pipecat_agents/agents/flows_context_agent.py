@@ -104,9 +104,7 @@ class FlowsContextAgent(FlowsAgent):
             pipeline_params: Optional ``PipelineParams`` for this agent's task.
             **kwargs: Additional arguments passed to ``FlowsAgent``.
         """
-        super().__init__(
-            name, bus=bus, active=active, pipeline_params=pipeline_params, **kwargs
-        )
+        super().__init__(name, bus=bus, active=active, pipeline_params=pipeline_params, **kwargs)
         self._system_messages = system_messages
         self._agent_context = LLMContext(system_messages)
         self._llm = self.build_llm()

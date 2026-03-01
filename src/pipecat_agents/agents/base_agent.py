@@ -271,9 +271,7 @@ class BaseAgent(BaseObject):
             ValueError: If the agent already has a parent.
         """
         if agent._parent is not None:
-            raise ValueError(
-                f"Agent '{agent.name}' already has parent '{agent._parent}'"
-            )
+            raise ValueError(f"Agent '{agent.name}' already has parent '{agent._parent}'")
         agent._parent = self.name
         self._children.append(agent)
         await self.send_message(BusAddAgentMessage(source=self.name, agent=agent))
