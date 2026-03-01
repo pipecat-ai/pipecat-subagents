@@ -38,7 +38,7 @@ class BusOutputProcessor(FrameProcessor):
         *,
         bus: AgentBus,
         agent_name: str,
-        pass_through: bool = False,
+        pass_through: bool = True,
         output_frames: Optional[Tuple[Type[Frame], ...]] = None,
         **kwargs,
     ):
@@ -48,7 +48,7 @@ class BusOutputProcessor(FrameProcessor):
             bus: The ``AgentBus`` to publish frames to.
             agent_name: Name of this agent, used as message source.
             pass_through: When True, non-lifecycle frames are both sent
-                to the bus **and** passed downstream. Defaults to False.
+                to the bus **and** passed downstream. Defaults to True.
             output_frames: When set, only these frame types are sent to
                 the bus. All other non-lifecycle frames pass through
                 unchanged. When ``None`` (default), all non-lifecycle
@@ -79,17 +79,14 @@ class BusOutputProcessor(FrameProcessor):
             return
 
         # If output_frames is set, only send matching types to bus
-        if self._output_frames and not isinstance(frame, self._output_frames):
-            await self.push_frame(frame, direction)
-            return
-
-        # Send to bus
-        msg = BusFrameMessage(
-            source=self._agent_name,
-            frame=frame,
-            direction=direction,
-        )
-        await self._bus.send(msg)
+        if self._output_frames and isinstance(frame, self._output_frames):
+            # Send to bus
+            msg = BusFrameMessage(
+                source=self._agent_name,
+                frame=frame,
+                direction=direction,
+            )
+            await self._bus.send(msg)
 
         # Optionally pass downstream too
         if self._pass_through:
