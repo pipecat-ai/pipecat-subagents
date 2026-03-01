@@ -12,11 +12,13 @@ and automatic tool registration.
 
 import asyncio
 from abc import abstractmethod
+from dataclasses import dataclass
 from typing import Any, Callable, List, Optional
 
 from pipecat.adapters.schemas.function_schema import FunctionSchema
 from pipecat.adapters.schemas.tools_schema import ToolsSchema
 from pipecat.frames.frames import (
+    ControlFrame,
     FunctionCallResultProperties,
     LLMFullResponseEndFrame,
     LLMFullResponseStartFrame,
@@ -26,9 +28,11 @@ from pipecat.frames.frames import (
     TTSAudioRawFrame,
     TTSStartedFrame,
     TTSStoppedFrame,
+    UninterruptibleFrame,
 )
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.task import PipelineParams, PipelineTask
+from pipecat.processors.frame_processor import FrameDirection
 from pipecat.services.llm_service import LLMService
 from pipecat.services.tts_service import TTSService
 
@@ -38,6 +42,18 @@ from pipecat_agents.bus import AgentBus, BusInputProcessor, BusOutputProcessor
 from pipecat_agents.bus.messages import AgentActivationArgs
 
 FunctionCallResultCallback = Callable[..., Any]
+
+
+@dataclass
+class PipelineFlushFrame(ControlFrame, UninterruptibleFrame):
+    """Probe frame sent upstream then bounced downstream to flush the pipeline.
+
+    When this frame reaches the top of the pipeline (source) it is bounced
+    back downstream.  When it arrives at the bottom (sink), all preceding
+    in-order frames (LLM text, TTS audio) have been fully delivered.
+    """
+
+    pass
 
 
 class LLMAgent(BaseAgent):
@@ -88,6 +104,8 @@ class LLMAgent(BaseAgent):
         super().__init__(name, bus=bus, active=active)
         self._pipeline_params = pipeline_params or PipelineParams()
         self._llm: Optional[LLMService] = None
+        self._flush_done: asyncio.Event = asyncio.Event()
+        self._flush_handlers_registered: bool = False
 
     async def on_agent_activated(self, args: Optional[AgentActivationArgs]) -> None:
         """Set tools and append activation messages on activation.
@@ -256,13 +274,20 @@ class LLMAgent(BaseAgent):
         """Close out an in-progress function call before taking action.
 
         Used by `end()` and `transfer_to()` to ensure the function call
-        is fully resolved before the agent ends or transfers.
+        is fully resolved and all resulting frames (LLM text, TTS audio)
+        have been fully delivered before the agent ends or transfers.
+
+        Sends a `PipelineFlushFrame` probe upstream through the pipeline.
+        When it reaches the top it is bounced back downstream.  When it
+        arrives at the bottom, all preceding in-order frames have been
+        flushed, and it is safe to transfer or end.
 
         Args:
             result_callback: The callback from `FunctionCallParams`, or None.
         """
         if not result_callback:
             return
+
         context_updated = asyncio.Event()
 
         async def _on_context_updated():
@@ -276,3 +301,30 @@ class LLMAgent(BaseAgent):
             ),
         )
         await context_updated.wait()
+
+        # Flush the pipeline: send a probe frame upstream from the sink,
+        # bounce it back downstream from the source, and wait for it to
+        # arrive at the sink again.  This ensures all preceding in-order
+        # frames (LLM text, TTS audio) have been fully delivered before
+        # we transfer or end.
+
+        if not self._flush_handlers_registered:
+            self._flush_handlers_registered = True
+
+            self.task.add_reached_upstream_filter((PipelineFlushFrame,))
+            self.task.add_reached_downstream_filter((PipelineFlushFrame,))
+
+            @self.task.event_handler("on_frame_reached_upstream")
+            async def _on_flush_upstream(task, frame):
+                if isinstance(frame, PipelineFlushFrame):
+                    # Push a different one to avoid id caching.
+                    await task.queue_frame(PipelineFlushFrame())
+
+            @self.task.event_handler("on_frame_reached_downstream")
+            async def _on_flush_downstream(task, frame):
+                if isinstance(frame, PipelineFlushFrame):
+                    self._flush_done.set()
+
+        self._flush_done.clear()
+        await self.task.queue_frame(PipelineFlushFrame(), FrameDirection.UPSTREAM)
+        await self._flush_done.wait()
