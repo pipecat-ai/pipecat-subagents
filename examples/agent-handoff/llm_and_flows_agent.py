@@ -84,20 +84,17 @@ class ReservationAgent(FlowsAgent):
         self._reservation_system = reservation_system
 
     def build_llm(self) -> LLMService:
-        return OpenAILLMService(api_key=os.getenv("OPENAI_API_KEY"))
+        return OpenAILLMService(
+            api_key=os.getenv("OPENAI_API_KEY"),
+            system_instruction=(
+                "You are a reservation assistant for La Maison, an upscale French "
+                "restaurant. Be casual and friendly. This is a voice conversation."
+            ),
+        )
 
     def build_initial_node(self) -> NodeConfig:
         return {
             "name": "initial",
-            "role_messages": [
-                {
-                    "role": "system",
-                    "content": (
-                        "You are a reservation assistant for La Maison, an upscale French "
-                        "restaurant. Be casual and friendly. This is a voice conversation."
-                    ),
-                }
-            ],
             "task_messages": [
                 {
                     "role": "system",
@@ -329,8 +326,8 @@ class RestaurantAgent(BaseAgent):
 async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     runner = AgentRunner(handle_sigint=runner_args.handle_sigint)
 
-    main = RestaurantAgent("main", bus=runner.bus, transport=transport)
-    await runner.add_agent(main)
+    restaurant = RestaurantAgent("restaurant", bus=runner.bus, transport=transport)
+    await runner.add_agent(restaurant)
 
     await runner.run()
 

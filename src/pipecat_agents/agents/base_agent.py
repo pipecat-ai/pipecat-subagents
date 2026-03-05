@@ -299,8 +299,8 @@ class BaseAgent(BaseObject, BusSubscriber):
         """
         return PipelineTask(
             pipeline,
-            cancel_on_idle_timeout=False,
             enable_rtvi=False,
+            idle_timeout_secs=None,
         )
 
     async def create_pipeline_task(self) -> PipelineTask:
