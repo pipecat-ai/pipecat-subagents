@@ -59,8 +59,7 @@ The message bus provides pub/sub communication between agents and the runner.
 
 - **`AgentBus`** — Abstract base for inter-agent messaging.
 - **`LocalAgentBus`** — In-process implementation backed by `asyncio.Queue`.
-- **`BusBridgeProcessor`** — Bidirectional bridge that sends pipeline frames to other agents through the bus, and receives frames back into the pipeline.
-- **`BusOutputProcessor`** — One-way bridge that captures pipeline output and publishes it to the bus.
+- **`BusBridgeProcessor`** — Pipeline processor that bridges frames across agent boundaries.
 
 ### Runner
 
