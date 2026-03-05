@@ -79,8 +79,8 @@ class MockReservationSystem:
 class ReservationAgent(FlowsAgent):
     """Structured reservation flow using Pipecat Flows."""
 
-    def __init__(self, name: str, *, bus: AgentBus, reservation_system):
-        super().__init__(name, bus=bus)
+    def __init__(self, name: str, *, bus: AgentBus, context_aggregator, reservation_system):
+        super().__init__(name, bus=bus, context_aggregator=context_aggregator)
         self._reservation_system = reservation_system
 
     def build_llm(self) -> LLMService:
@@ -259,10 +259,18 @@ class RestaurantAgent(BaseAgent):
         self._transport = transport
 
     async def setup(self):
+        context = LLMContext()
+        context_aggregator = LLMContextAggregatorPair(
+            context,
+            user_params=LLMUserAggregatorParams(vad_analyzer=SileroVADAnalyzer()),
+        )
+        self._context_aggregator = context_aggregator
+
         router = RouterAgent("router", bus=self.bus)
         reservation = ReservationAgent(
             "reservation",
             bus=self.bus,
+            context_aggregator=context_aggregator,
             reservation_system=MockReservationSystem(),
         )
         for agent in [router, reservation]:
@@ -298,12 +306,6 @@ class RestaurantAgent(BaseAgent):
             voice_id="9626c31c-bec5-4cca-baa8-f8ba9e84c8bc",  # Jacqueline
         )
 
-        context = LLMContext()
-        context_aggregator = LLMContextAggregatorPair(
-            context,
-            user_params=LLMUserAggregatorParams(vad_analyzer=SileroVADAnalyzer()),
-        )
-
         bridge = BusBridgeProcessor(
             bus=self.bus,
             agent_name=self.name,
@@ -314,11 +316,11 @@ class RestaurantAgent(BaseAgent):
             [
                 self._transport.input(),
                 stt,
-                context_aggregator.user(),
+                self._context_aggregator.user(),
                 bridge,
                 tts,
                 self._transport.output(),
-                context_aggregator.assistant(),
+                self._context_aggregator.assistant(),
             ]
         )
 

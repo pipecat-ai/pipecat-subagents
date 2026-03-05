@@ -11,7 +11,7 @@ for structured conversation flows (nodes, functions, transitions, actions).
 """
 
 from abc import abstractmethod
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.task import PipelineTask
@@ -48,6 +48,7 @@ class FlowsAgent(BaseAgent):
         name: str,
         *,
         bus: AgentBus,
+        context_aggregator: Any,
         context_strategy: Optional[ContextStrategyConfig] = None,
         global_functions: Optional[List[FlowsFunctionSchema | FlowsDirectFunction]] = None,
         active: bool = False,
@@ -57,6 +58,8 @@ class FlowsAgent(BaseAgent):
         Args:
             name: Unique name for this agent.
             bus: The `AgentBus` for inter-agent communication.
+            context_aggregator: The context aggregator pair for managing
+                LLM conversation context, forwarded to `FlowManager`.
             context_strategy: Optional context strategy forwarded to
                 `FlowManager`.
             global_functions: Optional list of functions available at every
@@ -69,6 +72,7 @@ class FlowsAgent(BaseAgent):
             active=active,
             enable_bus_sinks=True,
         )
+        self._context_aggregator = context_aggregator
         self._context_strategy = context_strategy
         self._global_functions = global_functions or []
         self._llm: Optional[LLMService] = None
@@ -149,6 +153,7 @@ class FlowsAgent(BaseAgent):
         self._flow_manager = FlowManager(
             task=task,
             llm=self._llm,
+            context_aggregator=self._context_aggregator,
             context_strategy=self._context_strategy,
             global_functions=self._build_global_functions(),
         )
