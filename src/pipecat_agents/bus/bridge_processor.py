@@ -29,13 +29,16 @@ class BusBridgeProcessor(FrameProcessor, BusSubscriber):
     """Bidirectional mid-pipeline bridge between a pipeline and the bus.
 
     Placed in a transport/session agent's pipeline as an explicit crossing
-    point. All non-lifecycle frames passing through are sent to the bus
-    **and** passed through the pipeline. Frames arriving from the bus are
-    injected at this processor's position.
+    point. Non-lifecycle frames are sent to the bus (not passed through
+    locally). Frames arriving from the bus are injected at this processor's
+    position.
+
+    Lifecycle and excluded frames are passed through the pipeline locally
+    without crossing the bus.
 
     Use ``target_agent`` to restrict communication to a single agent.
     Use ``exclude_frames`` to prevent specific frame types from crossing
-    the bus (they still pass through the pipeline normally).
+    the bus.
     """
 
     def __init__(
@@ -71,7 +74,7 @@ class BusBridgeProcessor(FrameProcessor, BusSubscriber):
         self._bus.unsubscribe(self)
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
-        """Process a frame: always pass through, send non-excluded to bus.
+        """Process a frame: send to bus, or pass through locally if excluded.
 
         Args:
             frame: The frame to process.
