@@ -22,7 +22,6 @@ the runner. Key components:
 from pipecat_agents.bus.bridge_processor import BusBridgeProcessor
 from pipecat_agents.bus.bus import AgentBus
 from pipecat_agents.bus.local_bus import LocalAgentBus
-from pipecat_agents.bus.subscriber import BusSubscriber
 from pipecat_agents.bus.messages import (
     AgentActivationArgs,
     BusActivateAgentMessage,
@@ -43,6 +42,7 @@ from pipecat_agents.bus.messages import (
     BusUserTurnStartedMessage,
     BusUserTurnStoppedMessage,
 )
+from pipecat_agents.bus.subscriber import BusSubscriber
 
 __all__ = [
     "AgentBus",

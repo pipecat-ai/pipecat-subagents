@@ -51,8 +51,7 @@ class LLMAgent(BaseAgent):
     """Base class for agents with an LLM pipeline.
 
     Subclasses provide an LLM service via ``build_llm()`` and define tools
-    with the ``@tool`` decorator. System instructions are passed as the
-    ``system_instruction`` parameter on the LLM service.
+    with the ``@tool`` decorator.
 
     Example::
 
@@ -65,11 +64,6 @@ class LLMAgent(BaseAgent):
 
             @tool
             async def my_function(self, params, arg: str):
-                \"\"\"Do something.
-
-                Args:
-                    arg (str): The argument.
-                \"\"\"
                 ...
     """
 
