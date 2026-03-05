@@ -68,13 +68,7 @@ The message bus provides pub/sub communication between agents and the runner.
 
 ## Examples
 
-The [examples](examples/) directory includes complete working implementations:
-
-- **[single_agent.py](examples/single_agent.py)** — Simplest usage: one agent running a full voice pipeline through the AgentRunner
-- **[two_llm_agents.py](examples/two_llm_agents.py)** — Two LLM agents (greeter + support) that transfer control between each other
-- **[llm_and_flows_agent.py](examples/llm_and_flows_agent.py)** — Mixing agent types: an LLM agent and a Flows agent with structured conversation nodes
-
-See the [examples README](examples/README.md) for setup and running instructions.
+The [examples](examples/) directory includes complete working implementations. See the [examples README](examples/README.md) for setup and running instructions.
 
 ## Contributing to the framework
 
