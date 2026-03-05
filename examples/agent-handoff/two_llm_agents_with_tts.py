@@ -95,18 +95,17 @@ class AcmeTTSAgent(LLMAgent):
         await params.llm.queue_frame(
             LLMMessagesAppendFrame(
                 messages=[
-                    {"role": "system", "content": f"Tell the user about the transfer ({reason})."}
+                    {"role": "user", "content": f"Tell the user about the transfer ({reason})."}
                 ],
                 run_llm=True,
             )
         )
-        await self.deactivate_agent()
+        await self.deactivate_agent(result_callback=params.result_callback)
         await self.activate_agent(
             agent,
             args=AgentActivationArgs(
-                messages=[{"role": "system", "content": reason}],
+                messages=[{"role": "user", "content": reason}],
             ),
-            result_callback=params.result_callback,
         )
 
     @tool
@@ -118,7 +117,7 @@ class AcmeTTSAgent(LLMAgent):
         """
         logger.info(f"Agent '{self.name}': ending conversation ({reason})")
         await params.llm.queue_frame(
-            LLMMessagesAppendFrame(messages=[{"role": "system", "content": reason}], run_llm=True)
+            LLMMessagesAppendFrame(messages=[{"role": "user", "content": reason}], run_llm=True)
         )
         await self.end(reason=reason, result_callback=params.result_callback)
 
@@ -203,7 +202,7 @@ class AcmeAgent(BaseAgent):
             args=AgentActivationArgs(
                 messages=[
                     {
-                        "role": "system",
+                        "role": "user",
                         "content": (
                             "Welcome the user to Acme Corp, mention the available products "
                             "and ask how you can help."

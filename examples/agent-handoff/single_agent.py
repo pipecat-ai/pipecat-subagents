@@ -67,9 +67,7 @@ class SimpleAgent(BaseAgent):
         await super().on_agent_activated(args)
         await self.queue_frame(
             LLMMessagesAppendFrame(
-                messages=[
-                    {"role": "system", "content": "Greet the user and ask how you can help."}
-                ],
+                messages=[{"role": "user", "content": "Greet the user and ask how you can help."}],
                 run_llm=True,
             )
         )

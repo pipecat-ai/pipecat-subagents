@@ -98,7 +98,7 @@ class ReservationAgent(FlowsAgent):
             "name": "initial",
             "task_messages": [
                 {
-                    "role": "system",
+                    "role": "user",
                     "content": "Ask how many people are in their party.",
                 }
             ],
@@ -110,7 +110,7 @@ class ReservationAgent(FlowsAgent):
             "name": "get_time",
             "task_messages": [
                 {
-                    "role": "system",
+                    "role": "user",
                     "content": "Ask what time they'd like to dine. The restaurant is open 5 PM to 10 PM.",
                 }
             ],
@@ -122,7 +122,7 @@ class ReservationAgent(FlowsAgent):
             "name": "confirm",
             "task_messages": [
                 {
-                    "role": "system",
+                    "role": "user",
                     "content": "Confirm the reservation details and ask if there's anything else.",
                 }
             ],
@@ -160,7 +160,7 @@ class ReservationAgent(FlowsAgent):
                 "name": "no_availability",
                 "task_messages": [
                     {
-                        "role": "system",
+                        "role": "user",
                         "content": (
                             f"Apologize that {time} is not available. "
                             f"Suggest these alternative times: {times_list}."
@@ -176,7 +176,7 @@ class ReservationAgent(FlowsAgent):
             "name": "end",
             "task_messages": [
                 {
-                    "role": "system",
+                    "role": "user",
                     "content": "Thank them for their reservation and say goodbye.",
                 }
             ],
@@ -198,7 +198,7 @@ class ReservationAgent(FlowsAgent):
         await self.activate_agent(
             agent,
             args=AgentActivationArgs(
-                messages=[{"role": "system", "content": reason}],
+                messages=[{"role": "user", "content": reason}],
             ),
         )
         return {"status": "success"}, self.build_initial_node()
@@ -229,13 +229,12 @@ class RouterAgent(LLMAgent):
             reason (str): Why the user is being transferred.
         """
         logger.info(f"Agent '{self.name}': transferring to '{agent}' ({reason})")
-        await self.deactivate_agent()
+        await self.deactivate_agent(result_callback=params.result_callback)
         await self.activate_agent(
             agent,
             args=AgentActivationArgs(
-                messages=[{"role": "system", "content": reason}],
+                messages=[{"role": "user", "content": reason}],
             ),
-            result_callback=params.result_callback,
         )
 
     @tool
@@ -247,7 +246,7 @@ class RouterAgent(LLMAgent):
         """
         logger.info(f"Agent '{self.name}': ending conversation ({reason})")
         await params.llm.queue_frame(
-            LLMMessagesAppendFrame(messages=[{"role": "system", "content": reason}], run_llm=True)
+            LLMMessagesAppendFrame(messages=[{"role": "user", "content": reason}], run_llm=True)
         )
         await self.end(reason=reason, result_callback=params.result_callback)
 
@@ -279,7 +278,7 @@ class RestaurantAgent(BaseAgent):
             args=AgentActivationArgs(
                 messages=[
                     {
-                        "role": "system",
+                        "role": "user",
                         "content": "Greet the user and ask how you can help.",
                     }
                 ],
