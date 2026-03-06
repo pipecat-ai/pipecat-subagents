@@ -96,10 +96,15 @@ class AgentActivationArgs:
             metadata is opaque to the framework — the receiving agent
             can inspect it programmatically to pre-populate state,
             skip steps, etc.
+        run_llm: Whether to run the LLM after appending messages.
+            Defaults to True. Set to False to inject context without
+            triggering a response (e.g. outbound call context where
+            the greeting was already spoken).
     """
 
     messages: Optional[list] = None
     metadata: Optional[dict] = None
+    run_llm: Optional[bool] = None
 
 
 @dataclass

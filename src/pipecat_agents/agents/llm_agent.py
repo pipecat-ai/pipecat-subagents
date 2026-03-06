@@ -105,7 +105,8 @@ class LLMAgent(BaseAgent):
             await self.queue_frame(LLMSetToolsFrame(tools=ToolsSchema(standard_tools=tools)))
 
         if args and args.messages:
-            await self.queue_frame(LLMMessagesAppendFrame(messages=args.messages, run_llm=True))
+            run_llm = args.run_llm if args.run_llm is not None else True
+            await self.queue_frame(LLMMessagesAppendFrame(messages=args.messages, run_llm=run_llm))
 
     def build_tools(self) -> list:
         """Return the tools for this agent's LLM.
