@@ -16,7 +16,7 @@ upstream frames.
 from typing import Optional, Tuple, Type
 
 from pipecat.frames.frames import CancelFrame, EndFrame, Frame, StartFrame, StopFrame
-from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
+from pipecat.processors.frame_processor import FrameDirection, FrameProcessor, FrameProcessorSetup
 
 from pipecat_agents.bus.bus import AgentBus
 from pipecat_agents.bus.messages import BusFrameMessage, BusMessage
@@ -66,12 +66,19 @@ class BusBridgeProcessor(FrameProcessor, BusSubscriber):
         self._target_agent = target_agent
         self._exclude_frames = exclude_frames or ()
 
-        self._bus.subscribe(self)
+    async def setup(self, setup: FrameProcessorSetup):
+        """Subscribe to the bus during processor setup.
+
+        Args:
+            setup: The processor setup configuration provided by the pipeline.
+        """
+        await super().setup(setup)
+        await self._bus.subscribe(self)
 
     async def cleanup(self):
         """Unsubscribe from the bus on cleanup."""
         await super().cleanup()
-        self._bus.unsubscribe(self)
+        await self._bus.unsubscribe(self)
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         """Process a frame: send to bus, or pass through locally if excluded.

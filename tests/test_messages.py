@@ -43,8 +43,8 @@ class TestBusMessageRouting(unittest.IsolatedAsyncioTestCase):
             async def on_bus_message(self, message):
                 received_b.append(message)
 
-        bus.subscribe(SubA())
-        bus.subscribe(SubB())
+        await bus.subscribe(SubA())
+        await bus.subscribe(SubB())
 
         await bus.start()
         msg = BusMessage(source="agent_x")  # no target

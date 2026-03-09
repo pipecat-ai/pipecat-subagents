@@ -14,10 +14,12 @@ class TestLocalAgentBus(unittest.IsolatedAsyncioTestCase):
     async def test_send_receive_round_trip(self):
         """send() enqueues, receive() dequeues the same message."""
         bus = LocalAgentBus()
+        client = await bus.connect()
         msg = BusMessage(source="agent_a")
         await bus.send(msg)
-        got = await asyncio.wait_for(bus.receive(), timeout=1.0)
+        got = await asyncio.wait_for(bus.receive(client), timeout=1.0)
         self.assertIs(got, msg)
+        await bus.disconnect(client)
 
     async def test_multiple_messages_in_order(self):
         """Messages are dispatched in FIFO order."""
@@ -28,7 +30,7 @@ class TestLocalAgentBus(unittest.IsolatedAsyncioTestCase):
             async def on_bus_message(self, message):
                 received.append(message)
 
-        bus.subscribe(OrderSub())
+        await bus.subscribe(OrderSub())
 
         await bus.start()
         msgs = [BusMessage(source=f"agent_{i}") for i in range(5)]
@@ -42,7 +44,7 @@ class TestLocalAgentBus(unittest.IsolatedAsyncioTestCase):
             self.assertIs(sent, got)
 
     async def test_start_stop_lifecycle(self):
-        """start() begins the receive loop, stop() cancels it cleanly."""
+        """start() begins subscriber tasks, stop() cancels them cleanly."""
         bus = LocalAgentBus()
         received = []
 
@@ -50,11 +52,11 @@ class TestLocalAgentBus(unittest.IsolatedAsyncioTestCase):
             async def on_bus_message(self, message):
                 received.append(message)
 
-        bus.subscribe(LifecycleSub())
+        await bus.subscribe(LifecycleSub())
 
         await bus.start()
 
-        # Receive loop is running — messages are dispatched
+        # Subscriber tasks are running — messages are dispatched
         await bus.send(BusMessage(source="a"))
         await asyncio.sleep(0.05)
         self.assertEqual(len(received), 1)
@@ -77,7 +79,7 @@ class TestBusSubscriber(unittest.IsolatedAsyncioTestCase):
             async def on_bus_message(self, message):
                 received.append(message)
 
-        bus.subscribe(MySub())
+        await bus.subscribe(MySub())
 
         await bus.start()
         msg = BusMessage(source="agent_a")
@@ -102,8 +104,8 @@ class TestBusSubscriber(unittest.IsolatedAsyncioTestCase):
             async def on_bus_message(self, message):
                 received_2.append(message)
 
-        bus.subscribe(Sub1())
-        bus.subscribe(Sub2())
+        await bus.subscribe(Sub1())
+        await bus.subscribe(Sub2())
 
         await bus.start()
         msg = BusMessage(source="agent_a")
@@ -126,14 +128,14 @@ class TestBusSubscriber(unittest.IsolatedAsyncioTestCase):
                 received.append(message)
 
         sub = MySub()
-        bus.subscribe(sub)
+        await bus.subscribe(sub)
 
         await bus.start()
         await bus.send(BusMessage(source="a"))
         await asyncio.sleep(0.05)
         self.assertEqual(len(received), 1)
 
-        bus.unsubscribe(sub)
+        await bus.unsubscribe(sub)
         await bus.send(BusMessage(source="b"))
         await asyncio.sleep(0.05)
         await bus.stop()
@@ -156,8 +158,8 @@ class TestBusSubscriber(unittest.IsolatedAsyncioTestCase):
                 fast_received.append(message)
                 fast_done.set()
 
-        bus.subscribe(SlowSub())
-        bus.subscribe(FastSub())
+        await bus.subscribe(SlowSub())
+        await bus.subscribe(FastSub())
 
         await bus.start()
         await bus.send(BusMessage(source="a"))

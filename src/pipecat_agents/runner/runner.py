@@ -74,8 +74,6 @@ class AgentRunner(BaseObject, BusSubscriber):
 
         self._register_event_handler("on_runner_started")
 
-        self._bus.subscribe(self)
-
     @property
     def bus(self) -> AgentBus:
         """The bus instance for agent communication."""
@@ -126,6 +124,7 @@ class AgentRunner(BaseObject, BusSubscriber):
         self._running = True
         self._shutdown_event.clear()
 
+        await self._bus.subscribe(self)
         await self._bus.start()
 
         for agent in self._agents.values():

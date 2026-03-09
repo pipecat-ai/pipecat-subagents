@@ -24,7 +24,7 @@ from pipecat.frames.frames import (
 )
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.task import PipelineTask
-from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
+from pipecat.processors.frame_processor import FrameDirection, FrameProcessor, FrameProcessorSetup
 from pipecat.utils.base_object import BaseObject
 
 from pipecat_agents.bus import (
@@ -57,19 +57,53 @@ class _BusEdgeProcessor(FrameProcessor, BusSubscriber):
     """
 
     def __init__(self, *, bus, agent, direction, exclude_frames=None, **kwargs):
+        """Initialize the edge processor.
+
+        Args:
+            bus: The ``AgentBus`` used for sending and receiving messages.
+            agent: The ``BaseAgent`` that owns this edge processor.
+            direction: The ``FrameDirection`` this edge captures. Frames
+                traveling in this direction are forwarded to the bus;
+                bus frames traveling in the opposite direction are pushed
+                into the pipeline.
+            exclude_frames: Tuple of frame types to exclude from bus
+                forwarding. Defaults to an empty tuple.
+            **kwargs: Additional arguments passed to ``FrameProcessor``.
+        """
         super().__init__(**kwargs)
         self._bus = bus
         self._agent = agent
         self._direction = direction
         self._exclude_frames = exclude_frames or ()
-        self._bus.subscribe(self)
+
+    async def setup(self, setup: FrameProcessorSetup):
+        """Subscribe to the bus when the processor is set up.
+
+        Args:
+            setup: The ``FrameProcessorSetup`` configuration.
+        """
+        await super().setup(setup)
+        await self._bus.subscribe(self)
 
     async def cleanup(self):
+        """Unsubscribe from the bus when the processor is cleaned up."""
         await super().cleanup()
-        self._bus.unsubscribe(self)
+        await self._bus.unsubscribe(self)
 
     async def process_frame(self, frame, direction):
+        """Forward pipeline frames to the bus.
+
+        Passes the frame through the pipeline unchanged. If the frame is
+        traveling in the configured direction and is not a lifecycle or
+        excluded frame, it is also sent to the bus as a
+        ``BusFrameMessage``.
+
+        Args:
+            frame: The pipeline frame to process.
+            direction: The direction the frame is traveling.
+        """
         await super().process_frame(frame, direction)
+
         await self.push_frame(frame, direction)
 
         if direction != self._direction:
@@ -83,6 +117,16 @@ class _BusEdgeProcessor(FrameProcessor, BusSubscriber):
         )
 
     async def on_bus_message(self, message):
+        """Receive bus frame messages and push them into the pipeline.
+
+        Only processes ``BusFrameMessage`` instances traveling in the
+        opposite direction from this edge. Ignores messages from the
+        owning agent, messages when the agent is inactive, and messages
+        targeted at other agents.
+
+        Args:
+            message: The incoming ``BusMessage``.
+        """
         if not isinstance(message, BusFrameMessage):
             return
         if message.source == self._agent.name:
@@ -171,8 +215,6 @@ class BaseAgent(BaseObject, BusSubscriber):
         self._register_event_handler("on_agent_activated")
         self._register_event_handler("on_agent_deactivated")
         self._register_event_handler("on_bus_message")
-
-        self._bus.subscribe(self)
 
     @property
     def bus(self) -> AgentBus:
@@ -302,6 +344,8 @@ class BaseAgent(BaseObject, BusSubscriber):
             The configured `PipelineTask`.
 
         """
+        await self._bus.subscribe(self)
+
         user_pipeline = await self.build_pipeline()
 
         # Wrap with edge-to-bus processors when opted in
@@ -443,13 +487,24 @@ class BaseAgent(BaseObject, BusSubscriber):
             await self._task.queue_frames(frames, direction)
 
     async def _activate(self, message: BusActivateAgentMessage) -> None:
-        """Handle an activation message."""
+        """Handle an activation message.
+
+        Stores the activation arguments and marks the agent as pending
+        activation, then delegates to ``_maybe_activate()``.
+
+        Args:
+            message: The ``BusActivateAgentMessage`` requesting activation.
+        """
         self._activation_args = message.args
         self._pending_activation = True
         await self._maybe_activate()
 
     async def _end(self, message: BusEndAgentMessage) -> None:
-        """Propagate end to children, wait for them, then end own pipeline."""
+        """Propagate end to children, wait for them, then end own pipeline.
+
+        Args:
+            message: The ``BusEndAgentMessage`` requesting a graceful end.
+        """
         logger.debug(f"Agent '{self}': received end, ending pipeline")
         for child in self._children:
             await self.send_message(
@@ -460,7 +515,11 @@ class BaseAgent(BaseObject, BusSubscriber):
             await self._task.queue_frame(EndFrame(reason=message.reason))
 
     async def _cancel(self, message: BusCancelAgentMessage) -> None:
-        """Propagate cancel to children, then cancel own pipeline."""
+        """Propagate cancel to children, then cancel own pipeline.
+
+        Args:
+            message: The ``BusCancelAgentMessage`` requesting cancellation.
+        """
         logger.debug(f"Agent '{self}': received cancel, cancelling task")
         for child in self._children:
             await self.send_message(
