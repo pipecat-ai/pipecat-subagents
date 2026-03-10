@@ -15,7 +15,6 @@ from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
 from pipecat_agents.agents.base_agent import BaseAgent
 from pipecat_agents.bus import (
-    AgentActivationArgs,
     BusActivateAgentMessage,
     BusAddAgentMessage,
     BusCancelAgentMessage,
@@ -23,6 +22,13 @@ from pipecat_agents.bus import (
     BusEndAgentMessage,
     BusEndMessage,
     BusFrameMessage,
+    BusTaskCancelMessage,
+    BusTaskRequestMessage,
+    BusTaskResponseMessage,
+    BusTaskStreamDataMessage,
+    BusTaskStreamEndMessage,
+    BusTaskStreamStartMessage,
+    BusTaskUpdateMessage,
     LocalAgentBus,
 )
 
@@ -80,7 +86,7 @@ class TestBaseAgentLifecycle(unittest.IsolatedAsyncioTestCase):
 
         task = await agent.create_pipeline_task()
 
-        args = AgentActivationArgs(messages=["hello"])
+        args = {"messages": ["hello"]}
 
         async def activate_after_start():
             await asyncio.sleep(0.05)
@@ -590,6 +596,305 @@ class TestEdgeToBus(unittest.IsolatedAsyncioTestCase):
         generated = [m for m in text_msgs if m.frame.text == "generated_hello"]
         self.assertEqual(len(generated), 1)
         self.assertEqual(generated[0].direction, FrameDirection.DOWNSTREAM)
+
+
+class TestTaskLifecycle(unittest.IsolatedAsyncioTestCase):
+    async def test_start_task_sends_add_activate_and_request(self):
+        """start_task() sends BusAddAgentMessage + BusActivateAgentMessage + BusTaskRequestMessage."""
+        bus = LocalAgentBus()
+        sent = capture_bus(bus)
+
+        parent = StubAgent("parent", bus=bus)
+        worker = StubAgent("worker", bus=bus)
+
+        task_id = await parent.start_task(worker, payload={"key": "val"})
+
+        add_msgs = [m for m in sent if isinstance(m, BusAddAgentMessage)]
+        self.assertEqual(len(add_msgs), 1)
+        self.assertIs(add_msgs[0].agent, worker)
+
+        activate_msgs = [m for m in sent if isinstance(m, BusActivateAgentMessage)]
+        self.assertEqual(len(activate_msgs), 1)
+        self.assertEqual(activate_msgs[0].target, "worker")
+
+        request_msgs = [m for m in sent if isinstance(m, BusTaskRequestMessage)]
+        self.assertEqual(len(request_msgs), 1)
+        self.assertEqual(request_msgs[0].task_id, task_id)
+        self.assertEqual(request_msgs[0].target, "worker")
+        self.assertEqual(request_msgs[0].payload, {"key": "val"})
+
+    async def test_start_task_multiple_agents(self):
+        """start_task() with multiple agents sends messages for each."""
+        bus = LocalAgentBus()
+        sent = capture_bus(bus)
+
+        parent = StubAgent("parent", bus=bus)
+        w1 = StubAgent("w1", bus=bus)
+        w2 = StubAgent("w2", bus=bus)
+
+        task_id = await parent.start_task(w1, w2, payload={"work": True})
+
+        request_msgs = [m for m in sent if isinstance(m, BusTaskRequestMessage)]
+        self.assertEqual(len(request_msgs), 2)
+        targets = {m.target for m in request_msgs}
+        self.assertEqual(targets, {"w1", "w2"})
+        for m in request_msgs:
+            self.assertEqual(m.task_id, task_id)
+
+    async def test_on_task_request_called(self):
+        """BusTaskRequestMessage triggers on_task_request with correct args."""
+        bus = LocalAgentBus()
+        agent = StubAgent("worker", bus=bus)
+
+        received = []
+
+        @agent.event_handler("on_task_request")
+        async def on_request(agent, task_id, requester, payload):
+            received.append((task_id, requester, payload))
+
+        await agent.on_bus_message(
+            BusTaskRequestMessage(
+                source="parent", target="worker", task_id="t1", payload={"x": 1}
+            )
+        )
+        await asyncio.sleep(0)  # let async event handlers run
+
+        self.assertEqual(len(received), 1)
+        self.assertEqual(received[0], ("t1", "parent", {"x": 1}))
+        self.assertEqual(agent.task_id, "t1")
+
+    async def test_send_task_response(self):
+        """send_task_response() sends BusTaskResponseMessage to requester."""
+        bus = LocalAgentBus()
+        sent = capture_bus(bus)
+
+        agent = StubAgent("worker", bus=bus)
+        # Simulate receiving a task request
+        await agent.on_bus_message(
+            BusTaskRequestMessage(source="parent", target="worker", task_id="t1")
+        )
+
+        await agent.send_task_response({"result": 42})
+
+        response_msgs = [m for m in sent if isinstance(m, BusTaskResponseMessage)]
+        self.assertEqual(len(response_msgs), 1)
+        self.assertEqual(response_msgs[0].target, "parent")
+        self.assertEqual(response_msgs[0].task_id, "t1")
+        self.assertEqual(response_msgs[0].response, {"result": 42})
+        self.assertEqual(response_msgs[0].status, "completed")
+
+    async def test_send_task_update(self):
+        """send_task_update() sends BusTaskUpdateMessage to requester."""
+        bus = LocalAgentBus()
+        sent = capture_bus(bus)
+
+        agent = StubAgent("worker", bus=bus)
+        await agent.on_bus_message(
+            BusTaskRequestMessage(source="parent", target="worker", task_id="t1")
+        )
+
+        await agent.send_task_update({"progress": 50})
+
+        update_msgs = [m for m in sent if isinstance(m, BusTaskUpdateMessage)]
+        self.assertEqual(len(update_msgs), 1)
+        self.assertEqual(update_msgs[0].target, "parent")
+        self.assertEqual(update_msgs[0].task_id, "t1")
+        self.assertEqual(update_msgs[0].update, {"progress": 50})
+
+    async def test_on_task_completed_fires_when_all_respond(self):
+        """on_task_completed fires when all agents in a task group respond."""
+        bus = LocalAgentBus()
+
+        parent = StubAgent("parent", bus=bus)
+        w1 = StubAgent("w1", bus=bus)
+        w2 = StubAgent("w2", bus=bus)
+
+        completed = []
+
+        @parent.event_handler("on_task_completed")
+        async def on_completed(agent, task_id, responses):
+            completed.append((task_id, responses))
+
+        task_id = await parent.start_task(w1, w2)
+
+        # First response — should not trigger on_task_completed
+        await parent.on_bus_message(
+            BusTaskResponseMessage(
+                source="w1", target="parent", task_id=task_id, response={"a": 1}
+            )
+        )
+        await asyncio.sleep(0)  # let async event handlers run
+        self.assertEqual(len(completed), 0)
+
+        # Second response — should trigger on_task_completed
+        await parent.on_bus_message(
+            BusTaskResponseMessage(
+                source="w2", target="parent", task_id=task_id, response={"b": 2}
+            )
+        )
+        await asyncio.sleep(0)  # let async event handlers run
+        self.assertEqual(len(completed), 1)
+        self.assertEqual(completed[0][0], task_id)
+        self.assertEqual(completed[0][1], {"w1": {"a": 1}, "w2": {"b": 2}})
+
+    async def test_cancel_task_sends_cancel_to_all_agents(self):
+        """cancel_task() sends BusTaskCancelMessage to all agents in group."""
+        bus = LocalAgentBus()
+        sent = capture_bus(bus)
+
+        parent = StubAgent("parent", bus=bus)
+        w1 = StubAgent("w1", bus=bus)
+        w2 = StubAgent("w2", bus=bus)
+
+        task_id = await parent.start_task(w1, w2)
+        sent.clear()
+
+        await parent.cancel_task(task_id, reason="no longer needed")
+
+        cancel_msgs = [m for m in sent if isinstance(m, BusTaskCancelMessage)]
+        self.assertEqual(len(cancel_msgs), 2)
+        targets = {m.target for m in cancel_msgs}
+        self.assertEqual(targets, {"w1", "w2"})
+        for m in cancel_msgs:
+            self.assertEqual(m.task_id, task_id)
+            self.assertEqual(m.reason, "no longer needed")
+
+    async def test_send_task_response_raises_without_active_task(self):
+        """send_task_response raises RuntimeError when no active task."""
+        bus = LocalAgentBus()
+        agent = StubAgent("worker", bus=bus)
+
+        with self.assertRaises(RuntimeError):
+            await agent.send_task_response({"result": 1})
+
+    async def test_send_task_update_raises_without_active_task(self):
+        """send_task_update raises RuntimeError when no active task."""
+        bus = LocalAgentBus()
+        agent = StubAgent("worker", bus=bus)
+
+        with self.assertRaises(RuntimeError):
+            await agent.send_task_update({"progress": 50})
+
+    async def test_cancel_clears_task_state(self):
+        """BusTaskCancelMessage clears the agent's task state."""
+        bus = LocalAgentBus()
+        agent = StubAgent("worker", bus=bus)
+
+        # Set up task state
+        await agent.on_bus_message(
+            BusTaskRequestMessage(source="parent", target="worker", task_id="t1")
+        )
+        self.assertEqual(agent.task_id, "t1")
+
+        # Cancel should clear
+        await agent.on_bus_message(
+            BusTaskCancelMessage(source="parent", target="worker", task_id="t1")
+        )
+        self.assertIsNone(agent.task_id)
+
+    async def test_send_task_stream_start(self):
+        """send_task_stream_start() sends BusTaskStreamStartMessage to requester."""
+        bus = LocalAgentBus()
+        sent = capture_bus(bus)
+
+        agent = StubAgent("worker", bus=bus)
+        await agent.on_bus_message(
+            BusTaskRequestMessage(source="parent", target="worker", task_id="t1")
+        )
+
+        await agent.send_task_stream_start({"content_type": "text"})
+
+        msgs = [m for m in sent if isinstance(m, BusTaskStreamStartMessage)]
+        self.assertEqual(len(msgs), 1)
+        self.assertEqual(msgs[0].target, "parent")
+        self.assertEqual(msgs[0].task_id, "t1")
+        self.assertEqual(msgs[0].data, {"content_type": "text"})
+
+    async def test_send_task_stream_data(self):
+        """send_task_stream_data() sends BusTaskStreamDataMessage to requester."""
+        bus = LocalAgentBus()
+        sent = capture_bus(bus)
+
+        agent = StubAgent("worker", bus=bus)
+        await agent.on_bus_message(
+            BusTaskRequestMessage(source="parent", target="worker", task_id="t1")
+        )
+
+        await agent.send_task_stream_data({"text": "hello "})
+
+        msgs = [m for m in sent if isinstance(m, BusTaskStreamDataMessage)]
+        self.assertEqual(len(msgs), 1)
+        self.assertEqual(msgs[0].target, "parent")
+        self.assertEqual(msgs[0].task_id, "t1")
+        self.assertEqual(msgs[0].data, {"text": "hello "})
+
+    async def test_send_task_stream_end(self):
+        """send_task_stream_end() sends BusTaskStreamEndMessage to requester."""
+        bus = LocalAgentBus()
+        sent = capture_bus(bus)
+
+        agent = StubAgent("worker", bus=bus)
+        await agent.on_bus_message(
+            BusTaskRequestMessage(source="parent", target="worker", task_id="t1")
+        )
+
+        await agent.send_task_stream_end({"final": True})
+
+        msgs = [m for m in sent if isinstance(m, BusTaskStreamEndMessage)]
+        self.assertEqual(len(msgs), 1)
+        self.assertEqual(msgs[0].target, "parent")
+        self.assertEqual(msgs[0].task_id, "t1")
+        self.assertEqual(msgs[0].data, {"final": True})
+
+    async def test_stream_end_triggers_on_task_completed(self):
+        """BusTaskStreamEndMessage triggers group completion like BusTaskResponseMessage."""
+        bus = LocalAgentBus()
+
+        parent = StubAgent("parent", bus=bus)
+        w1 = StubAgent("w1", bus=bus)
+        w2 = StubAgent("w2", bus=bus)
+
+        completed = []
+
+        @parent.event_handler("on_task_completed")
+        async def on_completed(agent, task_id, responses):
+            completed.append((task_id, responses))
+
+        task_id = await parent.start_task(w1, w2)
+
+        # First agent ends stream — should not trigger on_task_completed
+        await parent.on_bus_message(
+            BusTaskStreamEndMessage(
+                source="w1", target="parent", task_id=task_id, data={"result": "a"}
+            )
+        )
+        await asyncio.sleep(0)
+        self.assertEqual(len(completed), 0)
+
+        # Second agent ends stream — should trigger on_task_completed
+        await parent.on_bus_message(
+            BusTaskStreamEndMessage(
+                source="w2", target="parent", task_id=task_id, data={"result": "b"}
+            )
+        )
+        await asyncio.sleep(0)
+        self.assertEqual(len(completed), 1)
+        self.assertEqual(completed[0][0], task_id)
+        self.assertEqual(completed[0][1], {"w1": {"result": "a"}, "w2": {"result": "b"}})
+
+    async def test_send_task_stream_raises_without_active_task(self):
+        """All stream helpers raise RuntimeError when no active task."""
+        bus = LocalAgentBus()
+        agent = StubAgent("worker", bus=bus)
+
+        with self.assertRaises(RuntimeError):
+            await agent.send_task_stream_start()
+
+        with self.assertRaises(RuntimeError):
+            await agent.send_task_stream_data()
+
+        with self.assertRaises(RuntimeError):
+            await agent.send_task_stream_end()
 
 
 if __name__ == "__main__":

@@ -7,14 +7,18 @@
 """Abstract base agent for the multi-agent framework.
 
 Provides the `BaseAgent` class that all agents inherit from, handling
-agent lifecycle, activation, transfer, and parent-child relationships.
+agent lifecycle, activation, transfer, parent-child relationships, and
+long-running task coordination.
 """
 
 import asyncio
+import uuid
 from abc import abstractmethod
-from typing import Optional, Tuple, Type
+from dataclasses import dataclass, field
+from typing import Optional, Tuple, Type, Union
 
 from loguru import logger
+from pydantic import BaseModel
 from pipecat.frames.frames import (
     CancelFrame,
     EndFrame,
@@ -28,7 +32,6 @@ from pipecat.processors.frame_processor import FrameDirection, FrameProcessor, F
 from pipecat.utils.base_object import BaseObject
 
 from pipecat_agents.bus import (
-    AgentActivationArgs,
     AgentBus,
     BusActivateAgentMessage,
     BusAddAgentMessage,
@@ -38,6 +41,13 @@ from pipecat_agents.bus import (
     BusEndAgentMessage,
     BusEndMessage,
     BusMessage,
+    BusTaskCancelMessage,
+    BusTaskRequestMessage,
+    BusTaskResponseMessage,
+    BusTaskStreamDataMessage,
+    BusTaskStreamEndMessage,
+    BusTaskStreamStartMessage,
+    BusTaskUpdateMessage,
 )
 from pipecat_agents.bus.messages import BusFrameMessage
 from pipecat_agents.bus.subscriber import BusSubscriber
@@ -140,6 +150,21 @@ class _BusEdgeProcessor(FrameProcessor, BusSubscriber):
         await self.push_frame(message.frame, message.direction)
 
 
+@dataclass
+class TaskGroup:
+    """Tracks a group of task agents launched together.
+
+    Parameters:
+        task_id: Shared identifier for all agents in this group.
+        agent_names: Names of the agents in the group.
+        responses: Collected responses keyed by agent name.
+    """
+
+    task_id: str
+    agent_names: set[str]
+    responses: dict[str, dict] = field(default_factory=dict)
+
+
 class BaseAgent(BaseObject, BusSubscriber):
     """Abstract base class for agents in the multi-agent framework.
 
@@ -156,6 +181,20 @@ class BaseAgent(BaseObject, BusSubscriber):
     - ``on_agent_started()``: Called once when the agent's pipeline is ready.
     - ``on_agent_activated(args)``: Called each time the agent is activated.
     - ``on_agent_deactivated()``: Called when the agent is deactivated.
+    - ``on_task_request(task_id, requester, payload)``: Called when a task
+      request is received.
+    - ``on_task_response(task_id, agent_name, response, status)``: Called
+      when a task agent sends a response.
+    - ``on_task_update(task_id, agent_name, update)``: Called when a task
+      agent sends a progress update.
+    - ``on_task_completed(task_id, responses)``: Called when all agents in a
+      task group have responded.
+    - ``on_task_stream_start(task_id, agent_name, data)``: Called when a task
+      agent begins streaming.
+    - ``on_task_stream_data(task_id, agent_name, data)``: Called for each
+      streaming chunk from a task agent.
+    - ``on_task_stream_end(task_id, agent_name, data)``: Called when a task
+      agent finishes streaming.
     - ``on_bus_message(message)``: Called for bus messages after default
       lifecycle handling.
 
@@ -164,6 +203,13 @@ class BaseAgent(BaseObject, BusSubscriber):
     - on_agent_started(agent)
     - on_agent_activated(agent, args)
     - on_agent_deactivated(agent)
+    - on_task_request(agent, task_id, requester, payload)
+    - on_task_response(agent, task_id, agent_name, response, status)
+    - on_task_update(agent, task_id, agent_name, update)
+    - on_task_completed(agent, task_id, responses)
+    - on_task_stream_start(agent, task_id, agent_name, data)
+    - on_task_stream_data(agent, task_id, agent_name, data)
+    - on_task_stream_end(agent, task_id, agent_name, data)
     - on_bus_message(agent, message)
 
     Example::
@@ -171,7 +217,7 @@ class BaseAgent(BaseObject, BusSubscriber):
         agent = MyAgent(name="my_agent", bus=bus)
 
         @agent.event_handler("on_agent_activated")
-        async def on_activated(agent, args: Optional[AgentActivationArgs]):
+        async def on_activated(agent, args: Optional[dict]):
             logger.info(f"Agent activated with args: {args}")
     """
 
@@ -208,13 +254,26 @@ class BaseAgent(BaseObject, BusSubscriber):
         self._finished: asyncio.Event = asyncio.Event()
         self._pipeline_started = False
         self._pending_activation = active
-        self._activation_args: Optional[AgentActivationArgs] = None
+        self._activation_args: Optional[dict] = None
         self._exclude_frames = exclude_frames
+
+        # Task state (as worker)
+        self._task_id: Optional[str] = None
+        self._task_requester: Optional[str] = None
+        # Task state (as requester)
+        self._task_groups: dict[str, TaskGroup] = {}
 
         self._register_event_handler("on_agent_started")
         self._register_event_handler("on_agent_activated")
         self._register_event_handler("on_agent_deactivated")
         self._register_event_handler("on_bus_message")
+        self._register_event_handler("on_task_request")
+        self._register_event_handler("on_task_response")
+        self._register_event_handler("on_task_update")
+        self._register_event_handler("on_task_completed")
+        self._register_event_handler("on_task_stream_start")
+        self._register_event_handler("on_task_stream_data")
+        self._register_event_handler("on_task_stream_end")
 
     @property
     def bus(self) -> AgentBus:
@@ -248,15 +307,20 @@ class BaseAgent(BaseObject, BusSubscriber):
         return self._task
 
     @property
-    def activation_args(self) -> Optional[AgentActivationArgs]:
+    def activation_args(self) -> Optional[dict]:
         """The most recent activation arguments, if any."""
         return self._activation_args
+
+    @property
+    def task_id(self) -> Optional[str]:
+        """The ID of the task this agent is currently working on."""
+        return self._task_id
 
     async def on_agent_started(self) -> None:
         """Called once when the agent's pipeline is ready."""
         pass
 
-    async def on_agent_activated(self, args: Optional[AgentActivationArgs]) -> None:
+    async def on_agent_activated(self, args: Optional[dict]) -> None:
         """Called each time the agent is activated.
 
         Override in subclasses to react to activation (e.g. set tools,
@@ -272,6 +336,87 @@ class BaseAgent(BaseObject, BusSubscriber):
 
         Override in subclasses for cleanup on deactivation. Always call
         ``super().on_agent_deactivated()``.
+        """
+        pass
+
+    async def on_task_request(self, task_id: str, requester: str, payload: Optional[dict]) -> None:
+        """Called when this agent receives a task request.
+
+        Override to perform work. Use ``send_task_update()`` to report
+        progress and ``send_task_response()`` to return results.
+
+        Args:
+            task_id: The unique identifier for this task.
+            requester: The name of the agent that launched this task.
+            payload: Optional structured data describing the work.
+        """
+        pass
+
+    async def on_task_response(
+        self, task_id: str, agent_name: str, response: Optional[dict], status: str
+    ) -> None:
+        """Called when a task agent sends a response.
+
+        Override to process individual results as they arrive.
+
+        Args:
+            task_id: The task identifier.
+            agent_name: The name of the agent that responded.
+            response: Optional result data from the agent.
+            status: Completion status (e.g. ``"completed"``).
+        """
+        pass
+
+    async def on_task_update(self, task_id: str, agent_name: str, update: Optional[dict]) -> None:
+        """Called when a task agent sends a progress update.
+
+        Override to handle intermediate progress reports.
+
+        Args:
+            task_id: The task identifier.
+            agent_name: The name of the agent that sent the update.
+            update: Optional progress data.
+        """
+        pass
+
+    async def on_task_completed(self, task_id: str, responses: dict) -> None:
+        """Called when all agents in a task group have responded.
+
+        Override to process the collected results from all agents.
+
+        Args:
+            task_id: The task identifier.
+            responses: Collected responses keyed by agent name.
+        """
+        pass
+
+    async def on_task_stream_start(self, task_id: str, agent_name: str, data: Optional[dict]) -> None:
+        """Called when a task agent begins streaming.
+
+        Args:
+            task_id: The task identifier.
+            agent_name: The name of the streaming agent.
+            data: Optional metadata about the stream.
+        """
+        pass
+
+    async def on_task_stream_data(self, task_id: str, agent_name: str, data: Optional[dict]) -> None:
+        """Called for each streaming chunk from a task agent.
+
+        Args:
+            task_id: The task identifier.
+            agent_name: The name of the streaming agent.
+            data: The chunk payload.
+        """
+        pass
+
+    async def on_task_stream_end(self, task_id: str, agent_name: str, data: Optional[dict]) -> None:
+        """Called when a task agent finishes streaming.
+
+        Args:
+            task_id: The task identifier.
+            agent_name: The name of the streaming agent.
+            data: Optional final metadata.
         """
         pass
 
@@ -298,6 +443,20 @@ class BaseAgent(BaseObject, BusSubscriber):
             await self._end(message)
         elif isinstance(message, BusCancelAgentMessage):
             await self._cancel(message)
+        elif isinstance(message, BusTaskRequestMessage):
+            await self._handle_task_request(message)
+        elif isinstance(message, BusTaskResponseMessage):
+            await self._handle_task_response(message)
+        elif isinstance(message, BusTaskUpdateMessage):
+            await self._handle_task_update(message)
+        elif isinstance(message, BusTaskCancelMessage):
+            await self._handle_task_cancel(message)
+        elif isinstance(message, BusTaskStreamStartMessage):
+            await self._handle_task_stream_start(message)
+        elif isinstance(message, BusTaskStreamDataMessage):
+            await self._handle_task_stream_data(message)
+        elif isinstance(message, BusTaskStreamEndMessage):
+            await self._handle_task_stream_end(message)
 
         await self._call_event_handler("on_bus_message", message)
 
@@ -432,15 +591,19 @@ class BaseAgent(BaseObject, BusSubscriber):
         self,
         agent_name: str,
         *,
-        args: Optional[AgentActivationArgs] = None,
+        args: Union[BaseModel, dict, None] = None,
     ) -> None:
         """Activate another agent without stopping this one.
 
         Args:
             agent_name: The name of the agent to activate.
-            args: Optional `AgentActivationArgs` forwarded to the target agent's
-                ``on_agent_activated`` handler.
+            args: Optional activation arguments forwarded to the target
+                agent's ``on_agent_activated`` handler. Accepts a
+                ``BaseModel`` (e.g. ``LLMActivationArgs``), a plain
+                dict, or None.
         """
+        if isinstance(args, BaseModel):
+            args = args.model_dump(exclude_none=True)
         await self.send_message(
             BusActivateAgentMessage(source=self.name, target=agent_name, args=args)
         )
@@ -451,6 +614,156 @@ class BaseAgent(BaseObject, BusSubscriber):
         self._active = False
         await self.on_agent_deactivated()
         await self._call_event_handler("on_agent_deactivated")
+
+    async def start_task(
+        self,
+        *agents: "BaseAgent",
+        args: Optional[dict] = None,
+        payload: Optional[dict] = None,
+    ) -> str:
+        """Launch one or more task agents with a shared task_id.
+
+        Adds agents (via ``add_agent`` + ``BusAddAgentMessage``), activates
+        them, and sends ``BusTaskRequestMessage`` to each. Returns the
+        task_id.
+
+        Args:
+            *agents: One or more agent instances to launch as task workers.
+            args: Optional activation arguments forwarded to each agent's
+                ``on_agent_activated``.
+            payload: Optional structured data describing the work, forwarded
+                via ``BusTaskRequestMessage``.
+        Returns:
+            The generated task_id shared by all agents in the group.
+        """
+        task_id = str(uuid.uuid4())
+        group = TaskGroup(task_id=task_id, agent_names={a.name for a in agents})
+        self._task_groups[task_id] = group
+
+        for agent in agents:
+            await self.add_agent(agent)
+            await self.activate_agent(agent.name, args=args)
+            await self.send_message(
+                BusTaskRequestMessage(
+                    source=self.name, target=agent.name, task_id=task_id, payload=payload
+                )
+            )
+
+        return task_id
+
+    async def cancel_task(self, task_id: str, *, reason: Optional[str] = None) -> None:
+        """Cancel a running task group.
+
+        Args:
+            task_id: The task identifier to cancel.
+            reason: Optional human-readable reason for cancellation.
+        """
+        group = self._task_groups.get(task_id)
+        if group:
+            for agent_name in group.agent_names:
+                await self.send_message(
+                    BusTaskCancelMessage(
+                        source=self.name, target=agent_name, task_id=task_id, reason=reason
+                    )
+                )
+
+    async def send_task_response(
+        self, response: Optional[dict] = None, *, status: str = "completed"
+    ) -> None:
+        """Send a task response back to the requester (called by the task agent).
+
+        Args:
+            response: Optional result data.
+            status: Completion status. Defaults to ``"completed"``.
+
+        Raises:
+            RuntimeError: If this agent has no active task.
+        """
+        if not self._task_id or not self._task_requester:
+            raise RuntimeError(f"Agent '{self}': no active task to respond to")
+        await self.send_message(
+            BusTaskResponseMessage(
+                source=self.name,
+                target=self._task_requester,
+                task_id=self._task_id,
+                response=response,
+                status=status,
+            )
+        )
+
+    async def send_task_update(self, update: Optional[dict] = None) -> None:
+        """Send a progress update to the requester (called by the task agent).
+
+        Args:
+            update: Optional progress data.
+
+        Raises:
+            RuntimeError: If this agent has no active task.
+        """
+        if not self._task_id or not self._task_requester:
+            raise RuntimeError(f"Agent '{self}': no active task to update")
+        await self.send_message(
+            BusTaskUpdateMessage(
+                source=self.name,
+                target=self._task_requester,
+                task_id=self._task_id,
+                update=update,
+            )
+        )
+
+    async def send_task_stream_start(self, data: Optional[dict] = None) -> None:
+        """Begin streaming task results back to the requester.
+
+        Args:
+            data: Optional metadata about the stream.
+
+        Raises:
+            RuntimeError: If this agent has no active task.
+        """
+        if not self._task_id or not self._task_requester:
+            raise RuntimeError(f"Agent '{self}': no active task to stream")
+        await self.send_message(
+            BusTaskStreamStartMessage(
+                source=self.name, target=self._task_requester,
+                task_id=self._task_id, data=data,
+            )
+        )
+
+    async def send_task_stream_data(self, data: Optional[dict] = None) -> None:
+        """Send a streaming chunk to the requester.
+
+        Args:
+            data: The chunk payload.
+
+        Raises:
+            RuntimeError: If this agent has no active task.
+        """
+        if not self._task_id or not self._task_requester:
+            raise RuntimeError(f"Agent '{self}': no active task to stream")
+        await self.send_message(
+            BusTaskStreamDataMessage(
+                source=self.name, target=self._task_requester,
+                task_id=self._task_id, data=data,
+            )
+        )
+
+    async def send_task_stream_end(self, data: Optional[dict] = None) -> None:
+        """End the stream. Triggers group completion on the requester.
+
+        Args:
+            data: Optional final metadata.
+
+        Raises:
+            RuntimeError: If this agent has no active task.
+        """
+        if not self._task_id or not self._task_requester:
+            raise RuntimeError(f"Agent '{self}': no active task to stream")
+        await self.send_message(
+            BusTaskStreamEndMessage(
+                source=self.name, target=self._task_requester,
+                task_id=self._task_id, data=data,
+            )
+        )
 
     async def send_message(self, message: BusMessage) -> None:
         """Send a message on the bus.
@@ -527,6 +840,79 @@ class BaseAgent(BaseObject, BusSubscriber):
             )
         if self._task:
             await self._task.cancel()
+
+    async def _handle_task_request(self, message: BusTaskRequestMessage) -> None:
+        """Handle an incoming task request."""
+        self._task_id = message.task_id
+        self._task_requester = message.source
+        await self.on_task_request(message.task_id, message.source, message.payload)
+        await self._call_event_handler(
+            "on_task_request", message.task_id, message.source, message.payload
+        )
+
+    async def _handle_task_response(self, message: BusTaskResponseMessage) -> None:
+        """Handle a task response and track group completion."""
+        await self.on_task_response(
+            message.task_id, message.source, message.response, message.status
+        )
+        await self._call_event_handler(
+            "on_task_response",
+            message.task_id,
+            message.source,
+            message.response,
+            message.status,
+        )
+        group = self._task_groups.get(message.task_id)
+        if group:
+            group.responses[message.source] = message.response or {}
+            if group.responses.keys() >= group.agent_names:
+                await self.on_task_completed(message.task_id, group.responses)
+                await self._call_event_handler(
+                    "on_task_completed", message.task_id, group.responses
+                )
+
+    async def _handle_task_update(self, message: BusTaskUpdateMessage) -> None:
+        """Handle a task progress update."""
+        await self.on_task_update(message.task_id, message.source, message.update)
+        await self._call_event_handler(
+            "on_task_update", message.task_id, message.source, message.update
+        )
+
+    async def _handle_task_cancel(self, message: BusTaskCancelMessage) -> None:
+        """Handle a task cancellation."""
+        if self._task_id == message.task_id:
+            self._task_id = None
+            self._task_requester = None
+
+    async def _handle_task_stream_start(self, message: BusTaskStreamStartMessage) -> None:
+        """Handle the start of a streaming task response."""
+        await self.on_task_stream_start(message.task_id, message.source, message.data)
+        await self._call_event_handler(
+            "on_task_stream_start", message.task_id, message.source, message.data
+        )
+
+    async def _handle_task_stream_data(self, message: BusTaskStreamDataMessage) -> None:
+        """Handle a streaming task data chunk."""
+        await self.on_task_stream_data(message.task_id, message.source, message.data)
+        await self._call_event_handler(
+            "on_task_stream_data", message.task_id, message.source, message.data
+        )
+
+    async def _handle_task_stream_end(self, message: BusTaskStreamEndMessage) -> None:
+        """Handle the end of a streaming task response."""
+        await self.on_task_stream_end(message.task_id, message.source, message.data)
+        await self._call_event_handler(
+            "on_task_stream_end", message.task_id, message.source, message.data
+        )
+        # Group completion — same logic as _handle_task_response
+        group = self._task_groups.get(message.task_id)
+        if group:
+            group.responses[message.source] = message.data or {}
+            if group.responses.keys() >= group.agent_names:
+                await self.on_task_completed(message.task_id, group.responses)
+                await self._call_event_handler(
+                    "on_task_completed", message.task_id, group.responses
+                )
 
     async def _maybe_activate(self) -> None:
         """Activate the agent, call on_agent_activated, and fire event handlers."""
