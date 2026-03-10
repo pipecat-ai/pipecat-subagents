@@ -894,17 +894,7 @@ class BaseAgent(BaseObject, BusSubscriber):
             message.response,
             message.status,
         )
-        group = self._task_groups.get(message.task_id)
-        if group:
-            group.responses[message.source] = message.response or {}
-            if group.responses.keys() >= group.agent_names:
-                if group.timeout_task:
-                    group.timeout_task.cancel()
-                del self._task_groups[message.task_id]
-                await self.on_task_completed(message.task_id, group.responses)
-                await self._call_event_handler(
-                    "on_task_completed", message.task_id, group.responses
-                )
+        await self._track_task_group_response(message.task_id, message.source, message.response)
 
     async def _handle_task_update(self, message: BusTaskUpdateMessage) -> None:
         """Handle a task progress update."""
@@ -943,17 +933,22 @@ class BaseAgent(BaseObject, BusSubscriber):
         await self._call_event_handler(
             "on_task_stream_end", message.task_id, message.source, message.data
         )
-        # Group completion — same logic as _handle_task_response
-        group = self._task_groups.get(message.task_id)
+        await self._track_task_group_response(message.task_id, message.source, message.data)
+
+    async def _track_task_group_response(
+        self, task_id: str, source: str, response: Optional[dict]
+    ) -> None:
+        """Record a task agent's response and fire completion when all have responded."""
+        group = self._task_groups.get(task_id)
         if group:
-            group.responses[message.source] = message.data or {}
+            group.responses[source] = response or {}
             if group.responses.keys() >= group.agent_names:
                 if group.timeout_task:
                     group.timeout_task.cancel()
-                del self._task_groups[message.task_id]
-                await self.on_task_completed(message.task_id, group.responses)
+                del self._task_groups[task_id]
+                await self.on_task_completed(task_id, group.responses)
                 await self._call_event_handler(
-                    "on_task_completed", message.task_id, group.responses
+                    "on_task_completed", task_id, group.responses
                 )
 
     async def _maybe_activate(self) -> None:
