@@ -13,9 +13,10 @@ and automatic tool registration.
 import asyncio
 from abc import abstractmethod
 from dataclasses import dataclass
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, Union
 
 from pipecat.adapters.schemas.tools_schema import ToolsSchema
+from pydantic import BaseModel
 from pipecat.frames.frames import (
     ControlFrame,
     FunctionCallResultProperties,
@@ -30,9 +31,31 @@ from pipecat.services.llm_service import LLMService
 from pipecat_agents.agents.base_agent import BaseAgent
 from pipecat_agents.agents.tool import _collect_tools
 from pipecat_agents.bus import AgentBus
-from pipecat_agents.bus.messages import AgentActivationArgs
 
 FunctionCallResultCallback = Callable[..., Any]
+
+
+class LLMActivationArgs(BaseModel, extra="ignore"):
+    """Typed activation arguments for LLM agents.
+
+    Use at call sites for type safety and validation::
+
+        await self.activate_agent(
+            "other",
+            args=LLMActivationArgs(messages=[...]),
+        )
+
+    ``LLMAgent.on_agent_activated`` reconstructs this from the raw dict
+    via ``model_validate``.
+
+    Attributes:
+        messages: LLM context messages to inject on activation.
+        run_llm: Whether to run the LLM after appending messages.
+            Defaults to True when ``messages`` is set.
+    """
+
+    messages: Optional[list] = None
+    run_llm: Optional[bool] = None
 
 
 @dataclass
@@ -92,7 +115,7 @@ class LLMAgent(BaseAgent):
         self._flush_done: asyncio.Event = asyncio.Event()
         self._flush_handlers_registered: bool = False
 
-    async def on_agent_activated(self, args: Optional[AgentActivationArgs]) -> None:
+    async def on_agent_activated(self, args: Optional[dict]) -> None:
         """Configure the LLM with tools and activation messages.
 
         Args:
@@ -100,13 +123,17 @@ class LLMAgent(BaseAgent):
         """
         await super().on_agent_activated(args)
 
+        activation = LLMActivationArgs.model_validate(args) if args else LLMActivationArgs()
+
         tools = self.build_tools()
         if tools:
             await self.queue_frame(LLMSetToolsFrame(tools=ToolsSchema(standard_tools=tools)))
 
-        if args and args.messages:
-            run_llm = args.run_llm if args.run_llm is not None else True
-            await self.queue_frame(LLMMessagesAppendFrame(messages=args.messages, run_llm=run_llm))
+        if activation.messages:
+            run_llm = activation.run_llm if activation.run_llm is not None else True
+            await self.queue_frame(
+                LLMMessagesAppendFrame(messages=activation.messages, run_llm=run_llm)
+            )
 
     def build_tools(self) -> list:
         """Return the tools for this agent's LLM.
@@ -172,7 +199,7 @@ class LLMAgent(BaseAgent):
         self,
         agent_name: str,
         *,
-        args: Optional[AgentActivationArgs] = None,
+        args: Union[BaseModel, dict, None] = None,
         result_callback: Optional[FunctionCallResultCallback] = None,
     ) -> None:
         """Activate another agent without stopping this one.
@@ -182,8 +209,10 @@ class LLMAgent(BaseAgent):
 
         Args:
             agent_name: The name of the agent to activate.
-            args: Optional `AgentActivationArgs` forwarded to the target agent's
-                ``on_agent_activated`` handler.
+            args: Optional activation arguments forwarded to the target
+                agent's ``on_agent_activated`` handler. Accepts a
+                ``BaseModel`` (e.g. ``LLMActivationArgs``), a plain
+                dict, or None.
             result_callback: The ``result_callback`` from `FunctionCallParams`.
         """
         await self._close_function_call(result_callback)

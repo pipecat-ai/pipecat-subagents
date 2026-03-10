@@ -22,7 +22,6 @@ from pipecat_flows.types import FlowsDirectFunction
 from pipecat_agents.agents.base_agent import BaseAgent
 from pipecat_agents.agents.tool import _collect_tools
 from pipecat_agents.bus import AgentBus
-from pipecat_agents.bus.messages import AgentActivationArgs
 
 
 class FlowsAgent(BaseAgent):
@@ -79,7 +78,7 @@ class FlowsAgent(BaseAgent):
         self._flow_manager: Optional[FlowManager] = None
         self._flow_initialized = False
 
-    async def on_agent_activated(self, args: Optional[AgentActivationArgs]) -> None:
+    async def on_agent_activated(self, args: Optional[dict]) -> None:
         """Initialize or resume the flow on activation.
 
         Args:

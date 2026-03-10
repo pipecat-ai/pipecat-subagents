@@ -45,8 +45,8 @@ from pipecat.transports.base_transport import BaseTransport, TransportParams
 from pipecat.transports.daily.transport import DailyParams
 from pipecat_flows import FlowManager, FlowResult, NodeConfig
 
-from pipecat_agents.agents import BaseAgent, FlowsAgent, LLMAgent, tool
-from pipecat_agents.bus import AgentActivationArgs, AgentBus, BusBridgeProcessor
+from pipecat_agents.agents import BaseAgent, FlowsAgent, LLMActivationArgs, LLMAgent, tool
+from pipecat_agents.bus import AgentBus, BusBridgeProcessor
 from pipecat_agents.runner import AgentRunner
 
 load_dotenv(override=True)
@@ -200,7 +200,7 @@ class ReservationAgent(FlowsAgent):
         await self.deactivate_agent()
         await self.activate_agent(
             agent,
-            args=AgentActivationArgs(
+            args=LLMActivationArgs(
                 messages=[{"role": "user", "content": reason}],
             ),
         )
@@ -237,7 +237,7 @@ class RouterAgent(LLMAgent):
         await self.deactivate_agent(result_callback=params.result_callback)
         await self.activate_agent(
             agent,
-            args=AgentActivationArgs(
+            args=LLMActivationArgs(
                 messages=[{"role": "user", "content": reason}],
             ),
         )
@@ -276,11 +276,11 @@ class RestaurantAgent(BaseAgent):
         for agent in [router, reservation]:
             await self.add_agent(agent)
 
-    async def on_agent_activated(self, args: Optional[AgentActivationArgs]) -> None:
+    async def on_agent_activated(self, args: Optional[dict]) -> None:
         await super().on_agent_activated(args)
         await self.activate_agent(
             "router",
-            args=AgentActivationArgs(
+            args=LLMActivationArgs(
                 messages=[
                     {
                         "role": "user",

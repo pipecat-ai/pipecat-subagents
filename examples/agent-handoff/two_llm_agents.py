@@ -45,8 +45,8 @@ from pipecat.services.openai.llm import OpenAILLMService
 from pipecat.transports.base_transport import BaseTransport, TransportParams
 from pipecat.transports.daily.transport import DailyParams
 
-from pipecat_agents.agents import BaseAgent, LLMAgent, tool
-from pipecat_agents.bus import AgentActivationArgs, AgentBus, BusBridgeProcessor
+from pipecat_agents.agents import BaseAgent, LLMActivationArgs, LLMAgent, tool
+from pipecat_agents.bus import AgentBus, BusBridgeProcessor
 from pipecat_agents.runner import AgentRunner
 
 load_dotenv(override=True)
@@ -78,7 +78,7 @@ class AcmeLLMAgent(LLMAgent):
         await self.deactivate_agent(result_callback=params.result_callback)
         await self.activate_agent(
             agent,
-            args=AgentActivationArgs(
+            args=LLMActivationArgs(
                 messages=[{"role": "user", "content": reason}],
             ),
         )
@@ -160,11 +160,11 @@ class AcmeAgent(BaseAgent):
         for agent in [greeter, support]:
             await self.add_agent(agent)
 
-    async def on_agent_activated(self, args: Optional[AgentActivationArgs]) -> None:
+    async def on_agent_activated(self, args: Optional[dict]) -> None:
         await super().on_agent_activated(args)
         await self.activate_agent(
             "greeter",
-            args=AgentActivationArgs(
+            args=LLMActivationArgs(
                 messages=[
                     {
                         "role": "user",

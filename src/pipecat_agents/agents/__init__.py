@@ -15,12 +15,13 @@ This package provides the core agent hierarchy:
 
 from pipecat_agents.agents.base_agent import BaseAgent
 from pipecat_agents.agents.flows_agent import FlowsAgent
-from pipecat_agents.agents.llm_agent import LLMAgent
+from pipecat_agents.agents.llm_agent import LLMActivationArgs, LLMAgent
 from pipecat_agents.agents.tool import tool
 
 __all__ = [
     "BaseAgent",
     "FlowsAgent",
+    "LLMActivationArgs",
     "LLMAgent",
     "tool",
 ]

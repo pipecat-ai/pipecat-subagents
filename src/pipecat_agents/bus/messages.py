@@ -82,32 +82,6 @@ class BusAgentRegisteredMessage(BusMessage):
 
 
 @dataclass
-class AgentActivationArgs:
-    """Arguments passed to an agent on activation.
-
-    Carried by `BusActivateAgentMessage` and forwarded to the
-    ``on_agent_activated`` event handler.
-
-    Parameters:
-        messages: LLM context messages to inject on start (e.g. to
-            tell the agent why it was activated or transferred to).
-        metadata: Optional structured data for the receiving agent.
-            Unlike ``messages`` (which are injected into LLM context),
-            metadata is opaque to the framework — the receiving agent
-            can inspect it programmatically to pre-populate state,
-            skip steps, etc.
-        run_llm: Whether to run the LLM after appending messages.
-            Defaults to True. Set to False to inject context without
-            triggering a response (e.g. outbound call context where
-            the greeting was already spoken).
-    """
-
-    messages: Optional[list] = None
-    metadata: Optional[dict] = None
-    run_llm: Optional[bool] = None
-
-
-@dataclass
 class BusActivateAgentMessage(BusMessage):
     """Tells a targeted agent to become active and start processing.
 
@@ -115,7 +89,7 @@ class BusActivateAgentMessage(BusMessage):
         args: Optional activation arguments forwarded to ``on_agent_activated``.
     """
 
-    args: Optional[AgentActivationArgs] = None
+    args: Optional[dict] = None
 
 
 @dataclass
@@ -275,3 +249,98 @@ class BusUserTranscriptMessage(BusMessage):
 
     text: str
     user_id: str
+
+
+@dataclass
+class BusTaskRequestMessage(BusMessage):
+    """Requests a task agent to start work.
+
+    Parameters:
+        task_id: Unique identifier for this task.
+        payload: Optional structured data describing the work.
+    """
+
+    task_id: str
+    payload: Optional[dict] = None
+
+
+@dataclass
+class BusTaskResponseMessage(BusMessage):
+    """Response from a task agent when it completes.
+
+    Parameters:
+        task_id: The task identifier.
+        response: Optional result data.
+        status: Completion status (e.g. "completed", "failed").
+    """
+
+    task_id: str
+    response: Optional[dict] = None
+    status: str = "completed"
+
+
+@dataclass
+class BusTaskUpdateMessage(BusMessage):
+    """Progress update from a task agent.
+
+    Parameters:
+        task_id: The task identifier.
+        update: Optional progress data.
+    """
+
+    task_id: str
+    update: Optional[dict] = None
+
+
+@dataclass
+class BusTaskCancelMessage(BusMessage):
+    """Cancel a running task.
+
+    Parameters:
+        task_id: The task identifier.
+        reason: Optional human-readable reason for cancellation.
+    """
+
+    task_id: str
+    reason: Optional[str] = None
+
+
+@dataclass
+class BusTaskStreamStartMessage(BusMessage):
+    """Signals the start of a streaming task response.
+
+    Parameters:
+        task_id: The task identifier.
+        data: Optional metadata (e.g. content type).
+    """
+
+    task_id: str
+    data: Optional[dict] = None
+
+
+@dataclass
+class BusTaskStreamDataMessage(BusMessage):
+    """A chunk of streaming task data.
+
+    Parameters:
+        task_id: The task identifier.
+        data: The chunk payload.
+    """
+
+    task_id: str
+    data: Optional[dict] = None
+
+
+@dataclass
+class BusTaskStreamEndMessage(BusMessage):
+    """Signals the end of a streaming task response.
+
+    Triggers group completion tracking (same as BusTaskResponseMessage).
+
+    Parameters:
+        task_id: The task identifier.
+        data: Optional final metadata.
+    """
+
+    task_id: str
+    data: Optional[dict] = None
