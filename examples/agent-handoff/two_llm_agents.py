@@ -22,7 +22,6 @@ Requirements:
 """
 
 import os
-from typing import Optional
 
 from dotenv import load_dotenv
 from loguru import logger
@@ -160,22 +159,22 @@ class AcmeAgent(BaseAgent):
         for agent in [greeter, support]:
             await self.add_agent(agent)
 
-    async def on_agent_activated(self, args: Optional[dict]) -> None:
-        await super().on_agent_activated(args)
-        await self.activate_agent(
-            "greeter",
-            args=LLMActivationArgs(
-                messages=[
-                    {
-                        "role": "user",
-                        "content": (
-                            "Welcome the user to Acme Corp, mention the available products "
-                            "and ask how you can help."
-                        ),
-                    },
-                ],
-            ),
-        )
+    async def on_agent_registered(self, agent_name: str) -> None:
+        if agent_name == "greeter":
+            await self.activate_agent(
+                "greeter",
+                args=LLMActivationArgs(
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": (
+                                "Welcome the user to Acme Corp, mention the available products "
+                                "and ask how you can help."
+                            ),
+                        },
+                    ],
+                ),
+            )
 
     def build_pipeline_task(self, pipeline: Pipeline) -> PipelineTask:
         return PipelineTask(pipeline, enable_rtvi=True)
