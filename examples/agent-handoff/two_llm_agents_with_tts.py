@@ -51,9 +51,9 @@ from pipecat.services.openai.llm import OpenAILLMService
 from pipecat.transports.base_transport import BaseTransport, TransportParams
 from pipecat.transports.daily.transport import DailyParams
 
-from pipecat_agents.agents import BaseAgent, LLMActivationArgs, LLMAgent, tool
-from pipecat_agents.bus import AgentBus, BusBridgeProcessor
-from pipecat_agents.runner import AgentRunner
+from pipecat_subagents.agents import BaseAgent, LLMActivationArgs, LLMAgent, tool
+from pipecat_subagents.bus import AgentBus, BusBridgeProcessor
+from pipecat_subagents.runner import AgentRunner
 
 load_dotenv(override=True)
 

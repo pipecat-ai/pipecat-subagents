@@ -19,10 +19,10 @@ the runner. Key components:
   (client connect/disconnect, turn boundaries), and frame transport.
 """
 
-from pipecat_agents.bus.bridge_processor import BusBridgeProcessor
-from pipecat_agents.bus.bus import AgentBus
-from pipecat_agents.bus.local_bus import LocalAgentBus
-from pipecat_agents.bus.messages import (
+from pipecat_subagents.bus.bridge_processor import BusBridgeProcessor
+from pipecat_subagents.bus.bus import AgentBus
+from pipecat_subagents.bus.local_bus import LocalAgentBus
+from pipecat_subagents.bus.messages import (
     BusActivateAgentMessage,
     BusAddAgentMessage,
     BusAgentRegisteredMessage,
@@ -48,7 +48,7 @@ from pipecat_agents.bus.messages import (
     BusUserTurnStartedMessage,
     BusUserTurnStoppedMessage,
 )
-from pipecat_agents.bus.subscriber import BusSubscriber
+from pipecat_subagents.bus.subscriber import BusSubscriber
 
 __all__ = [
     "AgentBus",

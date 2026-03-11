@@ -13,10 +13,10 @@ This package provides the core agent hierarchy:
 - `FlowsAgent`: Agent that uses Pipecat Flows for structured conversation.
 """
 
-from pipecat_agents.agents.base_agent import BaseAgent
-from pipecat_agents.agents.flows_agent import FlowsAgent
-from pipecat_agents.agents.llm_agent import LLMActivationArgs, LLMAgent
-from pipecat_agents.agents.tool import tool
+from pipecat_subagents.agents.base_agent import BaseAgent
+from pipecat_subagents.agents.flows_agent import FlowsAgent
+from pipecat_subagents.agents.llm_agent import LLMActivationArgs, LLMAgent
+from pipecat_subagents.agents.tool import tool
 
 __all__ = [
     "BaseAgent",

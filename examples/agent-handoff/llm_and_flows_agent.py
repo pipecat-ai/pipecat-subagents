@@ -45,9 +45,9 @@ from pipecat.transports.base_transport import BaseTransport, TransportParams
 from pipecat.transports.daily.transport import DailyParams
 from pipecat_flows import FlowManager, FlowResult, NodeConfig
 
-from pipecat_agents.agents import BaseAgent, FlowsAgent, LLMActivationArgs, LLMAgent, tool
-from pipecat_agents.bus import AgentBus, BusBridgeProcessor
-from pipecat_agents.runner import AgentRunner
+from pipecat_subagents.agents import BaseAgent, FlowsAgent, LLMActivationArgs, LLMAgent, tool
+from pipecat_subagents.bus import AgentBus, BusBridgeProcessor
+from pipecat_subagents.runner import AgentRunner
 
 load_dotenv(override=True)
 

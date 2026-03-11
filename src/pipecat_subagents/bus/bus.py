@@ -17,8 +17,8 @@ from typing import Any, Optional
 
 from pipecat.utils.base_object import BaseObject
 
-from pipecat_agents.bus.messages import BusMessage
-from pipecat_agents.bus.subscriber import BusSubscriber
+from pipecat_subagents.bus.messages import BusMessage
+from pipecat_subagents.bus.subscriber import BusSubscriber
 
 
 @dataclass

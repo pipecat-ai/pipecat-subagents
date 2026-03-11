@@ -31,7 +31,7 @@ from pipecat.pipeline.task import PipelineTask
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor, FrameProcessorSetup
 from pipecat.utils.base_object import BaseObject
 
-from pipecat_agents.bus import (
+from pipecat_subagents.bus import (
     AgentBus,
     BusActivateAgentMessage,
     BusAddAgentMessage,
@@ -49,8 +49,9 @@ from pipecat_agents.bus import (
     BusTaskStreamStartMessage,
     BusTaskUpdateMessage,
 )
-from pipecat_agents.bus.messages import BusFrameMessage
-from pipecat_agents.bus.subscriber import BusSubscriber
+from pipecat_subagents.bus.messages import BusFrameMessage
+from pipecat_subagents.bus.subscriber import BusSubscriber
+from pipecat_subagents.types import TaskStatus
 
 _LIFECYCLE_FRAMES = (StartFrame, EndFrame, CancelFrame, StopFrame)
 

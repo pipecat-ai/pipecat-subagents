@@ -6,6 +6,6 @@
 
 """Agent runner package -- lifecycle orchestration for multi-agent pipelines."""
 
-from pipecat_agents.runner.runner import AgentRunner
+from pipecat_subagents.runner.runner import AgentRunner
 
 __all__ = ["AgentRunner"]

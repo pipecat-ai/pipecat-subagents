@@ -24,7 +24,7 @@ from pipecat.processors.aggregators.llm_response_universal import (
 from pipecat.processors.frame_processor import FrameDirection
 
 if TYPE_CHECKING:
-    from pipecat_agents.agents.base_agent import BaseAgent
+    from pipecat_subagents.agents.base_agent import BaseAgent
 
 
 class BusLocalMixin:

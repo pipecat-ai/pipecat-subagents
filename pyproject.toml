@@ -3,9 +3,9 @@ requires = ["setuptools>=64", "setuptools_scm>=8"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "pipecat-ai-agents"
+name = "pipecat-ai-subagents"
 dynamic = ["version"]
-description = "Distributed Multi-Agent Framework for Pipecat"
+description = "Distributed Subagents Framework for Pipecat"
 license = { text = "BSD 2-Clause License" }
 readme = "README.md"
 requires-python = ">=3.10"

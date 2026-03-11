@@ -6,7 +6,7 @@
 
 """Bus subscriber mixin for receiving messages from an AgentBus."""
 
-from pipecat_agents.bus.messages import BusMessage
+from pipecat_subagents.bus.messages import BusMessage
 
 
 class BusSubscriber:

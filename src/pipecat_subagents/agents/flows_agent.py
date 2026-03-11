@@ -19,9 +19,9 @@ from pipecat.services.llm_service import LLMService
 from pipecat_flows import ContextStrategyConfig, FlowManager, FlowsFunctionSchema, NodeConfig
 from pipecat_flows.types import FlowsDirectFunction
 
-from pipecat_agents.agents.base_agent import BaseAgent
-from pipecat_agents.agents.tool import _collect_tools
-from pipecat_agents.bus import AgentBus
+from pipecat_subagents.agents.base_agent import BaseAgent
+from pipecat_subagents.agents.tool import _collect_tools
+from pipecat_subagents.bus import AgentBus
 
 
 class FlowsAgent(BaseAgent):

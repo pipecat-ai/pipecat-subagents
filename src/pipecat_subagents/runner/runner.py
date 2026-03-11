@@ -13,8 +13,8 @@ from loguru import logger
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.utils.base_object import BaseObject
 
-from pipecat_agents.agents.base_agent import BaseAgent
-from pipecat_agents.bus import (
+from pipecat_subagents.agents.base_agent import BaseAgent
+from pipecat_subagents.bus import (
     AgentBus,
     BusAddAgentMessage,
     BusCancelAgentMessage,
@@ -24,7 +24,7 @@ from pipecat_agents.bus import (
     BusMessage,
     LocalAgentBus,
 )
-from pipecat_agents.bus.subscriber import BusSubscriber
+from pipecat_subagents.bus.subscriber import BusSubscriber
 
 
 class AgentRunner(BaseObject, BusSubscriber):

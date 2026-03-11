@@ -12,7 +12,7 @@ from pipecat.pipeline.pipeline import Pipeline
 from pipecat.processors.frame_processor import FrameDirection
 from pipecat.tests.utils import run_test
 
-from pipecat_agents.bus import BusBridgeProcessor, BusFrameMessage, LocalAgentBus
+from pipecat_subagents.bus import BusBridgeProcessor, BusFrameMessage, LocalAgentBus
 
 
 class TestBusBridgeProcessor(unittest.IsolatedAsyncioTestCase):

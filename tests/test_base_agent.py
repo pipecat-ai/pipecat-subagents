@@ -13,8 +13,8 @@ from pipecat.pipeline.runner import PipelineRunner
 from pipecat.processors.filters.identity_filter import IdentityFilter
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
-from pipecat_agents.agents.base_agent import BaseAgent
-from pipecat_agents.bus import (
+from pipecat_subagents.agents.base_agent import BaseAgent
+from pipecat_subagents.bus import (
     BusActivateAgentMessage,
     BusAddAgentMessage,
     BusCancelAgentMessage,
@@ -653,9 +653,7 @@ class TestTaskLifecycle(unittest.IsolatedAsyncioTestCase):
             received.append((task_id, requester, payload))
 
         await agent.on_bus_message(
-            BusTaskRequestMessage(
-                source="parent", target="worker", task_id="t1", payload={"x": 1}
-            )
+            BusTaskRequestMessage(source="parent", target="worker", task_id="t1", payload={"x": 1})
         )
         await asyncio.sleep(0)  # let async event handlers run
 
@@ -719,18 +717,14 @@ class TestTaskLifecycle(unittest.IsolatedAsyncioTestCase):
 
         # First response — should not trigger on_task_completed
         await parent.on_bus_message(
-            BusTaskResponseMessage(
-                source="w1", target="parent", task_id=task_id, response={"a": 1}
-            )
+            BusTaskResponseMessage(source="w1", target="parent", task_id=task_id, response={"a": 1})
         )
         await asyncio.sleep(0)  # let async event handlers run
         self.assertEqual(len(completed), 0)
 
         # Second response — should trigger on_task_completed
         await parent.on_bus_message(
-            BusTaskResponseMessage(
-                source="w2", target="parent", task_id=task_id, response={"b": 2}
-            )
+            BusTaskResponseMessage(source="w2", target="parent", task_id=task_id, response={"b": 2})
         )
         await asyncio.sleep(0)  # let async event handlers run
         self.assertEqual(len(completed), 1)
@@ -775,8 +769,8 @@ class TestTaskLifecycle(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(RuntimeError):
             await agent.send_task_update({"progress": 50})
 
-    async def test_cancel_clears_task_state(self):
-        """BusTaskCancelMessage clears the agent's task state."""
+    async def test_cancel_auto_sends_cancelled_response(self):
+        """BusTaskCancelMessage auto-sends a cancelled response and clears state."""
         bus = LocalAgentBus()
         agent = StubAgent("worker", bus=bus)
 
@@ -786,7 +780,7 @@ class TestTaskLifecycle(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(agent.task_id, "t1")
 
-        # Cancel should clear
+        # Cancel should auto-send response (via send_task_response) and clear state
         await agent.on_bus_message(
             BusTaskCancelMessage(source="parent", target="worker", task_id="t1")
         )
@@ -919,7 +913,6 @@ class TestTaskLifecycle(unittest.IsolatedAsyncioTestCase):
 
         with self.assertRaises(RuntimeError):
             await agent.send_task_stream_end()
-
 
     async def test_start_task_timeout_cancels_task(self):
         """Short timeout triggers BusTaskCancelMessage with reason 'timeout'."""

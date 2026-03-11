@@ -8,8 +8,8 @@
 
 import asyncio
 
-from pipecat_agents.bus.bus import AgentBus
-from pipecat_agents.bus.messages import BusMessage
+from pipecat_subagents.bus.bus import AgentBus
+from pipecat_subagents.bus.messages import BusMessage
 
 
 class LocalAgentBus(AgentBus):

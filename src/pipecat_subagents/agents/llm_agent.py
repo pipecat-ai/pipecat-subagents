@@ -16,7 +16,6 @@ from dataclasses import dataclass
 from typing import Any, Callable, Optional, Union
 
 from pipecat.adapters.schemas.tools_schema import ToolsSchema
-from pydantic import BaseModel
 from pipecat.frames.frames import (
     ControlFrame,
     FunctionCallResultProperties,
@@ -27,10 +26,11 @@ from pipecat.frames.frames import (
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.processors.frame_processor import FrameDirection
 from pipecat.services.llm_service import LLMService
+from pydantic import BaseModel
 
-from pipecat_agents.agents.base_agent import BaseAgent
-from pipecat_agents.agents.tool import _collect_tools
-from pipecat_agents.bus import AgentBus
+from pipecat_subagents.agents.base_agent import BaseAgent
+from pipecat_subagents.agents.tool import _collect_tools
+from pipecat_subagents.bus import AgentBus
 
 FunctionCallResultCallback = Callable[..., Any]
 

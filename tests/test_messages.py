@@ -10,7 +10,7 @@ import unittest
 from pipecat.frames.frames import TextFrame
 from pipecat.processors.frame_processor import FrameDirection
 
-from pipecat_agents.bus import (
+from pipecat_subagents.bus import (
     BusFrameMessage,
     BusMessage,
     BusSubscriber,

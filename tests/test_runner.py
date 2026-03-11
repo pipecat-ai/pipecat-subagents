@@ -10,15 +10,15 @@ import unittest
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.processors.filters.identity_filter import IdentityFilter
 
-from pipecat_agents.agents.base_agent import BaseAgent
-from pipecat_agents.bus import (
+from pipecat_subagents.agents.base_agent import BaseAgent
+from pipecat_subagents.bus import (
     BusAddAgentMessage,
     BusCancelAgentMessage,
     BusCancelMessage,
     BusEndAgentMessage,
     BusEndMessage,
 )
-from pipecat_agents.runner.runner import AgentRunner
+from pipecat_subagents.runner.runner import AgentRunner
 
 
 class StubAgent(BaseAgent):
