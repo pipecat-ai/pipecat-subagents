@@ -23,6 +23,8 @@ from pipecat.processors.aggregators.llm_response_universal import (
 )
 from pipecat.processors.frame_processor import FrameDirection
 
+from pipecat_subagents.types import TaskStatus
+
 if TYPE_CHECKING:
     from pipecat_subagents.agents.base_agent import BaseAgent
 
@@ -271,12 +273,12 @@ class BusTaskResponseMessage(BusMessage):
     Parameters:
         task_id: The task identifier.
         response: Optional result data.
-        status: Completion status (e.g. "completed", "failed").
+        status: Completion status.
     """
 
     task_id: str
     response: Optional[dict] = None
-    status: str = "completed"
+    status: TaskStatus = TaskStatus.COMPLETED
 
 
 @dataclass

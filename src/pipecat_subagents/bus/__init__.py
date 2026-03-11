@@ -47,6 +47,7 @@ from pipecat_subagents.bus.messages import (
     BusUserTranscriptMessage,
     BusUserTurnStartedMessage,
     BusUserTurnStoppedMessage,
+    TaskStatus,
 )
 from pipecat_subagents.bus.subscriber import BusSubscriber
 
@@ -73,6 +74,7 @@ __all__ = [
     "BusTaskRequestMessage",
     "BusTaskResponseMessage",
     "BusTaskStreamDataMessage",
+    "TaskStatus",
     "BusTaskStreamEndMessage",
     "BusTaskStreamStartMessage",
     "BusTaskUpdateMessage",

@@ -18,7 +18,6 @@ from dataclasses import dataclass, field
 from typing import Optional, Tuple, Type, Union
 
 from loguru import logger
-from pydantic import BaseModel
 from pipecat.frames.frames import (
     CancelFrame,
     EndFrame,
@@ -30,6 +29,7 @@ from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.task import PipelineTask
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor, FrameProcessorSetup
 from pipecat.utils.base_object import BaseObject
+from pydantic import BaseModel
 
 from pipecat_subagents.bus import (
     AgentBus,
@@ -359,7 +359,7 @@ class BaseAgent(BaseObject, BusSubscriber):
         pass
 
     async def on_task_response(
-        self, task_id: str, agent_name: str, response: Optional[dict], status: str
+        self, task_id: str, agent_name: str, response: Optional[dict], status: TaskStatus
     ) -> None:
         """Called when a task agent sends a response.
 
@@ -369,7 +369,7 @@ class BaseAgent(BaseObject, BusSubscriber):
             task_id: The task identifier.
             agent_name: The name of the agent that responded.
             response: Optional result data from the agent.
-            status: Completion status (e.g. ``"completed"``).
+            status: Completion status.
         """
         pass
 
@@ -396,7 +396,9 @@ class BaseAgent(BaseObject, BusSubscriber):
         """
         pass
 
-    async def on_task_stream_start(self, task_id: str, agent_name: str, data: Optional[dict]) -> None:
+    async def on_task_stream_start(
+        self, task_id: str, agent_name: str, data: Optional[dict]
+    ) -> None:
         """Called when a task agent begins streaming.
 
         Args:
@@ -406,7 +408,9 @@ class BaseAgent(BaseObject, BusSubscriber):
         """
         pass
 
-    async def on_task_stream_data(self, task_id: str, agent_name: str, data: Optional[dict]) -> None:
+    async def on_task_stream_data(
+        self, task_id: str, agent_name: str, data: Optional[dict]
+    ) -> None:
         """Called for each streaming chunk from a task agent.
 
         Args:
@@ -701,13 +705,16 @@ class BaseAgent(BaseObject, BusSubscriber):
                 )
 
     async def send_task_response(
-        self, response: Optional[dict] = None, *, status: str = "completed"
+        self, response: Optional[dict] = None, *, status: TaskStatus = TaskStatus.COMPLETED
     ) -> None:
         """Send a task response back to the requester (called by the task agent).
 
+        Clears the agent's task state (``_task_id`` / ``_task_requester``)
+        after sending so that the agent is ready for a new task.
+
         Args:
             response: Optional result data.
-            status: Completion status. Defaults to ``"completed"``.
+            status: Completion status. Defaults to ``TaskStatus.COMPLETED``.
 
         Raises:
             RuntimeError: If this agent has no active task.
@@ -723,6 +730,8 @@ class BaseAgent(BaseObject, BusSubscriber):
                 status=status,
             )
         )
+        self._task_id = None
+        self._task_requester = None
 
     async def send_task_update(self, update: Optional[dict] = None) -> None:
         """Send a progress update to the requester (called by the task agent).
@@ -757,8 +766,10 @@ class BaseAgent(BaseObject, BusSubscriber):
             raise RuntimeError(f"Agent '{self}': no active task to stream")
         await self.send_message(
             BusTaskStreamStartMessage(
-                source=self.name, target=self._task_requester,
-                task_id=self._task_id, data=data,
+                source=self.name,
+                target=self._task_requester,
+                task_id=self._task_id,
+                data=data,
             )
         )
 
@@ -775,8 +786,10 @@ class BaseAgent(BaseObject, BusSubscriber):
             raise RuntimeError(f"Agent '{self}': no active task to stream")
         await self.send_message(
             BusTaskStreamDataMessage(
-                source=self.name, target=self._task_requester,
-                task_id=self._task_id, data=data,
+                source=self.name,
+                target=self._task_requester,
+                task_id=self._task_id,
+                data=data,
             )
         )
 
@@ -793,8 +806,10 @@ class BaseAgent(BaseObject, BusSubscriber):
             raise RuntimeError(f"Agent '{self}': no active task to stream")
         await self.send_message(
             BusTaskStreamEndMessage(
-                source=self.name, target=self._task_requester,
-                task_id=self._task_id, data=data,
+                source=self.name,
+                target=self._task_requester,
+                task_id=self._task_id,
+                data=data,
             )
         )
 
@@ -905,14 +920,17 @@ class BaseAgent(BaseObject, BusSubscriber):
         )
 
     async def _handle_task_cancel(self, message: BusTaskCancelMessage) -> None:
-        """Handle a task cancellation."""
+        """Handle a task cancellation.
+
+        Calls the ``on_task_cancelled`` hook for cleanup, then
+        automatically sends a cancelled response back to the requester.
+        The requester receives ``on_task_response`` with
+        ``status="cancelled"`` — same path as completed or failed tasks.
+        """
         if self._task_id == message.task_id:
-            self._task_id = None
-            self._task_requester = None
             await self.on_task_cancelled(message.task_id, message.reason)
-            await self._call_event_handler(
-                "on_task_cancelled", message.task_id, message.reason
-            )
+            await self._call_event_handler("on_task_cancelled", message.task_id, message.reason)
+            await self.send_task_response(status=TaskStatus.CANCELLED)
 
     async def _handle_task_stream_start(self, message: BusTaskStreamStartMessage) -> None:
         """Handle the start of a streaming task response."""
@@ -948,9 +966,7 @@ class BaseAgent(BaseObject, BusSubscriber):
                     group.timeout_task.cancel()
                 del self._task_groups[task_id]
                 await self.on_task_completed(task_id, group.responses)
-                await self._call_event_handler(
-                    "on_task_completed", task_id, group.responses
-                )
+                await self._call_event_handler("on_task_completed", task_id, group.responses)
 
     async def _maybe_activate(self) -> None:
         """Activate the agent, call on_agent_activated, and fire event handlers."""
