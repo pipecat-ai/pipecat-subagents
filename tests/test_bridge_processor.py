@@ -125,9 +125,9 @@ class TestBusBridgeProcessor(unittest.IsolatedAsyncioTestCase):
         """Frames from the bus are injected at the bridge position and
         travel downstream alongside frames from later pipeline processors."""
         from pipecat.frames.frames import EndFrame
-        from pipecat.processors.frame_processor import FrameProcessor
         from pipecat.pipeline.runner import PipelineRunner
         from pipecat.pipeline.task import PipelineTask
+        from pipecat.processors.frame_processor import FrameProcessor
 
         class AppendFrameProcessor(FrameProcessor):
             """Appends a TextFrame for every TextFrame it sees."""
@@ -136,9 +136,7 @@ class TestBusBridgeProcessor(unittest.IsolatedAsyncioTestCase):
                 await super().process_frame(frame, direction)
                 await self.push_frame(frame, direction)
                 if isinstance(frame, TextFrame):
-                    await self.push_frame(
-                        TextFrame(text="after_bridge"), direction
-                    )
+                    await self.push_frame(TextFrame(text="after_bridge"), direction)
 
         bus = LocalAgentBus()
         bridge = BusBridgeProcessor(
