@@ -295,6 +295,17 @@ class BusTaskUpdateMessage(BusMessage):
 
 
 @dataclass
+class BusTaskUpdateRequestMessage(BusMessage):
+    """Request a progress update from a task agent.
+
+    Parameters:
+        task_id: The task identifier.
+    """
+
+    task_id: str
+
+
+@dataclass
 class BusTaskCancelMessage(BusMessage):
     """Cancel a running task.
 

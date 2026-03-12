@@ -48,6 +48,7 @@ from pipecat_subagents.bus import (
     BusTaskStreamEndMessage,
     BusTaskStreamStartMessage,
     BusTaskUpdateMessage,
+    BusTaskUpdateRequestMessage,
 )
 from pipecat_subagents.bus.messages import BusFrameMessage
 from pipecat_subagents.bus.subscriber import BusSubscriber
@@ -191,6 +192,8 @@ class BaseAgent(BaseObject, BusSubscriber):
       when a task agent sends a response.
     - ``on_task_update(task_id, agent_name, update)``: Called when a task
       agent sends a progress update.
+    - ``on_task_update_requested(task_id)``: Called when the requester asks
+      for a progress update.
     - ``on_task_completed(task_id, responses)``: Called when all agents in a
       task group have responded.
     - ``on_task_stream_start(task_id, agent_name, data)``: Called when a task
@@ -213,6 +216,7 @@ class BaseAgent(BaseObject, BusSubscriber):
     - on_task_request(agent, task_id, requester, payload)
     - on_task_response(agent, task_id, agent_name, response, status)
     - on_task_update(agent, task_id, agent_name, update)
+    - on_task_update_requested(agent, task_id)
     - on_task_completed(agent, task_id, responses)
     - on_task_stream_start(agent, task_id, agent_name, data)
     - on_task_stream_data(agent, task_id, agent_name, data)
@@ -279,6 +283,7 @@ class BaseAgent(BaseObject, BusSubscriber):
         self._register_event_handler("on_task_request")
         self._register_event_handler("on_task_response")
         self._register_event_handler("on_task_update")
+        self._register_event_handler("on_task_update_requested")
         self._register_event_handler("on_task_completed")
         self._register_event_handler("on_task_stream_start")
         self._register_event_handler("on_task_stream_data")
@@ -399,6 +404,16 @@ class BaseAgent(BaseObject, BusSubscriber):
         """
         pass
 
+    async def on_task_update_requested(self, task_id: str) -> None:
+        """Called when the requester asks for a progress update.
+
+        Override to send back a progress update via ``send_task_update()``.
+
+        Args:
+            task_id: The task identifier.
+        """
+        pass
+
     async def on_task_completed(self, task_id: str, responses: dict) -> None:
         """Called when all agents in a task group have responded.
 
@@ -486,6 +501,8 @@ class BaseAgent(BaseObject, BusSubscriber):
             await self._handle_task_response(message)
         elif isinstance(message, BusTaskUpdateMessage):
             await self._handle_task_update(message)
+        elif isinstance(message, BusTaskUpdateRequestMessage):
+            await self._handle_task_update_request(message)
         elif isinstance(message, BusTaskCancelMessage):
             await self._handle_task_cancel(message)
         elif isinstance(message, BusTaskStreamStartMessage):
@@ -720,6 +737,17 @@ class BaseAgent(BaseObject, BusSubscriber):
                     )
                 )
 
+    async def request_task_update(self, task_id: str, agent_name: str) -> None:
+        """Request a progress update from a task agent.
+
+        Args:
+            task_id: The task identifier.
+            agent_name: The name of the agent to request an update from.
+        """
+        await self.send_message(
+            BusTaskUpdateRequestMessage(source=self.name, target=agent_name, task_id=task_id)
+        )
+
     async def send_task_response(
         self, response: Optional[dict] = None, *, status: TaskStatus = TaskStatus.COMPLETED
     ) -> None:
@@ -944,6 +972,12 @@ class BaseAgent(BaseObject, BusSubscriber):
         await self._call_event_handler(
             "on_task_update", message.task_id, message.source, message.update
         )
+
+    async def _handle_task_update_request(self, message: BusTaskUpdateRequestMessage) -> None:
+        """Handle a task update request from the requester."""
+        if self._task_id == message.task_id:
+            await self.on_task_update_requested(message.task_id)
+            await self._call_event_handler("on_task_update_requested", message.task_id)
 
     async def _handle_task_cancel(self, message: BusTaskCancelMessage) -> None:
         """Handle a task cancellation.

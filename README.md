@@ -76,23 +76,30 @@ Tasks let a parent agent spawn workers, wait for results, and optionally cancel 
 
 ```
                         Parent                              Worker
-                           │                                   │
-                           │  start_task(payload, timeout)     │
-                           ├──────────────────────────────────►│ on_task_request()
-                           │                                   │
-                           │           send_task_update()      │
-          on_task_update() │◄──────────────────────────────────┤ (optional)
-                           │                                   │
-                           │       send_task_stream_start()    │
-    on_task_stream_start() │◄──────────────────────────────────┤ ┐
-                           │       send_task_stream_data()     │ │ streaming
-     on_task_stream_data() │◄──────────────────────────────────┤ │ (optional)
-                           │       send_task_stream_end()      │ │
-      on_task_stream_end() │◄──────────────────────────────────┤ ┘
-                           │                                   │
-                           │      send_task_response(status)   │
-        on_task_response() │◄──────────────────────────────────┤
-       on_task_completed() │                                   │
+                           │                                  │
+                           │ start_task(payload, timeout)     │
+                           ├─────────────────────────────────►│ on_task_request()
+                           │                                  │
+                           │ request_task_update()            │
+                           ├─────────────────────────────────►│ on_task_update_requested()
+                           │               send_task_update() │ (optional)
+          on_task_update() │◄─────────────────────────────────┤
+                           │                                  │
+                           │               ...                │
+                           │                                  │
+                           │               send_task_update() │ (optional)
+          on_task_update() │◄─────────────────────────────────┤
+                           │                                  │
+                           │         send_task_stream_start() │
+    on_task_stream_start() │◄─────────────────────────────────┤ ┐
+                           │          send_task_stream_data() │ │ streaming
+     on_task_stream_data() │◄─────────────────────────────────┤ │ (optional)
+                           │           send_task_stream_end() │ │
+      on_task_stream_end() │◄─────────────────────────────────┤ ┘
+                           │                                  │
+                           │       send_task_response(status) │
+        on_task_response() │◄─────────────────────────────────┤
+       on_task_completed() │                                  │
 ```
 
 #### Task hooks
@@ -100,6 +107,7 @@ Tasks let a parent agent spawn workers, wait for results, and optionally cancel 
 | Hook                              | When it fires                                                                     |
 |-----------------------------------|-----------------------------------------------------------------------------------|
 | `on_task_request()`               | Worker: received work from a parent.                                              |
+| `on_task_update_requested()`      | Worker: parent requested a progress update. Respond with `send_task_update()`.    |
 | `on_task_cancelled()`             | Worker: parent cancelled this task. A `CANCELLED` response is sent automatically. |
 | `on_task_response()`              | Parent: a worker sent a response.                                                 |
 | `on_task_completed()`             | Parent: all workers in the task group have responded.                             |
