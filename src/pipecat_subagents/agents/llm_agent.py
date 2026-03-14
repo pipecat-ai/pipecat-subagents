@@ -105,6 +105,8 @@ class LLMAgent(BaseAgent):
             name: Unique name for this agent.
             bus: The `AgentBus` for inter-agent communication.
             active: Whether the agent starts active. Defaults to False.
+            enable_bus_sinks: Whether to forward pipeline frames to the
+                bus and receive frames from the bus. Defaults to False.
         """
         super().__init__(
             name,

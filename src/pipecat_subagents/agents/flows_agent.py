@@ -51,6 +51,7 @@ class FlowsAgent(BaseAgent):
         context_strategy: Optional[ContextStrategyConfig] = None,
         global_functions: Optional[List[FlowsFunctionSchema | FlowsDirectFunction]] = None,
         active: bool = False,
+        enable_bus_sinks: bool = True,
     ):
         """Initialize the FlowsAgent.
 
@@ -64,12 +65,14 @@ class FlowsAgent(BaseAgent):
             global_functions: Optional list of functions available at every
                 node, forwarded to `FlowManager`.
             active: Whether the agent starts active. Defaults to False.
+            enable_bus_sinks: Whether to forward pipeline frames to the
+                bus and receive frames from the bus. Defaults to False.
         """
         super().__init__(
             name,
             bus=bus,
             active=active,
-            enable_bus_sinks=True,
+            enable_bus_sinks=enable_bus_sinks,
         )
         self._context_aggregator = context_aggregator
         self._context_strategy = context_strategy
