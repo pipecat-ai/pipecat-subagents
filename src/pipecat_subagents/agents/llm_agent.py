@@ -28,17 +28,18 @@ from pipecat.processors.frame_processor import FrameDirection
 from pipecat.services.llm_service import LLMService
 from pydantic import BaseModel
 
-from pipecat_subagents.agents.base_agent import BaseAgent
+from pipecat_subagents.agents.base_agent import ActivationArgs, BaseAgent
 from pipecat_subagents.agents.tool import _collect_tools
 from pipecat_subagents.bus import AgentBus
 
 FunctionCallResultCallback = Callable[..., Any]
 
 
-class LLMActivationArgs(BaseModel, extra="ignore"):
-    """Typed activation arguments for LLM agents.
+class LLMActivationArgs(ActivationArgs):
+    """Activation arguments for LLM agents.
 
-    Use at call sites for type safety and validation::
+    Extends ``ActivationArgs`` with LLM-specific fields. Use at call
+    sites for type safety and validation::
 
         await self.activate_agent(
             "other",
@@ -96,6 +97,7 @@ class LLMAgent(BaseAgent):
         *,
         bus: AgentBus,
         active: bool = False,
+        enable_bus_sinks: bool = True,
     ):
         """Initialize the LLMAgent.
 
@@ -108,7 +110,7 @@ class LLMAgent(BaseAgent):
             name,
             bus=bus,
             active=active,
-            enable_bus_sinks=True,
+            enable_bus_sinks=enable_bus_sinks,
             exclude_frames=(PipelineFlushFrame,),
         )
         self._llm: Optional[LLMService] = None

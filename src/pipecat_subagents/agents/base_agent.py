@@ -57,6 +57,16 @@ from pipecat_subagents.types import TaskStatus
 _LIFECYCLE_FRAMES = (StartFrame, EndFrame, CancelFrame, StopFrame)
 
 
+class ActivationArgs(BaseModel, extra="ignore"):
+    """Base activation arguments for any agent.
+
+    Parameters:
+        metadata: Optional structured data passed during activation.
+    """
+
+    metadata: Optional[dict] = None
+
+
 class _BusEdgeProcessor(FrameProcessor, BusSubscriber):
     """Pipeline edge that bridges pipeline frames and bus messages.
 
@@ -160,6 +170,7 @@ class TaskGroup:
         task_id: Shared identifier for all agents in this group.
         agent_names: Names of the agents in the group.
         responses: Collected responses keyed by agent name.
+        timeout_task: Optional asyncio task that cancels the group on timeout.
     """
 
     task_id: str
@@ -548,14 +559,13 @@ class BaseAgent(BaseObject, BusSubscriber):
         )
 
     async def create_pipeline_task(self) -> PipelineTask:
-        """Create and configure the agent's pipeline task.
+        """Create the agent's pipeline task.
 
-        Calls ``build_pipeline()``, and ``build_pipeline_task()``, then wires
-        lifecycle event handling.
+        Called by the runner. Uses ``build_pipeline()`` and
+        ``build_pipeline_task()`` to assemble the pipeline.
 
         Returns:
-            The configured `PipelineTask`.
-
+            The configured ``PipelineTask``.
         """
         await self._bus.subscribe(self)
 
@@ -676,11 +686,10 @@ class BaseAgent(BaseObject, BusSubscriber):
         payload: Optional[dict] = None,
         timeout: Optional[float] = None,
     ) -> str:
-        """Launch one or more task agents with a shared task_id.
+        """Launch new task agents with a shared task_id.
 
-        Adds agents (via ``add_agent`` + ``BusAddAgentMessage``), activates
-        them, and sends ``BusTaskRequestMessage`` to each. Returns the
-        task_id.
+        Creates agents (via ``add_agent``), activates them, and sends
+        ``BusTaskRequestMessage`` to each.
 
         Args:
             *agents: One or more agent instances to launch as task workers.
@@ -694,23 +703,69 @@ class BaseAgent(BaseObject, BusSubscriber):
         Returns:
             The generated task_id shared by all agents in the group.
         """
-        task_id = str(uuid.uuid4())
-        group = TaskGroup(task_id=task_id, agent_names={a.name for a in agents})
-        self._task_groups[task_id] = group
+        agent_names = [a.name for a in agents]
+        task_id = self._create_task_group(agent_names, timeout=timeout)
 
         for agent in agents:
             await self.add_agent(agent)
             await self.activate_agent(agent.name, args=args)
-            await self.send_message(
-                BusTaskRequestMessage(
-                    source=self.name, target=agent.name, task_id=task_id, payload=payload
-                )
-            )
+            await self._send_task_request(agent.name, task_id, payload)
+
+        return task_id
+
+    async def request_task(
+        self,
+        *agent_names: str,
+        payload: Optional[dict] = None,
+        timeout: Optional[float] = None,
+    ) -> str:
+        """Send a task request to already-running agents.
+
+        Unlike ``start_task``, this does not create or activate agents —
+        it sends ``BusTaskRequestMessage`` to agents that are already on
+        the bus.
+
+        Args:
+            *agent_names: Names of the agents to send the task to.
+            payload: Optional structured data describing the work.
+            timeout: Optional timeout in seconds. If set, the task is
+                automatically cancelled after this duration.
+
+        Returns:
+            The generated task_id shared by all agents in the group.
+        """
+        task_id = self._create_task_group(list(agent_names), timeout=timeout)
+
+        for name in agent_names:
+            await self._send_task_request(name, task_id, payload)
+
+        return task_id
+
+    def _create_task_group(
+        self,
+        agent_names: list[str],
+        *,
+        timeout: Optional[float] = None,
+    ) -> str:
+        """Create a task group and return the generated task_id."""
+        task_id = str(uuid.uuid4())
+        group = TaskGroup(task_id=task_id, agent_names=set(agent_names))
+        self._task_groups[task_id] = group
 
         if timeout is not None:
             group.timeout_task = asyncio.create_task(self._task_timeout(task_id, timeout))
 
         return task_id
+
+    async def _send_task_request(
+        self, agent_name: str, task_id: str, payload: Optional[dict]
+    ) -> None:
+        """Send a BusTaskRequestMessage to a single agent."""
+        await self.send_message(
+            BusTaskRequestMessage(
+                source=self.name, target=agent_name, task_id=task_id, payload=payload
+            )
+        )
 
     async def _task_timeout(self, task_id: str, timeout: float) -> None:
         try:
@@ -751,10 +806,9 @@ class BaseAgent(BaseObject, BusSubscriber):
     async def send_task_response(
         self, response: Optional[dict] = None, *, status: TaskStatus = TaskStatus.COMPLETED
     ) -> None:
-        """Send a task response back to the requester (called by the task agent).
+        """Send a task response back to the requester.
 
-        Clears the agent's task state (``_task_id`` / ``_task_requester``)
-        after sending so that the agent is ready for a new task.
+        After sending, the agent is ready to accept a new task.
 
         Args:
             response: Optional result data.
@@ -778,7 +832,7 @@ class BaseAgent(BaseObject, BusSubscriber):
         self._task_requester = None
 
     async def send_task_update(self, update: Optional[dict] = None) -> None:
-        """Send a progress update to the requester (called by the task agent).
+        """Send a progress update to the requester.
 
         Args:
             update: Optional progress data.
