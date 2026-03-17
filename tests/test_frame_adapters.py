@@ -14,19 +14,14 @@ from pipecat.processors.aggregators.llm_context import (
 )
 from pipecat.processors.frame_processor import FrameDirection
 
-from pipecat_subagents.bus.adapters import (
-    LLMContextAdapter,
-    LLMContextFrameAdapter,
-    TextFrameAdapter,
-    TranscriptionFrameAdapter,
-)
+from pipecat_subagents.bus.adapters import FrameAdapter
 from pipecat_subagents.bus.messages import BusFrameMessage
 from pipecat_subagents.bus.serializers import JSONMessageSerializer
 
 
-class TestTextFrameAdapter(unittest.TestCase):
+class TestFrameAdapterTextFrame(unittest.TestCase):
     def test_round_trip(self):
-        adapter = TextFrameAdapter()
+        adapter = FrameAdapter()
         frame = TextFrame(text="hello world")
         data = adapter.serialize(frame)
         restored = adapter.deserialize(data)
@@ -35,9 +30,9 @@ class TestTextFrameAdapter(unittest.TestCase):
         self.assertEqual(restored.text, "hello world")
 
 
-class TestTranscriptionFrameAdapter(unittest.TestCase):
+class TestFrameAdapterTranscriptionFrame(unittest.TestCase):
     def test_round_trip_basic(self):
-        adapter = TranscriptionFrameAdapter()
+        adapter = FrameAdapter()
         frame = TranscriptionFrame(
             text="hello",
             user_id="user-1",
@@ -56,7 +51,7 @@ class TestTranscriptionFrameAdapter(unittest.TestCase):
     def test_round_trip_with_language(self):
         from pipecat.transcriptions.language import Language
 
-        adapter = TranscriptionFrameAdapter()
+        adapter = FrameAdapter()
         frame = TranscriptionFrame(
             text="hola",
             user_id="user-1",
@@ -71,17 +66,22 @@ class TestTranscriptionFrameAdapter(unittest.TestCase):
         self.assertTrue(restored.finalized)
 
 
-class TestLLMContextAdapter(unittest.TestCase):
+class TestFrameAdapterLLMContextFrame(unittest.TestCase):
+    def _round_trip_context(self, ctx):
+        adapter = FrameAdapter()
+        frame = LLMContextFrame(context=ctx)
+        data = adapter.serialize(frame)
+        restored = adapter.deserialize(data)
+        self.assertIsInstance(restored, LLMContextFrame)
+        return restored.context
+
     def test_round_trip_messages_only(self):
-        adapter = LLMContextAdapter()
         ctx = LLMContext(messages=[
             {"role": "system", "content": "You are helpful"},
             {"role": "user", "content": "hello"},
         ])
-        data = adapter.serialize(ctx)
-        restored = adapter.deserialize(data)
+        restored = self._round_trip_context(ctx)
 
-        self.assertIsInstance(restored, LLMContext)
         self.assertEqual(len(restored.messages), 2)
         self.assertEqual(restored.messages[0]["role"], "system")
         self.assertEqual(restored.messages[1]["content"], "hello")
@@ -89,13 +89,11 @@ class TestLLMContextAdapter(unittest.TestCase):
         self.assertIsInstance(restored.tool_choice, NotGiven)
 
     def test_round_trip_with_specific_message(self):
-        adapter = LLMContextAdapter()
         ctx = LLMContext(messages=[
             {"role": "user", "content": "hi"},
             LLMSpecificMessage(llm="anthropic", message={"custom": "data"}),
         ])
-        data = adapter.serialize(ctx)
-        restored = adapter.deserialize(data)
+        restored = self._round_trip_context(ctx)
 
         self.assertEqual(len(restored.messages), 2)
         self.assertIsInstance(restored.messages[0], dict)
@@ -107,7 +105,6 @@ class TestLLMContextAdapter(unittest.TestCase):
         from pipecat.adapters.schemas.function_schema import FunctionSchema
         from pipecat.adapters.schemas.tools_schema import ToolsSchema
 
-        adapter = LLMContextAdapter()
         tools = ToolsSchema(standard_tools=[
             FunctionSchema(
                 name="get_weather",
@@ -120,8 +117,7 @@ class TestLLMContextAdapter(unittest.TestCase):
             messages=[{"role": "user", "content": "weather?"}],
             tools=tools,
         )
-        data = adapter.serialize(ctx)
-        restored = adapter.deserialize(data)
+        restored = self._round_trip_context(ctx)
 
         self.assertNotIsInstance(restored.tools, NotGiven)
         self.assertEqual(len(restored.tools.standard_tools), 1)
@@ -129,40 +125,24 @@ class TestLLMContextAdapter(unittest.TestCase):
         self.assertEqual(restored.tools.standard_tools[0].required, ["location"])
 
     def test_round_trip_with_tool_choice(self):
-        adapter = LLMContextAdapter()
         ctx = LLMContext(
             messages=[{"role": "user", "content": "hi"}],
             tool_choice="auto",
         )
-        data = adapter.serialize(ctx)
-        restored = adapter.deserialize(data)
+        restored = self._round_trip_context(ctx)
 
         self.assertEqual(restored.tool_choice, "auto")
 
 
-class TestLLMContextFrameAdapter(unittest.TestCase):
-    def test_round_trip(self):
-        adapter = LLMContextFrameAdapter()
-        ctx = LLMContext(messages=[{"role": "user", "content": "hello"}])
-        frame = LLMContextFrame(context=ctx)
-
-        data = adapter.serialize(frame)
-        restored = adapter.deserialize(data)
-
-        self.assertIsInstance(restored, LLMContextFrame)
-        self.assertEqual(len(restored.context.messages), 1)
-        self.assertEqual(restored.context.messages[0]["content"], "hello")
-
-
-class TestFrameAdaptersWithSerializer(unittest.TestCase):
-    """Integration: adapters registered on JSONMessageSerializer."""
+class TestFrameAdapterWithSerializer(unittest.TestCase):
+    """Integration: FrameAdapter registered on JSONMessageSerializer."""
 
     def setUp(self):
+        from pipecat.frames.frames import Frame
+
         self.serializer = JSONMessageSerializer()
-        self.serializer.register_adapter(TextFrame, TextFrameAdapter())
-        self.serializer.register_adapter(TranscriptionFrame, TranscriptionFrameAdapter())
-        self.serializer.register_adapter(LLMContextFrame, LLMContextFrameAdapter())
-        self.serializer.register_adapter(LLMContext, LLMContextAdapter())
+        frame_adapter = FrameAdapter()
+        self.serializer.register_adapter(Frame, frame_adapter)
 
     def test_text_frame_message_round_trip(self):
         msg = BusFrameMessage(

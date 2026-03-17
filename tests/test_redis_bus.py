@@ -6,7 +6,7 @@
 
 import asyncio
 import unittest
-from typing import Any
+
 from pipecat.frames.frames import Frame, TextFrame
 from pipecat.processors.frame_processor import FrameDirection
 
@@ -18,18 +18,9 @@ from pipecat_subagents.bus import (
     BusSubscriber,
     BusTaskRequestMessage,
 )
+from pipecat_subagents.bus.adapters import FrameAdapter
 from pipecat_subagents.bus.network.redis import RedisBus
-from pipecat_subagents.bus.serializers import TypeAdapter, JSONMessageSerializer
-
-
-class TextTypeAdapter(TypeAdapter):
-    """Test adapter for TextFrame."""
-
-    def serialize(self, frame: Frame) -> dict[str, Any]:
-        return {"text": frame.text}
-
-    def deserialize(self, data: dict[str, Any]) -> Frame:
-        return TextFrame(text=data["text"])
+from pipecat_subagents.bus.serializers import JSONMessageSerializer
 
 
 class FakePubSub:
@@ -88,7 +79,7 @@ class TestRedisBus(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.redis = FakeRedis()
         self.serializer = JSONMessageSerializer()
-        self.serializer.register_adapter(TextFrame, TextTypeAdapter())
+        self.serializer.register_adapter(Frame, FrameAdapter())
         self.bus = RedisBus(
             redis=self.redis,
             serializer=self.serializer,

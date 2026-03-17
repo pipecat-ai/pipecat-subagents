@@ -7,7 +7,7 @@
 """Abstract base classes for bus message serialization."""
 
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, Optional
 
 from pipecat_subagents.bus.messages import BusMessage
 
@@ -66,7 +66,7 @@ class MessageSerializer(ABC):
         pass
 
     @abstractmethod
-    def deserialize(self, data: bytes) -> BusMessage:
+    def deserialize(self, data: bytes) -> Optional[BusMessage]:
         """Reconstruct a bus message from bytes.
 
         Args:

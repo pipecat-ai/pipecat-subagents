@@ -11,6 +11,7 @@ import json
 from enum import Enum
 from typing import Any, Optional
 
+from loguru import logger
 from pipecat_subagents.bus.messages import BusMessage
 from pipecat_subagents.bus.serializers.base import MessageSerializer, TypeAdapter
 
@@ -79,7 +80,7 @@ class JSONMessageSerializer(MessageSerializer):
         data = self._message_to_dict(message)
         return json.dumps(data, separators=(",", ":")).encode("utf-8")
 
-    def deserialize(self, data: bytes) -> BusMessage:
+    def deserialize(self, data: bytes) -> Optional[BusMessage]:
         """Reconstruct a bus message from JSON bytes.
 
         Args:
@@ -103,7 +104,9 @@ class JSONMessageSerializer(MessageSerializer):
             value = getattr(message, f.name)
             if value is None:
                 continue
-            fields[f.name] = self._serialize_value(value)
+            serialized = self._serialize_value(value)
+            if serialized is not None:
+                fields[f.name] = serialized
 
         return {"type": type_name, "fields": fields}
 
@@ -120,10 +123,10 @@ class JSONMessageSerializer(MessageSerializer):
         # Look up a type adapter
         adapter = self._find_adapter(type(value))
         if adapter is None:
-            raise ValueError(
-                f"No adapter registered for {type(value).__name__}. "
-                f"Register one with register_adapter()."
+            logger.warning(
+                f"JSONMessageSerializer: skipping field with unserializable type {type(value).__name__}"
             )
+            return None
         return {
             "__type__": type(value).__name__,
             "__data__": adapter.serialize(value),
@@ -136,7 +139,8 @@ class JSONMessageSerializer(MessageSerializer):
 
         msg_cls = _MESSAGE_TYPES.get(type_name)
         if msg_cls is None:
-            raise ValueError(f"Unknown message type: {type_name}")
+            logger.warning(f"JSONMessageSerializer: unknown message type {type_name}")
+            return None
 
         # Split into init vs non-init fields
         init_fields = {f.name for f in dataclasses.fields(msg_cls) if f.init}
@@ -168,20 +172,36 @@ class JSONMessageSerializer(MessageSerializer):
 
     def _deserialize_typed(self, type_name: str, data: Any) -> Any:
         """Deserialize a tagged value using its adapter or enum registry."""
-        # Check enum types first
-        for adapter_type in self._adapters:
+        # Direct name match
+        for adapter_type, adapter in self._adapters.items():
             if adapter_type.__name__ == type_name:
-                return self._adapters[adapter_type].deserialize(data)
+                return adapter.deserialize(data)
+
+        # MRO-based match: resolve the type via adapter subclass registries,
+        # then find the adapter through MRO (mirrors _find_adapter on serialize).
+        for adapter_type, adapter in self._adapters.items():
+            resolved = self._find_subclass(adapter_type, type_name)
+            if resolved is not None:
+                return adapter.deserialize(data)
 
         # Check known enum types (e.g. FrameDirection, TaskStatus)
-        for msg_field_type in self._iter_enum_types():
-            if msg_field_type.__name__ == type_name:
-                return msg_field_type[data]
+        for enum_type in self._iter_enum_types():
+            if enum_type.__name__ == type_name:
+                return enum_type[data]
 
-        raise ValueError(
-            f"No adapter registered for {type_name}. "
-            f"Register one with register_adapter()."
-        )
+        logger.warning(f"JSONMessageSerializer: no adapter registered for type {type_name}")
+        return None
+
+    @staticmethod
+    def _find_subclass(base: type, name: str) -> Optional[type]:
+        """Find a subclass of base with the given name."""
+        queue = list(base.__subclasses__())
+        while queue:
+            cls = queue.pop()
+            if cls.__name__ == name:
+                return cls
+            queue.extend(cls.__subclasses__())
+        return None
 
     def _find_adapter(self, type_: type) -> Optional[TypeAdapter]:
         """Find an adapter for a type, checking parent classes via MRO."""

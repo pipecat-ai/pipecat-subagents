@@ -5,11 +5,11 @@
 #
 
 import unittest
-from typing import Any
 
 from pipecat.frames.frames import Frame, TextFrame
 from pipecat.processors.frame_processor import FrameDirection
 
+from pipecat_subagents.bus.adapters import FrameAdapter
 from pipecat_subagents.bus.messages import (
     BusActivateAgentMessage,
     BusCancelMessage,
@@ -19,26 +19,13 @@ from pipecat_subagents.bus.messages import (
     BusTaskRequestMessage,
     BusTaskResponseMessage,
 )
-from pipecat_subagents.bus.serializers import (
-    TypeAdapter,
-    JSONMessageSerializer,
-)
-
-
-class TextTypeAdapter(TypeAdapter):
-    """Test adapter for TextFrame."""
-
-    def serialize(self, frame: Frame) -> dict[str, Any]:
-        return {"text": frame.text}
-
-    def deserialize(self, data: dict[str, Any]) -> Frame:
-        return TextFrame(text=data["text"])
+from pipecat_subagents.bus.serializers import JSONMessageSerializer
 
 
 class TestJSONMessageSerializer(unittest.TestCase):
     def setUp(self):
         self.serializer = JSONMessageSerializer()
-        self.serializer.register_adapter(TextFrame, TextTypeAdapter())
+        self.serializer.register_adapter(Frame, FrameAdapter())
 
     def test_round_trip_simple_message(self):
         """BusMessage serializes and deserializes correctly."""
@@ -152,8 +139,8 @@ class TestJSONMessageSerializer(unittest.TestCase):
 
         self.assertEqual(restored.direction, FrameDirection.UPSTREAM)
 
-    def test_unregistered_frame_raises(self):
-        """Serializing a frame with no adapter raises ValueError."""
+    def test_unregistered_frame_warns_and_skips(self):
+        """Serializing a frame with no adapter warns and skips the field."""
         serializer = JSONMessageSerializer()  # no adapters registered
 
         msg = BusFrameMessage(
@@ -161,16 +148,15 @@ class TestJSONMessageSerializer(unittest.TestCase):
             frame=TextFrame(text="hello"),
             direction=FrameDirection.DOWNSTREAM,
         )
-        with self.assertRaises(ValueError) as ctx:
-            serializer.serialize(msg)
-        self.assertIn("TextFrame", str(ctx.exception))
+        # Should not raise — unserializable field is skipped with a warning
+        data = serializer.serialize(msg)
+        self.assertIsInstance(data, bytes)
 
-    def test_unknown_message_type_raises(self):
-        """Deserializing an unknown message type raises ValueError."""
+    def test_unknown_message_type_returns_none(self):
+        """Deserializing an unknown message type returns None."""
         bad_data = b'{"type":"BogusMessage","fields":{"source":"a"}}'
-        with self.assertRaises(ValueError) as ctx:
-            self.serializer.deserialize(bad_data)
-        self.assertIn("BogusMessage", str(ctx.exception))
+        result = self.serializer.deserialize(bad_data)
+        self.assertIsNone(result)
 
     def test_serialized_is_bytes(self):
         """serialize() returns bytes."""
