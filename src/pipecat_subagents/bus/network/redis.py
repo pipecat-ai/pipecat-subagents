@@ -20,8 +20,13 @@ class RedisBus(AgentBus):
     """Distributed agent bus backed by Redis pub/sub.
 
     Messages are serialized via a `MessageSerializer` and published to a
-    Redis channel. Each subscriber gets its own Redis pub/sub subscription.
-    Messages marked with `BusLocalMixin` are skipped (not published).
+    Redis channel. Each subscriber gets its own Redis pub/sub subscription
+    and a local queue that receives messages from two sources:
+
+    - **Network messages** — deserialized from Redis pub/sub by a reader task.
+    - **Local messages** — `BusLocalMixin` messages (e.g. `BusAddAgentMessage`)
+      are delivered directly to local subscriber queues, bypassing Redis,
+      since they carry in-memory references that cannot be serialized.
 
     Requires the ``redis[hiredis]`` package (``redis.asyncio``).
 
@@ -55,16 +60,20 @@ class RedisBus(AgentBus):
         self._redis = redis
         self._serializer = serializer
         self._channel = channel
+        self._local_queues: list[asyncio.Queue[BusMessage]] = []
 
     async def connect(self) -> Any:
         """Create a Redis pub/sub subscription for a subscriber.
 
         Returns:
-            An ``asyncio.Queue`` fed by a Redis pub/sub listener task.
+            A ``(pubsub, queue, task)`` tuple. The queue receives both
+            network messages (via the reader task) and local messages
+            (put directly by `send()`).
         """
         pubsub = self._redis.pubsub()
         await pubsub.subscribe(self._channel)
         queue: asyncio.Queue[BusMessage] = asyncio.Queue()
+        self._local_queues.append(queue)
         task = asyncio.create_task(self._reader_task(pubsub, queue))
         return (pubsub, queue, task)
 
@@ -75,6 +84,10 @@ class RedisBus(AgentBus):
             client: The (pubsub, queue, task) tuple returned by `connect()`.
         """
         pubsub, queue, task = client
+        try:
+            self._local_queues.remove(queue)
+        except ValueError:
+            pass
         task.cancel()
         try:
             await task
@@ -84,15 +97,17 @@ class RedisBus(AgentBus):
         await pubsub.close()
 
     async def send(self, message: BusMessage) -> None:
-        """Publish a message to the Redis channel.
+        """Send a message to all subscribers.
 
-        Messages marked with `BusLocalMixin` are silently skipped.
+        `BusLocalMixin` messages are delivered directly to local subscriber
+        queues. All other messages are published to the Redis channel.
 
         Args:
             message: The bus message to send.
         """
         if isinstance(message, BusLocalMixin):
-            logger.debug(f"{self}: skipping local-only message {type(message).__name__}")
+            for queue in self._local_queues:
+                queue.put_nowait(message)
             return
         data = self._serializer.serialize(message)
         await self._redis.publish(self._channel, data)
@@ -104,7 +119,7 @@ class RedisBus(AgentBus):
             client: The (pubsub, queue, task) tuple returned by `connect()`.
 
         Returns:
-            The next deserialized `BusMessage`.
+            The next `BusMessage` from either Redis or local delivery.
         """
         _, queue, _ = client
         return await queue.get()

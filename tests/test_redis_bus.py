@@ -110,21 +110,39 @@ class TestRedisBus(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(restored.source, "agent_a")
         self.assertEqual(restored.target, "agent_b")
 
-    async def test_local_mixin_messages_skipped(self):
-        """Messages with BusLocalMixin are not published."""
-        from pipecat_subagents.agents.base_agent import BaseAgent
+    async def test_local_mixin_delivered_locally_not_to_redis(self):
+        """BusLocalMixin messages are delivered to local subscribers but not published to Redis."""
         from pipecat.pipeline.pipeline import Pipeline
         from pipecat.processors.filters.identity_filter import IdentityFilter
+
+        from pipecat_subagents.agents.base_agent import BaseAgent
 
         class StubAgent(BaseAgent):
             async def build_pipeline(self) -> Pipeline:
                 return Pipeline([IdentityFilter()])
 
+        received = []
+
+        class MySub(BusSubscriber):
+            async def on_bus_message(self, message):
+                received.append(message)
+
+        await self.bus.subscribe(MySub())
+        await self.bus.start()
+
         agent = StubAgent("test", bus=self.bus)
         msg = BusAddAgentMessage(source="parent", agent=agent)
         await self.bus.send(msg)
 
+        await asyncio.sleep(0.05)
+        await self.bus.stop()
+
+        # Not published to Redis
         self.assertEqual(len(self.redis._published), 0)
+        # But delivered locally
+        self.assertEqual(len(received), 1)
+        self.assertIsInstance(received[0], BusAddAgentMessage)
+        self.assertIs(received[0].agent, agent)
 
     async def test_round_trip_via_subscriber(self):
         """Messages published are received by subscribers."""
@@ -242,14 +260,17 @@ class TestRedisBus(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.redis._published[0][0], "custom:channel")
 
     async def test_disconnect_cleans_up(self):
-        """disconnect() cancels the reader task and closes pubsub."""
+        """disconnect() cancels the reader task, closes pubsub, and removes local queue."""
         client = await self.bus.connect()
         pubsub, queue, task = client
+
+        self.assertEqual(len(self.bus._local_queues), 1)
 
         await self.bus.disconnect(client)
 
         self.assertTrue(task.cancelled() or task.done())
         self.assertTrue(pubsub._closed)
+        self.assertEqual(len(self.bus._local_queues), 0)
 
 
 if __name__ == "__main__":
