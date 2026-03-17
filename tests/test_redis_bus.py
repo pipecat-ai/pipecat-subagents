@@ -260,17 +260,16 @@ class TestRedisBus(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.redis._published[0][0], "custom:channel")
 
     async def test_disconnect_cleans_up(self):
-        """disconnect() cancels the reader task, closes pubsub, and removes local queue."""
-        client = await self.bus.connect()
-        pubsub, queue, task = client
+        """disconnect() cancels the reader task, closes pubsub, and removes connection."""
+        conn = await self.bus.connect()
 
-        self.assertEqual(len(self.bus._local_queues), 1)
+        self.assertEqual(len(self.bus._connections), 1)
 
-        await self.bus.disconnect(client)
+        await self.bus.disconnect(conn)
 
-        self.assertTrue(task.cancelled() or task.done())
-        self.assertTrue(pubsub._closed)
-        self.assertEqual(len(self.bus._local_queues), 0)
+        self.assertTrue(conn.task.cancelled() or conn.task.done())
+        self.assertTrue(conn.pubsub._closed)
+        self.assertEqual(len(self.bus._connections), 0)
 
 
 if __name__ == "__main__":

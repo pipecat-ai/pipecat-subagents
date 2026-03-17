@@ -7,6 +7,7 @@
 """Redis pub/sub agent bus for distributed agents."""
 
 import asyncio
+from dataclasses import dataclass, field
 from typing import Any
 
 from loguru import logger
@@ -14,6 +15,21 @@ from loguru import logger
 from pipecat_subagents.bus.bus import AgentBus
 from pipecat_subagents.bus.messages import BusLocalMixin, BusMessage
 from pipecat_subagents.bus.serializers.base import MessageSerializer
+
+
+@dataclass
+class RedisConnection:
+    """Per-subscriber connection state for `RedisBus`.
+
+    Parameters:
+        pubsub: The Redis pub/sub subscription handle.
+        queue: Queue fed by both the Redis reader task and local delivery.
+        task: Background task reading from Redis pub/sub into the queue.
+    """
+
+    pubsub: Any
+    queue: asyncio.Queue[BusMessage] = field(repr=False)
+    task: asyncio.Task = field(repr=False)
 
 
 class RedisBus(AgentBus):
@@ -60,41 +76,40 @@ class RedisBus(AgentBus):
         self._redis = redis
         self._serializer = serializer
         self._channel = channel
-        self._local_queues: list[asyncio.Queue[BusMessage]] = []
+        self._connections: list[RedisConnection] = []
 
-    async def connect(self) -> Any:
+    async def connect(self) -> RedisConnection:
         """Create a Redis pub/sub subscription for a subscriber.
 
         Returns:
-            A ``(pubsub, queue, task)`` tuple. The queue receives both
-            network messages (via the reader task) and local messages
-            (put directly by `send()`).
+            A `RedisConnection` whose queue receives both network messages
+            (via the reader task) and local messages (put directly by `send()`).
         """
         pubsub = self._redis.pubsub()
         await pubsub.subscribe(self._channel)
         queue: asyncio.Queue[BusMessage] = asyncio.Queue()
-        self._local_queues.append(queue)
         task = asyncio.create_task(self._reader_task(pubsub, queue))
-        return (pubsub, queue, task)
+        conn = RedisConnection(pubsub=pubsub, queue=queue, task=task)
+        self._connections.append(conn)
+        return conn
 
-    async def disconnect(self, client: Any) -> None:
+    async def disconnect(self, client: RedisConnection) -> None:
         """Unsubscribe and clean up a Redis pub/sub connection.
 
         Args:
-            client: The (pubsub, queue, task) tuple returned by `connect()`.
+            client: The `RedisConnection` returned by `connect()`.
         """
-        pubsub, queue, task = client
         try:
-            self._local_queues.remove(queue)
+            self._connections.remove(client)
         except ValueError:
             pass
-        task.cancel()
+        client.task.cancel()
         try:
-            await task
+            await client.task
         except asyncio.CancelledError:
             pass
-        await pubsub.unsubscribe(self._channel)
-        await pubsub.close()
+        await client.pubsub.unsubscribe(self._channel)
+        await client.pubsub.close()
 
     async def send(self, message: BusMessage) -> None:
         """Send a message to all subscribers.
@@ -106,23 +121,22 @@ class RedisBus(AgentBus):
             message: The bus message to send.
         """
         if isinstance(message, BusLocalMixin):
-            for queue in self._local_queues:
-                queue.put_nowait(message)
+            for conn in self._connections:
+                conn.queue.put_nowait(message)
             return
         data = self._serializer.serialize(message)
         await self._redis.publish(self._channel, data)
 
-    async def receive(self, client: Any) -> BusMessage:
+    async def receive(self, client: RedisConnection) -> BusMessage:
         """Wait for and return the next message from the subscriber's queue.
 
         Args:
-            client: The (pubsub, queue, task) tuple returned by `connect()`.
+            client: The `RedisConnection` returned by `connect()`.
 
         Returns:
             The next `BusMessage` from either Redis or local delivery.
         """
-        _, queue, _ = client
-        return await queue.get()
+        return await client.queue.get()
 
     async def _reader_task(
         self, pubsub: Any, queue: asyncio.Queue[BusMessage]
