@@ -11,13 +11,8 @@ import json
 from enum import Enum
 from typing import Any, Optional
 
-from pipecat.frames.frames import DataFrame
-
 from pipecat_subagents.bus.messages import BusMessage
 from pipecat_subagents.bus.serializers.base import MessageSerializer, TypeAdapter
-
-# DataFrame fields that are auto-generated and not meaningful for transport.
-_DATAFRAME_FIELDS = {f.name for f in dataclasses.fields(DataFrame)}
 
 # JSON-native types that don't need an adapter.
 _JSON_NATIVE = (str, int, float, bool, type(None))
@@ -105,7 +100,7 @@ class JSONMessageSerializer(MessageSerializer):
         fields: dict[str, Any] = {}
 
         for f in dataclasses.fields(message):
-            if f.name in _DATAFRAME_FIELDS:
+            if not f.init:
                 continue
             value = getattr(message, f.name)
             if value is None:
