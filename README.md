@@ -67,8 +67,20 @@ Each agent runs its own Pipecat pipeline and communicates via the bus.
 Pub/sub communication between agents and the runner.
 
 - **`AgentBus`** — Abstract base for inter-agent messaging.
-- **`AsyncQueueBus`** — In-process implementation backed by `asyncio.Queue`.
 - **`BusBridgeProcessor`** — Mid-pipeline processor that bridges frames across agent boundaries. Non-lifecycle frames go to the bus; bus frames are injected at the bridge position.
+
+#### Local buses
+
+In-process buses for agents running in the same Python process.
+
+- **`AsyncQueueBus`** — Fan-out bus backed by per-subscriber `asyncio.Queue`s. No serialization overhead — messages are passed as Python objects. This is the default bus created by `AgentRunner`.
+
+#### Network buses
+
+Distributed buses for agents running across separate processes or machines. Network buses require a `MessageSerializer` to convert messages to/from bytes. Frame payloads inside `BusFrameMessage` are handled by pluggable `FrameAdapter`s registered on the serializer.
+
+- **`RedisBus`** — Bus backed by Redis pub/sub. Each subscriber gets its own Redis subscription. Messages marked with `BusLocalMixin` (e.g. `BusAddAgentMessage`) are silently skipped since they carry in-memory references.
+- **`JSONMessageSerializer`** — Default serializer that encodes messages as JSON. Register a `FrameAdapter` per frame type to handle serialization of Pipecat frames.
 
 ### Tasks
 
