@@ -6,14 +6,16 @@
 
 """Type adapters for bus message serialization.
 
-Provides ready-made `TypeAdapter` implementations for common Pipecat types
-(frames, aggregator messages, etc.) used in bus messages.
+Provides ready-made ``TypeAdapter`` implementations for common Pipecat types
+(``LLMContext``, ``ToolsSchema``) used in bus messages.
 """
 
 from pipecat_subagents.bus.adapters.base import TypeAdapter
-from pipecat_subagents.bus.adapters.frame_adapter import FrameAdapter
+from pipecat_subagents.bus.adapters.llm_context_adapter import LLMContextAdapter
+from pipecat_subagents.bus.adapters.tools_schema_adapter import ToolsSchemaAdapter
 
 __all__ = [
-    "FrameAdapter",
+    "LLMContextAdapter",
+    "ToolsSchemaAdapter",
     "TypeAdapter",
 ]

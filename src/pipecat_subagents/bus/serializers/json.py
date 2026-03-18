@@ -6,6 +6,7 @@
 
 """JSON-based bus message serializer with pluggable type adapters."""
 
+import base64
 import dataclasses
 import importlib
 import json
@@ -26,10 +27,10 @@ _JSON_NATIVE = (str, int, float, bool, type(None))
 class JSONMessageSerializer(MessageSerializer):
     """Serialize bus messages as JSON with pluggable type adapters.
 
-    A ``FrameAdapter`` for Pipecat frames is registered by default.
-    Additional type adapters can be registered via ``register_adapter()``
-    for non-JSON-native field types. Unregistered types are skipped with
-    a warning.
+    Handles JSON-native types, enums, bytes, dataclasses, and any type
+    with a registered ``TypeAdapter`` (e.g. ``LLMContext``, ``ToolsSchema``).
+    Adapters for common Pipecat types are registered by default.
+    Additional type adapters can be registered via ``register_adapter()``.
 
     Example::
 
@@ -41,12 +42,14 @@ class JSONMessageSerializer(MessageSerializer):
 
     def __init__(self):
         """Initialize the JSONMessageSerializer."""
-        from pipecat.frames.frames import Frame
+        from pipecat.adapters.schemas.tools_schema import ToolsSchema
+        from pipecat.processors.aggregators.llm_context import LLMContext
 
-        from pipecat_subagents.bus.adapters import FrameAdapter
+        from pipecat_subagents.bus.adapters import LLMContextAdapter, ToolsSchemaAdapter
 
         self._adapters: dict[type, TypeAdapter] = {
-            Frame: FrameAdapter(),
+            LLMContext: LLMContextAdapter(),
+            ToolsSchema: ToolsSchemaAdapter(),
         }
 
     def register_adapter(self, type_: type, adapter: TypeAdapter) -> None:
@@ -95,6 +98,8 @@ class JSONMessageSerializer(MessageSerializer):
             return {k: self._serialize_value(v) for k, v in value.items()}
         if isinstance(value, list):
             return [self._serialize_value(v) for v in value]
+        if isinstance(value, bytes):
+            return {"__type__": "bytes", "__data__": base64.b64encode(value).decode("ascii")}
         if callable(value):
             return None
         adapter = self._find_adapter(type(value))
@@ -135,6 +140,8 @@ class JSONMessageSerializer(MessageSerializer):
 
     def _deserialize_typed(self, type_name: str, data: Any) -> Any:
         """Deserialize a tagged value using its fully qualified type name."""
+        if type_name == "bytes":
+            return base64.b64decode(data)
         cls = _resolve_type(type_name)
         if cls is None:
             logger.warning(f"JSONMessageSerializer: could not resolve type {type_name}")

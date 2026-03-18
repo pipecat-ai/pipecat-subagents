@@ -14,66 +14,86 @@ from pipecat.processors.aggregators.llm_context import (
 )
 from pipecat.processors.frame_processor import FrameDirection
 
-from pipecat_subagents.bus.adapters import FrameAdapter
 from pipecat_subagents.bus.messages import BusFrameMessage
 from pipecat_subagents.bus.serializers import JSONMessageSerializer
 
 
-class TestFrameAdapterTextFrame(unittest.TestCase):
+class TestTextFrameRoundTrip(unittest.TestCase):
+    def setUp(self):
+        self.serializer = JSONMessageSerializer()
+
     def test_round_trip(self):
-        adapter = FrameAdapter()
-        frame = TextFrame(text="hello world")
-        data = adapter.serialize(frame)
-        restored = adapter.deserialize(data, target_type=type(frame))
-
-        self.assertIsInstance(restored, TextFrame)
-        self.assertEqual(restored.text, "hello world")
-
-
-class TestFrameAdapterTranscriptionFrame(unittest.TestCase):
-    def test_round_trip_basic(self):
-        adapter = FrameAdapter()
-        frame = TranscriptionFrame(
-            text="hello",
-            user_id="user-1",
-            timestamp="2026-03-17T00:00:00Z",
+        msg = BusFrameMessage(
+            source="a",
+            frame=TextFrame(text="hello world"),
+            direction=FrameDirection.DOWNSTREAM,
         )
-        data = adapter.serialize(frame)
-        restored = adapter.deserialize(data, target_type=type(frame))
+        data = self.serializer.serialize(msg)
+        restored = self.serializer.deserialize(data)
 
-        self.assertIsInstance(restored, TranscriptionFrame)
-        self.assertEqual(restored.text, "hello")
-        self.assertEqual(restored.user_id, "user-1")
-        self.assertEqual(restored.timestamp, "2026-03-17T00:00:00Z")
-        self.assertIsNone(restored.language)
-        self.assertFalse(restored.finalized)
+        self.assertIsInstance(restored.frame, TextFrame)
+        self.assertEqual(restored.frame.text, "hello world")
+
+
+class TestTranscriptionFrameRoundTrip(unittest.TestCase):
+    def setUp(self):
+        self.serializer = JSONMessageSerializer()
+
+    def test_round_trip_basic(self):
+        msg = BusFrameMessage(
+            source="a",
+            frame=TranscriptionFrame(
+                text="hello",
+                user_id="user-1",
+                timestamp="2026-03-17T00:00:00Z",
+            ),
+            direction=FrameDirection.DOWNSTREAM,
+        )
+        data = self.serializer.serialize(msg)
+        restored = self.serializer.deserialize(data)
+
+        self.assertIsInstance(restored.frame, TranscriptionFrame)
+        self.assertEqual(restored.frame.text, "hello")
+        self.assertEqual(restored.frame.user_id, "user-1")
+        self.assertEqual(restored.frame.timestamp, "2026-03-17T00:00:00Z")
+        self.assertIsNone(restored.frame.language)
+        self.assertFalse(restored.frame.finalized)
 
     def test_round_trip_with_language(self):
         from pipecat.transcriptions.language import Language
 
-        adapter = FrameAdapter()
-        frame = TranscriptionFrame(
-            text="hola",
-            user_id="user-1",
-            timestamp="2026-03-17T00:00:00Z",
-            language=Language.ES,
-            finalized=True,
+        msg = BusFrameMessage(
+            source="a",
+            frame=TranscriptionFrame(
+                text="hola",
+                user_id="user-1",
+                timestamp="2026-03-17T00:00:00Z",
+                language=Language.ES,
+                finalized=True,
+            ),
+            direction=FrameDirection.DOWNSTREAM,
         )
-        data = adapter.serialize(frame)
-        restored = adapter.deserialize(data, target_type=type(frame))
+        data = self.serializer.serialize(msg)
+        restored = self.serializer.deserialize(data)
 
-        self.assertEqual(restored.language, Language.ES)
-        self.assertTrue(restored.finalized)
+        self.assertEqual(restored.frame.language, Language.ES)
+        self.assertTrue(restored.frame.finalized)
 
 
-class TestFrameAdapterLLMContextFrame(unittest.TestCase):
+class TestLLMContextFrameRoundTrip(unittest.TestCase):
+    def setUp(self):
+        self.serializer = JSONMessageSerializer()
+
     def _round_trip_context(self, ctx):
-        adapter = FrameAdapter()
-        frame = LLMContextFrame(context=ctx)
-        data = adapter.serialize(frame)
-        restored = adapter.deserialize(data, target_type=type(frame))
-        self.assertIsInstance(restored, LLMContextFrame)
-        return restored.context
+        msg = BusFrameMessage(
+            source="a",
+            frame=LLMContextFrame(context=ctx),
+            direction=FrameDirection.DOWNSTREAM,
+        )
+        data = self.serializer.serialize(msg)
+        restored = self.serializer.deserialize(data)
+        self.assertIsInstance(restored.frame, LLMContextFrame)
+        return restored.frame.context
 
     def test_round_trip_messages_only(self):
         ctx = LLMContext(messages=[
@@ -132,59 +152,6 @@ class TestFrameAdapterLLMContextFrame(unittest.TestCase):
         restored = self._round_trip_context(ctx)
 
         self.assertEqual(restored.tool_choice, "auto")
-
-
-class TestFrameAdapterWithSerializer(unittest.TestCase):
-    """Integration: FrameAdapter registered on JSONMessageSerializer."""
-
-    def setUp(self):
-        self.serializer = JSONMessageSerializer()
-
-    def test_text_frame_message_round_trip(self):
-        msg = BusFrameMessage(
-            source="a",
-            frame=TextFrame(text="hello"),
-            direction=FrameDirection.DOWNSTREAM,
-        )
-        data = self.serializer.serialize(msg)
-        restored = self.serializer.deserialize(data)
-
-        self.assertIsInstance(restored.frame, TextFrame)
-        self.assertEqual(restored.frame.text, "hello")
-
-    def test_llm_context_frame_message_round_trip(self):
-        ctx = LLMContext(messages=[
-            {"role": "system", "content": "Be helpful"},
-            {"role": "user", "content": "hi"},
-        ])
-        msg = BusFrameMessage(
-            source="voice_agent",
-            frame=LLMContextFrame(context=ctx),
-            direction=FrameDirection.DOWNSTREAM,
-        )
-        data = self.serializer.serialize(msg)
-        restored = self.serializer.deserialize(data)
-
-        self.assertIsInstance(restored.frame, LLMContextFrame)
-        self.assertEqual(len(restored.frame.context.messages), 2)
-        self.assertEqual(restored.frame.context.messages[0]["role"], "system")
-
-    def test_transcription_frame_message_round_trip(self):
-        msg = BusFrameMessage(
-            source="main",
-            frame=TranscriptionFrame(
-                text="hello",
-                user_id="u1",
-                timestamp="2026-03-17T00:00:00Z",
-            ),
-            direction=FrameDirection.DOWNSTREAM,
-        )
-        data = self.serializer.serialize(msg)
-        restored = self.serializer.deserialize(data)
-
-        self.assertIsInstance(restored.frame, TranscriptionFrame)
-        self.assertEqual(restored.frame.text, "hello")
-        self.assertEqual(restored.frame.user_id, "u1")
 
 
 if __name__ == "__main__":
