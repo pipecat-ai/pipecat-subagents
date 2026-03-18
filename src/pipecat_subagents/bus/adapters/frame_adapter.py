@@ -140,6 +140,8 @@ class FrameAdapter(TypeAdapter):
             return [self._serialize_value(v) for v in value]
         if isinstance(value, bytes):
             return {"__type__": "bytes", "__data__": base64.b64encode(value).decode("ascii")}
+        if callable(value):
+            return None
         adapter = self._find_adapter(type(value))
         if adapter is not None:
             return {
