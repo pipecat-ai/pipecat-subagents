@@ -256,19 +256,7 @@ class LLMAgent(BaseAgent):
         if not result_callback:
             return
 
-        context_updated = asyncio.Event()
-
-        async def _on_context_updated():
-            context_updated.set()
-
-        await result_callback(
-            None,
-            properties=FunctionCallResultProperties(
-                run_llm=False,
-                on_context_updated=_on_context_updated,
-            ),
-        )
-        await context_updated.wait()
+        await result_callback(None, properties=FunctionCallResultProperties(run_llm=False))
 
         # Flush the pipeline: send a probe frame upstream from the sink, bounce
         # it back downstream from the source, and wait for it to arrive at the
