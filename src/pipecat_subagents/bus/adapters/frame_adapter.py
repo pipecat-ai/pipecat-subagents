@@ -6,8 +6,11 @@
 
 """Type adapters for Pipecat frames and related types."""
 
+import base64
 import dataclasses
+import importlib
 from enum import Enum
+from functools import lru_cache
 from typing import Any, Optional
 
 from loguru import logger
@@ -18,7 +21,7 @@ from pipecat.processors.aggregators.llm_context import (
     NotGiven,
 )
 
-from pipecat_subagents.bus.serializers.base import TypeAdapter
+from pipecat_subagents.bus.adapters.base import TypeAdapter
 
 # JSON-native types that don't need special handling.
 _JSON_NATIVE = (str, int, float, bool, type(None))
@@ -96,19 +99,25 @@ class FrameAdapter(TypeAdapter):
         if isinstance(value, _JSON_NATIVE):
             return value
         if isinstance(value, Enum):
-            return {"__type__": type(value).__name__, "__data__": value.name}
+            return {
+                "__type__": f"{type(value).__module__}.{type(value).__name__}",
+                "__data__": value.name,
+            }
         if isinstance(value, dict):
             return {k: self._serialize_value(v) for k, v in value.items()}
         if isinstance(value, list):
             return [self._serialize_value(v) for v in value]
         if isinstance(value, bytes):
-            import base64
-
             return {"__type__": "bytes", "__data__": base64.b64encode(value).decode("ascii")}
         adapter = self._find_adapter(type(value))
         if adapter is not None:
-            return {"__type__": type(value).__name__, "__data__": adapter.serialize(value)}
-        logger.warning(f"FrameAdapter: skipping field with unserializable type {type(value).__name__}")
+            return {
+                "__type__": f"{type(value).__module__}.{type(value).__name__}",
+                "__data__": adapter.serialize(value),
+            }
+        logger.warning(
+            f"FrameAdapter: skipping field with unserializable type {type(value).__name__}"
+        )
         return None
 
     def _deserialize_value(self, value: Any) -> Any:
@@ -124,17 +133,16 @@ class FrameAdapter(TypeAdapter):
 
     def _deserialize_typed(self, type_name: str, data: Any) -> Any:
         if type_name == "bytes":
-            import base64
-
             return base64.b64decode(data)
-        # Check nested adapters
-        for adapter_type, adapter in self._adapters.items():
-            if adapter_type.__name__ == type_name:
-                return adapter.deserialize(data)
-        # Check common enum types
-        for enum_type in _iter_enum_types():
-            if enum_type.__name__ == type_name:
-                return enum_type[data]
+        cls = _resolve_type(type_name)
+        if cls is None:
+            logger.warning(f"FrameAdapter: could not resolve type {type_name}")
+            return None
+        if issubclass(cls, Enum):
+            return cls[data]
+        adapter = self._find_adapter(cls)
+        if adapter is not None:
+            return adapter.deserialize(data)
         logger.warning(f"FrameAdapter: no adapter registered for type {type_name}")
         return None
 
@@ -198,12 +206,14 @@ class _LLMContextAdapter(TypeAdapter):
         result = []
         for tool in tools.standard_tools:
             if isinstance(tool, FunctionSchema):
-                result.append({
-                    "name": tool.name,
-                    "description": tool.description,
-                    "properties": tool.properties,
-                    "required": tool.required,
-                })
+                result.append(
+                    {
+                        "name": tool.name,
+                        "description": tool.description,
+                        "properties": tool.properties,
+                        "required": tool.required,
+                    }
+                )
             else:
                 result.append(dataclasses.asdict(tool))
         return result
@@ -214,17 +224,25 @@ class _LLMContextAdapter(TypeAdapter):
 
         tools = []
         for item in data:
-            tools.append(FunctionSchema(
-                name=item["name"],
-                description=item.get("description", ""),
-                properties=item.get("properties", {}),
-                required=item.get("required", []),
-            ))
+            tools.append(
+                FunctionSchema(
+                    name=item["name"],
+                    description=item.get("description", ""),
+                    properties=item.get("properties", {}),
+                    required=item.get("required", []),
+                )
+            )
         return ToolsSchema(standard_tools=tools)
 
 
-def _iter_enum_types():
-    """Yield common enum types used in frame fields."""
-    from pipecat.transcriptions.language import Language
-
-    yield Language
+@lru_cache(maxsize=None)
+def _resolve_type(qualified_name: str) -> Optional[type]:
+    """Resolve a fully qualified type name to its class."""
+    module_path, _, class_name = qualified_name.rpartition(".")
+    if not module_path:
+        return None
+    try:
+        module = importlib.import_module(module_path)
+        return getattr(module, class_name, None)
+    except ImportError:
+        return None

@@ -138,11 +138,7 @@ class TestFrameAdapterWithSerializer(unittest.TestCase):
     """Integration: FrameAdapter registered on JSONMessageSerializer."""
 
     def setUp(self):
-        from pipecat.frames.frames import Frame
-
         self.serializer = JSONMessageSerializer()
-        frame_adapter = FrameAdapter()
-        self.serializer.register_adapter(Frame, frame_adapter)
 
     def test_text_frame_message_round_trip(self):
         msg = BusFrameMessage(

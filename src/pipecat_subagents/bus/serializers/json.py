@@ -7,13 +7,17 @@
 """JSON-based bus message serializer with pluggable type adapters."""
 
 import dataclasses
+import importlib
 import json
 from enum import Enum
+from functools import lru_cache
 from typing import Any, Optional
 
 from loguru import logger
+
+from pipecat_subagents.bus.adapters.base import TypeAdapter
 from pipecat_subagents.bus.messages import BusMessage
-from pipecat_subagents.bus.serializers.base import MessageSerializer, TypeAdapter
+from pipecat_subagents.bus.serializers.base import MessageSerializer
 
 # JSON-native types that don't need an adapter.
 _JSON_NATIVE = (str, int, float, bool, type(None))
@@ -37,16 +41,14 @@ _register_message_types()
 class JSONMessageSerializer(MessageSerializer):
     """Serialize bus messages as JSON with pluggable type adapters.
 
-    Type adapters are registered per type. When serializing a message field
-    whose value isn't JSON-native, the serializer looks up an adapter by
-    the value's type and delegates to it. Unregistered non-JSON-native types
-    raise `ValueError`.
+    A ``FrameAdapter`` for Pipecat frames is registered by default.
+    Additional type adapters can be registered via ``register_adapter()``
+    for non-JSON-native field types. Unregistered types are skipped with
+    a warning.
 
     Example::
 
         serializer = JSONMessageSerializer()
-        serializer.register_adapter(TextFrame, TextFrameAdapter())
-        serializer.register_adapter(UserTurnStoppedMessage, TurnStoppedAdapter())
 
         data = serializer.serialize(message)
         restored = serializer.deserialize(data)
@@ -54,7 +56,13 @@ class JSONMessageSerializer(MessageSerializer):
 
     def __init__(self):
         """Initialize the JSONMessageSerializer."""
-        self._adapters: dict[type, TypeAdapter] = {}
+        from pipecat.frames.frames import Frame
+
+        from pipecat_subagents.bus.adapters import FrameAdapter
+
+        self._adapters: dict[type, TypeAdapter] = {
+            Frame: FrameAdapter(),
+        }
 
     def register_adapter(self, type_: type, adapter: TypeAdapter) -> None:
         """Register a type adapter.
@@ -115,7 +123,10 @@ class JSONMessageSerializer(MessageSerializer):
         if isinstance(value, _JSON_NATIVE):
             return value
         if isinstance(value, Enum):
-            return {"__type__": type(value).__name__, "__data__": value.name}
+            return {
+                "__type__": f"{type(value).__module__}.{type(value).__name__}",
+                "__data__": value.name,
+            }
         if isinstance(value, dict):
             return {k: self._serialize_value(v) for k, v in value.items()}
         if isinstance(value, list):
@@ -128,7 +139,7 @@ class JSONMessageSerializer(MessageSerializer):
             )
             return None
         return {
-            "__type__": type(value).__name__,
+            "__type__": f"{type(value).__module__}.{type(value).__name__}",
             "__data__": adapter.serialize(value),
         }
 
@@ -171,36 +182,17 @@ class JSONMessageSerializer(MessageSerializer):
         return value
 
     def _deserialize_typed(self, type_name: str, data: Any) -> Any:
-        """Deserialize a tagged value using its adapter or enum registry."""
-        # Direct name match
-        for adapter_type, adapter in self._adapters.items():
-            if adapter_type.__name__ == type_name:
-                return adapter.deserialize(data)
-
-        # MRO-based match: resolve the type via adapter subclass registries,
-        # then find the adapter through MRO (mirrors _find_adapter on serialize).
-        for adapter_type, adapter in self._adapters.items():
-            resolved = self._find_subclass(adapter_type, type_name)
-            if resolved is not None:
-                return adapter.deserialize(data)
-
-        # Check known enum types (e.g. FrameDirection, TaskStatus)
-        for enum_type in self._iter_enum_types():
-            if enum_type.__name__ == type_name:
-                return enum_type[data]
-
+        """Deserialize a tagged value using its fully qualified type name."""
+        cls = _resolve_type(type_name)
+        if cls is None:
+            logger.warning(f"JSONMessageSerializer: could not resolve type {type_name}")
+            return None
+        if issubclass(cls, Enum):
+            return cls[data]
+        adapter = self._find_adapter(cls)
+        if adapter is not None:
+            return adapter.deserialize(data)
         logger.warning(f"JSONMessageSerializer: no adapter registered for type {type_name}")
-        return None
-
-    @staticmethod
-    def _find_subclass(base: type, name: str) -> Optional[type]:
-        """Find a subclass of base with the given name."""
-        queue = list(base.__subclasses__())
-        while queue:
-            cls = queue.pop()
-            if cls.__name__ == name:
-                return cls
-            queue.extend(cls.__subclasses__())
         return None
 
     def _find_adapter(self, type_: type) -> Optional[TypeAdapter]:
@@ -210,12 +202,22 @@ class JSONMessageSerializer(MessageSerializer):
                 return self._adapters[cls]
         return None
 
-    @staticmethod
-    def _iter_enum_types():
-        """Yield enum types used in message fields."""
-        from pipecat.processors.frame_processor import FrameDirection
 
-        from pipecat_subagents.types import TaskStatus
+@lru_cache(maxsize=None)
+def _resolve_type(qualified_name: str) -> Optional[type]:
+    """Resolve a fully qualified type name to its class.
 
-        yield FrameDirection
-        yield TaskStatus
+    Args:
+        qualified_name: Dotted path like ``"pipecat.frames.frames.TextFrame"``.
+
+    Returns:
+        The resolved class, or None if it cannot be found.
+    """
+    module_path, _, class_name = qualified_name.rpartition(".")
+    if not module_path:
+        return None
+    try:
+        module = importlib.import_module(module_path)
+        return getattr(module, class_name, None)
+    except ImportError:
+        return None

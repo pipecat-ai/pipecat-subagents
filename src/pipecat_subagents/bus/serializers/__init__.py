@@ -6,16 +6,14 @@
 
 """Bus message serialization for network transport.
 
-Provides the abstract `MessageSerializer` interface, the `TypeAdapter`
-base for custom type serialization, and a default `JSONMessageSerializer`
-implementation.
+Provides the abstract `MessageSerializer` interface and a default
+`JSONMessageSerializer` implementation.
 """
 
-from pipecat_subagents.bus.serializers.base import MessageSerializer, TypeAdapter
+from pipecat_subagents.bus.serializers.base import MessageSerializer
 from pipecat_subagents.bus.serializers.json import JSONMessageSerializer
 
 __all__ = [
     "JSONMessageSerializer",
     "MessageSerializer",
-    "TypeAdapter",
 ]

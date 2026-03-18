@@ -6,10 +6,9 @@
 
 import unittest
 
-from pipecat.frames.frames import Frame, TextFrame
+from pipecat.frames.frames import TextFrame
 from pipecat.processors.frame_processor import FrameDirection
 
-from pipecat_subagents.bus.adapters import FrameAdapter
 from pipecat_subagents.bus.messages import (
     BusActivateAgentMessage,
     BusCancelMessage,
@@ -25,7 +24,6 @@ from pipecat_subagents.bus.serializers import JSONMessageSerializer
 class TestJSONMessageSerializer(unittest.TestCase):
     def setUp(self):
         self.serializer = JSONMessageSerializer()
-        self.serializer.register_adapter(Frame, FrameAdapter())
 
     def test_round_trip_simple_message(self):
         """BusMessage serializes and deserializes correctly."""
