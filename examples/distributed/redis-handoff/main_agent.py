@@ -19,6 +19,7 @@ Requirements:
 import argparse
 import asyncio
 import os
+from typing import Optional
 
 from dotenv import load_dotenv
 from loguru import logger
@@ -55,22 +56,23 @@ class AcmeAgent(BaseAgent):
         super().__init__(name, bus=bus)
         self._transport = transport
 
-    async def on_agent_registered(self, agent_name: str) -> None:
-        if agent_name == "greeter":
-            await self.activate_agent(
-                "greeter",
-                args=LLMActivationArgs(
-                    messages=[
-                        {
-                            "role": "user",
-                            "content": (
-                                "Welcome the user to Acme Corp, mention the available "
-                                "products and ask how you can help."
-                            ),
-                        },
-                    ],
-                ),
-            )
+    async def on_agent_activated(self, args: Optional[dict]) -> None:
+        await super().on_agent_activated(args)
+
+        await self.activate_agent(
+            "greeter",
+            args=LLMActivationArgs(
+                messages=[
+                    {
+                        "role": "user",
+                        "content": (
+                            "Welcome the user to Acme Corp, mention the available "
+                            "products and ask how you can help."
+                        ),
+                    },
+                ],
+            ),
+        )
 
     def build_pipeline_task(self, pipeline: Pipeline) -> PipelineTask:
         return PipelineTask(pipeline, enable_rtvi=True)
@@ -121,12 +123,8 @@ class AcmeAgent(BaseAgent):
 
 async def main():
     parser = argparse.ArgumentParser(description="Main transport agent")
-    parser.add_argument(
-        "--redis-url", default="redis://localhost:6379", help="Redis URL"
-    )
-    parser.add_argument(
-        "--channel", default="pipecat:acme", help="Redis pub/sub channel"
-    )
+    parser.add_argument("--redis-url", default="redis://localhost:6379", help="Redis URL")
+    parser.add_argument("--channel", default="pipecat:acme", help="Redis pub/sub channel")
     args = parser.parse_args()
 
     redis = Redis.from_url(args.redis_url)
