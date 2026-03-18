@@ -148,6 +148,19 @@ class FrameAdapter(TypeAdapter):
                 "__type__": f"{type(value).__module__}.{type(value).__name__}",
                 "__data__": adapter.serialize(value),
             }
+        if dataclasses.is_dataclass(value) and not isinstance(value, type):
+            fields = {}
+            for f in dataclasses.fields(value):
+                v = getattr(value, f.name)
+                if v is None:
+                    continue
+                serialized = self._serialize_value(v)
+                if serialized is not None:
+                    fields[f.name] = serialized
+            return {
+                "__type__": f"{type(value).__module__}.{type(value).__name__}",
+                "__data__": fields,
+            }
         logger.warning(
             f"FrameAdapter: skipping field with unserializable type {type(value).__name__}"
         )
@@ -176,6 +189,24 @@ class FrameAdapter(TypeAdapter):
         adapter = self._find_adapter(cls)
         if adapter is not None:
             return adapter.deserialize(data, target_type=cls)
+        if dataclasses.is_dataclass(cls) and isinstance(data, dict):
+            init_fields = {f.name: f for f in dataclasses.fields(cls) if f.init}
+            init_kwargs = {}
+            post_init = {}
+            for key, value in data.items():
+                deserialized = self._deserialize_value(value)
+                if key in init_fields:
+                    init_kwargs[key] = deserialized
+                else:
+                    post_init[key] = deserialized
+            for name, f in init_fields.items():
+                if name not in init_kwargs:
+                    if f.default is dataclasses.MISSING and f.default_factory is dataclasses.MISSING:
+                        init_kwargs[name] = None
+            obj = cls(**init_kwargs)
+            for key, value in post_init.items():
+                setattr(obj, key, value)
+            return obj
         logger.warning(f"FrameAdapter: no adapter registered for type {type_name}")
         return None
 
