@@ -139,15 +139,21 @@ class JSONMessageSerializer(MessageSerializer):
             return None
 
         # Split into init vs non-init fields
-        init_fields = {f.name for f in dataclasses.fields(msg_cls) if f.init}
+        init_field_map = {f.name: f for f in dataclasses.fields(msg_cls) if f.init}
         init_kwargs = {}
         post_init = {}
         for key, value in fields.items():
             deserialized = self._deserialize_value(value)
-            if key in init_fields:
+            if key in init_field_map:
                 init_kwargs[key] = deserialized
             else:
                 post_init[key] = deserialized
+
+        # Fill in None for required init fields missing from the data
+        for name, f in init_field_map.items():
+            if name not in init_kwargs:
+                if f.default is dataclasses.MISSING and f.default_factory is dataclasses.MISSING:
+                    init_kwargs[name] = None
 
         message = msg_cls(**init_kwargs)
         for key, value in post_init.items():

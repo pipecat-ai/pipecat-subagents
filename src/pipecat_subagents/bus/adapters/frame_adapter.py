@@ -104,15 +104,22 @@ class FrameAdapter(TypeAdapter):
             return None
 
         # Split init vs non-init
-        init_names = {f.name for f in dataclasses.fields(target_type) if f.init}
+        init_fields = {f.name: f for f in dataclasses.fields(target_type) if f.init}
         init_kwargs = {}
         post_init = {}
         for key, value in data.items():
             deserialized = self._deserialize_value(value)
-            if key in init_names:
+            if key in init_fields:
                 init_kwargs[key] = deserialized
             else:
                 post_init[key] = deserialized
+
+        # Fill in None for required init fields missing from the data
+        # (they were None during serialization and omitted)
+        for name, f in init_fields.items():
+            if name not in init_kwargs:
+                if f.default is dataclasses.MISSING and f.default_factory is dataclasses.MISSING:
+                    init_kwargs[name] = None
 
         frame = target_type(**init_kwargs)
         for key, value in post_init.items():
