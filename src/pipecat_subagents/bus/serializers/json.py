@@ -22,21 +22,6 @@ from pipecat_subagents.bus.serializers.base import MessageSerializer
 # JSON-native types that don't need an adapter.
 _JSON_NATIVE = (str, int, float, bool, type(None))
 
-# Registry of all concrete BusMessage subclasses, built once at import time.
-_MESSAGE_TYPES: dict[str, type[BusMessage]] = {}
-
-
-def _register_message_types() -> None:
-    """Walk the BusMessage class hierarchy and register all concrete subclasses."""
-    queue = [BusMessage]
-    while queue:
-        cls = queue.pop()
-        _MESSAGE_TYPES[cls.__name__] = cls
-        queue.extend(cls.__subclasses__())
-
-
-_register_message_types()
-
 
 class JSONMessageSerializer(MessageSerializer):
     """Serialize bus messages as JSON with pluggable type adapters.
@@ -105,7 +90,7 @@ class JSONMessageSerializer(MessageSerializer):
 
     def _message_to_dict(self, message: BusMessage) -> dict[str, Any]:
         """Convert a message to a JSON-compatible dict."""
-        type_name = type(message).__name__
+        type_name = f"{type(message).__module__}.{type(message).__name__}"
         fields: dict[str, Any] = {}
 
         for f in dataclasses.fields(message):
@@ -143,14 +128,14 @@ class JSONMessageSerializer(MessageSerializer):
             "__data__": adapter.serialize(value),
         }
 
-    def _dict_to_message(self, payload: dict[str, Any]) -> BusMessage:
+    def _dict_to_message(self, payload: dict[str, Any]) -> Optional[BusMessage]:
         """Reconstruct a message from a dict."""
         type_name = payload["type"]
         fields = payload["fields"]
 
-        msg_cls = _MESSAGE_TYPES.get(type_name)
+        msg_cls = _resolve_type(type_name)
         if msg_cls is None:
-            logger.warning(f"JSONMessageSerializer: unknown message type {type_name}")
+            logger.warning(f"JSONMessageSerializer: could not resolve message type {type_name}")
             return None
 
         # Split into init vs non-init fields
