@@ -191,7 +191,7 @@ class JSONMessageSerializer(MessageSerializer):
             return cls[data]
         adapter = self._find_adapter(cls)
         if adapter is not None:
-            return adapter.deserialize(data)
+            return adapter.deserialize(data, target_type=cls)
         logger.warning(f"JSONMessageSerializer: no adapter registered for type {type_name}")
         return None
 

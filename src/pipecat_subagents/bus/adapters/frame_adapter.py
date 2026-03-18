@@ -14,7 +14,6 @@ from functools import lru_cache
 from typing import Any, Optional
 
 from loguru import logger
-from pipecat.frames.frames import Frame
 from pipecat.processors.aggregators.llm_context import (
     LLMContext,
     LLMSpecificMessage,
@@ -43,14 +42,15 @@ class FrameAdapter(TypeAdapter):
     def __init__(self):
         """Initialize the adapter with built-in nested adapters.
 
-        Registers a default ``_LLMContextAdapter`` for ``LLMContext`` fields
-        and builds an initial registry of all known ``Frame`` subclasses.
+        Registers default adapters for ``LLMContext`` and ``ToolsSchema``
+        fields.
         """
+        from pipecat.adapters.schemas.tools_schema import ToolsSchema
+
         self._adapters: dict[type, TypeAdapter] = {
             LLMContext: _LLMContextAdapter(),
+            ToolsSchema: _ToolsSchemaAdapter(),
         }
-        self._frame_types: dict[str, type[Frame]] = {}
-        self._build_frame_registry()
 
     def register_adapter(self, type_: type, adapter: TypeAdapter) -> None:
         """Register a nested adapter for a non-JSON-native field type.
@@ -72,10 +72,9 @@ class FrameAdapter(TypeAdapter):
             obj: A Pipecat ``Frame`` dataclass instance.
 
         Returns:
-            A dict containing a ``frame_type`` key and one entry per
-            serializable field.
+            A dict with one entry per serializable field.
         """
-        result: dict[str, Any] = {"frame_type": type(obj).__name__}
+        result: dict[str, Any] = {}
         for f in dataclasses.fields(obj):
             value = getattr(obj, f.name)
             if value is None:
@@ -85,45 +84,37 @@ class FrameAdapter(TypeAdapter):
                 result[f.name] = serialized
         return result
 
-    def deserialize(self, data: dict[str, Any]) -> Any:
+    def deserialize(self, data: dict[str, Any], target_type: Optional[type] = None) -> Any:
         """Reconstruct a Pipecat frame from a serialized dict.
 
-        Resolves the frame class from the ``frame_type`` key, splits fields
-        into init and non-init groups, and reconstructs the frame.  If the
-        frame type is unknown the frame registry is rebuilt to pick up any
-        newly imported subclasses.
+        Uses ``target_type`` to determine which frame class to instantiate,
+        splits fields into init and non-init groups, and reconstructs the
+        frame.
 
         Args:
-            data: A dict produced by ``serialize()``, containing a
-                ``frame_type`` key and field entries.
+            data: A dict produced by ``serialize()``.
+            target_type: The frame class to instantiate.
 
         Returns:
-            The reconstructed ``Frame`` instance, or ``None`` if the frame
-            type cannot be resolved.
+            The reconstructed ``Frame`` instance, or ``None`` if
+            ``target_type`` is not provided.
         """
-        frame_type_name = data["frame_type"]
-        # Rebuild registry in case new frame subclasses were imported
-        if frame_type_name not in self._frame_types:
-            self._build_frame_registry()
-        frame_cls = self._frame_types.get(frame_type_name)
-        if frame_cls is None:
-            logger.warning(f"FrameAdapter: unknown frame type {frame_type_name}")
+        if target_type is None:
+            logger.warning("FrameAdapter: no target_type provided for deserialization")
             return None
 
-        fields = {k: v for k, v in data.items() if k != "frame_type"}
-
         # Split init vs non-init
-        init_names = {f.name for f in dataclasses.fields(frame_cls) if f.init}
+        init_names = {f.name for f in dataclasses.fields(target_type) if f.init}
         init_kwargs = {}
         post_init = {}
-        for key, value in fields.items():
+        for key, value in data.items():
             deserialized = self._deserialize_value(value)
             if key in init_names:
                 init_kwargs[key] = deserialized
             else:
                 post_init[key] = deserialized
 
-        frame = frame_cls(**init_kwargs)
+        frame = target_type(**init_kwargs)
         for key, value in post_init.items():
             setattr(frame, key, value)
         return frame
@@ -175,7 +166,7 @@ class FrameAdapter(TypeAdapter):
             return cls[data]
         adapter = self._find_adapter(cls)
         if adapter is not None:
-            return adapter.deserialize(data)
+            return adapter.deserialize(data, target_type=cls)
         logger.warning(f"FrameAdapter: no adapter registered for type {type_name}")
         return None
 
@@ -184,13 +175,6 @@ class FrameAdapter(TypeAdapter):
             if cls in self._adapters:
                 return self._adapters[cls]
         return None
-
-    def _build_frame_registry(self) -> None:
-        queue = list(Frame.__subclasses__())
-        while queue:
-            cls = queue.pop()
-            self._frame_types[cls.__name__] = cls
-            queue.extend(cls.__subclasses__())
 
 
 class _LLMContextAdapter(TypeAdapter):
@@ -224,7 +208,7 @@ class _LLMContextAdapter(TypeAdapter):
             result["tool_choice"] = obj.tool_choice
         return result
 
-    def deserialize(self, data: dict[str, Any]) -> Any:
+    def deserialize(self, data: dict[str, Any], target_type: Optional[type] = None) -> Any:
         """Reconstruct an ``LLMContext`` from a serialized dict.
 
         Missing ``tools`` and ``tool_choice`` keys are restored as
@@ -233,6 +217,7 @@ class _LLMContextAdapter(TypeAdapter):
 
         Args:
             data: A dict produced by ``serialize()``.
+            target_type: Unused. ``LLMContext`` is always the target.
 
         Returns:
             A new ``LLMContext`` instance.
@@ -282,6 +267,44 @@ class _LLMContextAdapter(TypeAdapter):
 
         tools = []
         for item in data:
+            tools.append(
+                FunctionSchema(
+                    name=item["name"],
+                    description=item.get("description", ""),
+                    properties=item.get("properties", {}),
+                    required=item.get("required", []),
+                )
+            )
+        return ToolsSchema(standard_tools=tools)
+
+
+class _ToolsSchemaAdapter(TypeAdapter):
+    """Adapter for ``ToolsSchema`` objects (e.g. in ``LLMSetToolsFrame``)."""
+
+    def serialize(self, obj: Any) -> dict[str, Any]:
+        from pipecat.adapters.schemas.function_schema import FunctionSchema
+
+        tools = []
+        for tool in obj.standard_tools:
+            if isinstance(tool, FunctionSchema):
+                tools.append(
+                    {
+                        "name": tool.name,
+                        "description": tool.description,
+                        "properties": tool.properties,
+                        "required": tool.required,
+                    }
+                )
+            else:
+                tools.append(dataclasses.asdict(tool))
+        return {"standard_tools": tools}
+
+    def deserialize(self, data: dict[str, Any], target_type: Optional[type] = None) -> Any:
+        from pipecat.adapters.schemas.function_schema import FunctionSchema
+        from pipecat.adapters.schemas.tools_schema import ToolsSchema
+
+        tools = []
+        for item in data["standard_tools"]:
             tools.append(
                 FunctionSchema(
                     name=item["name"],

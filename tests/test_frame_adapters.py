@@ -24,7 +24,7 @@ class TestFrameAdapterTextFrame(unittest.TestCase):
         adapter = FrameAdapter()
         frame = TextFrame(text="hello world")
         data = adapter.serialize(frame)
-        restored = adapter.deserialize(data)
+        restored = adapter.deserialize(data, target_type=type(frame))
 
         self.assertIsInstance(restored, TextFrame)
         self.assertEqual(restored.text, "hello world")
@@ -39,7 +39,7 @@ class TestFrameAdapterTranscriptionFrame(unittest.TestCase):
             timestamp="2026-03-17T00:00:00Z",
         )
         data = adapter.serialize(frame)
-        restored = adapter.deserialize(data)
+        restored = adapter.deserialize(data, target_type=type(frame))
 
         self.assertIsInstance(restored, TranscriptionFrame)
         self.assertEqual(restored.text, "hello")
@@ -60,7 +60,7 @@ class TestFrameAdapterTranscriptionFrame(unittest.TestCase):
             finalized=True,
         )
         data = adapter.serialize(frame)
-        restored = adapter.deserialize(data)
+        restored = adapter.deserialize(data, target_type=type(frame))
 
         self.assertEqual(restored.language, Language.ES)
         self.assertTrue(restored.finalized)
@@ -71,7 +71,7 @@ class TestFrameAdapterLLMContextFrame(unittest.TestCase):
         adapter = FrameAdapter()
         frame = LLMContextFrame(context=ctx)
         data = adapter.serialize(frame)
-        restored = adapter.deserialize(data)
+        restored = adapter.deserialize(data, target_type=type(frame))
         self.assertIsInstance(restored, LLMContextFrame)
         return restored.context
 
