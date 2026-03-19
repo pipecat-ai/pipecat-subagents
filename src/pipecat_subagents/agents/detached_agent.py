@@ -134,21 +134,21 @@ class DetachedAgent(BaseAgent):
 
     Overridable lifecycle methods (always call ``super()``):
 
-    - ``on_agent_activated(args)``: Called when this agent is activated.
-    - ``on_agent_deactivated()``: Called when this agent is deactivated.
+    - ``on_activated(args)``: Called when this agent is activated.
+    - ``on_deactivated()``: Called when this agent is deactivated.
 
     Event handlers:
 
-    - on_agent_activated(agent, args)
-    - on_agent_deactivated(agent)
+    - on_activated(agent, args)
+    - on_deactivated(agent)
 
     Example::
 
         agent = MyDetachedAgent(name="llm", bus=bus)
 
-        @agent.event_handler("on_agent_activated")
-        async def on_agent_activated(agent, args):
-            await super().on_agent_activated(args)
+        @agent.event_handler("on_activated")
+        async def on_activated(agent, args):
+            await super().on_activated(args)
             logger.info(f"Agent activated with args: {args}")
     """
 
@@ -188,7 +188,7 @@ class DetachedAgent(BaseAgent):
         Args:
             agent_name: The name of the agent to hand off to.
             args: Optional arguments forwarded to the target agent's
-                ``on_agent_activated`` handler. Accepts a ``BaseModel``
+                ``on_activated`` handler. Accepts a ``BaseModel``
                 (e.g. ``LLMActivationArgs``), a plain dict, or None.
         """
         if self._active:

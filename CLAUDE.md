@@ -44,9 +44,9 @@ BaseAgent                 -- pipeline lifecycle, parent-child, tasks, activation
 
 - `active` flag lives on `BaseAgent` (defaults to `True`; `DetachedAgent` overrides to `False`)
 - `activate_agent(name)` / `deactivate_agent(name)` send bus messages, handled by `BaseAgent`
-- `on_agent_activated(args)` / `on_agent_deactivated()` hooks fire on the target agent
+- `on_activated(args)` / `on_deactivated()` hooks fire on the target agent
 - `handoff_to(name)` on `DetachedAgent` is a convenience: deactivates self locally, then activates target
-- `active=True` in DetachedAgent constructor just sets the flag; no `on_agent_activated` fires
+- `active=True` in DetachedAgent constructor just sets the flag; no `on_activated` fires
 
 ### Registry
 
@@ -70,4 +70,4 @@ BaseAgent                 -- pipeline lifecycle, parent-child, tasks, activation
 - Public methods: document with Args/Returns/Raises as needed
 - Private methods (starting with `_`): don't add docstrings unless the logic is non-obvious
 - Use backticks for code references in docstrings
-- Lifecycle hooks should always call `super()` (e.g. `await super().on_agent_activated(args)`)
+- Lifecycle hooks should always call `super()` (e.g. `await super().on_activated(args)`)

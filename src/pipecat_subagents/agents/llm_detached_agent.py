@@ -47,7 +47,7 @@ class LLMActivationArgs(ActivationArgs):
             args=LLMActivationArgs(messages=[...]),
         )
 
-    ``LLMDetachedAgent.on_agent_activated`` reconstructs this from the raw dict
+    ``LLMDetachedAgent.on_activated`` reconstructs this from the raw dict
     via ``model_validate``.
 
     Attributes:
@@ -116,13 +116,13 @@ class LLMDetachedAgent(DetachedAgent):
         self._flush_done: asyncio.Event = asyncio.Event()
         self._flush_handlers_registered: bool = False
 
-    async def on_agent_activated(self, args: Optional[dict]) -> None:
+    async def on_activated(self, args: Optional[dict]) -> None:
         """Configure the LLM with tools and handoff messages.
 
         Args:
             args: Optional handoff arguments with messages to append.
         """
-        await super().on_agent_activated(args)
+        await super().on_activated(args)
 
         activation = LLMActivationArgs.model_validate(args) if args else LLMActivationArgs()
 
@@ -211,7 +211,7 @@ class LLMDetachedAgent(DetachedAgent):
         Args:
             agent_name: The name of the agent to hand off to.
             args: Optional arguments forwarded to the target agent's
-                ``on_agent_activated`` handler. Accepts a ``BaseModel``
+                ``on_activated`` handler. Accepts a ``BaseModel``
                 (e.g. ``LLMActivationArgs``), a plain dict, or None.
             result_callback: The ``result_callback`` from `FunctionCallParams`.
         """

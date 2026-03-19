@@ -70,8 +70,8 @@ class AcmeAgent(BaseAgent):
         self._client_connected = False
         self._greeter_registered = False
 
-    async def on_agent_started(self) -> None:
-        await super().on_agent_started()
+    async def on_started(self) -> None:
+        await super().on_started()
         await self.watch_agent("greeter")
 
     async def on_agent_ready(self, agent_info: RegisteredAgentData) -> None:

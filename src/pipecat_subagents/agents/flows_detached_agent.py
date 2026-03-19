@@ -78,13 +78,13 @@ class FlowsDetachedAgent(DetachedAgent):
         self._flow_manager: Optional[FlowManager] = None
         self._flow_initialized = False
 
-    async def on_agent_activated(self, args: Optional[dict]) -> None:
+    async def on_activated(self, args: Optional[dict]) -> None:
         """Initialize or resume the flow on handoff.
 
         Args:
             args: Optional handoff arguments.
         """
-        await super().on_agent_activated(args)
+        await super().on_activated(args)
 
         if not self._flow_initialized:
             self._flow_initialized = True

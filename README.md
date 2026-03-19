@@ -103,12 +103,12 @@ Agents are the building blocks of a multi-agent system. Each agent connects to t
 
 #### Lifecycle hooks
 
-| Hook                       | When it fires                                  |
-|----------------------------|------------------------------------------------|
-| `on_agent_started()`       | Pipeline is ready. Add child agents here.      |
-| `on_agent_ready()`         | Another agent is ready to receive messages.    |
-| `on_agent_activated(args)` | Agent is activated via `activate_agent()`.     |
-| `on_agent_deactivated()`   | Agent is deactivated via `deactivate_agent()`. |
+| Hook | When it fires |
+|---|---|
+| `on_started()` | Agent is ready. Add child agents here. |
+| `on_activated(args)` | Agent is activated via `activate_agent()`. |
+| `on_deactivated()` | Agent is deactivated via `deactivate_agent()`. |
+| `on_agent_ready()` | Another agent is ready to receive messages. |
 
 ### Tasks
 

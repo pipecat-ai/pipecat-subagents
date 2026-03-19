@@ -85,7 +85,7 @@ class BusActivateAgentMessage(BusMessage):
     """Tells a targeted agent to become active and start processing.
 
     Parameters:
-        args: Optional activation arguments forwarded to ``on_agent_activated``.
+        args: Optional activation arguments forwarded to ``on_activated``.
     """
 
     args: Optional[dict] = None

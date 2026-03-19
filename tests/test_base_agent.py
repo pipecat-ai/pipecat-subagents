@@ -91,7 +91,7 @@ class TestBaseAgentLifecycle(unittest.IsolatedAsyncioTestCase):
         handoff_done = asyncio.Event()
         handoff_args_received = []
 
-        @agent.event_handler("on_agent_activated")
+        @agent.event_handler("on_activated")
         async def on_handoff(agent, args):
             handoff_args_received.append(args)
             handoff_done.set()
@@ -116,13 +116,13 @@ class TestBaseAgentLifecycle(unittest.IsolatedAsyncioTestCase):
         self.assertIs(handoff_args_received[0], args)
 
     async def test_active_true_starts_active(self):
-        """active=True means the agent starts active without on_agent_activated."""
+        """active=True means the agent starts active without on_activated."""
         bus = AsyncQueueBus()
         agent = DetachedStubAgent("test", bus=bus, active=True)
 
         handoff_fired = False
 
-        @agent.event_handler("on_agent_activated")
+        @agent.event_handler("on_activated")
         async def on_handoff(agent, args):
             nonlocal handoff_fired
             handoff_fired = True
@@ -208,14 +208,14 @@ class TestBaseAgentLifecycle(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(add_msgs), 1)
         self.assertIs(add_msgs[0].agent, new_agent)
 
-    async def test_on_agent_started_event(self):
-        """on_agent_started fires after pipeline starts."""
+    async def test_on_started_event(self):
+        """on_started fires after pipeline starts."""
         bus = AsyncQueueBus()
         agent = StubAgent("test", bus=bus)
 
         started = asyncio.Event()
 
-        @agent.event_handler("on_agent_started")
+        @agent.event_handler("on_started")
         async def on_started(agent):
             started.set()
 
@@ -347,7 +347,7 @@ class TestBaseAgentLifecycle(unittest.IsolatedAsyncioTestCase):
 
         handoff_done = asyncio.Event()
 
-        @agent.event_handler("on_agent_activated")
+        @agent.event_handler("on_activated")
         async def on_handoff(agent, args):
             handoff_done.set()
 
