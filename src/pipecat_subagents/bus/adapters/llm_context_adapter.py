@@ -25,7 +25,7 @@ class LLMContextAdapter(TypeAdapter):
 
     Converts the message list, tools, and tool_choice to JSON-safe
     representations. The ``NOT_GIVEN`` sentinel is preserved by omitting
-    the key — on deserialization, missing keys are restored as
+    the key. On deserialization, missing keys are restored as
     ``NOT_GIVEN``.
     """
 

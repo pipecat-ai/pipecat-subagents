@@ -50,8 +50,8 @@ class RedisBus(AgentBus):
     Redis channel. Each subscriber gets its own Redis pub/sub subscription
     and a local queue that receives messages from two sources:
 
-    - **Network messages** — deserialized from Redis pub/sub by a reader task.
-    - **Local messages** — `BusLocalMixin` messages (e.g. `BusAddAgentMessage`)
+    - **Network messages**: deserialized from Redis pub/sub by a reader task.
+    - **Local messages**: `BusLocalMixin` messages (e.g. `BusAddAgentMessage`)
       are delivered directly to local subscriber queues, bypassing Redis,
       since they carry in-memory references that cannot be serialized.
 

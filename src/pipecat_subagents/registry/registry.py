@@ -21,10 +21,10 @@ class AgentRegistry:
 
     Owned by a runner and shared with its agents. Organizes agents into
     local (this runner) and remote (other runners) so they are easy to
-    distinguish. Deduplication is built in — each agent name is
+    distinguish. Deduplication is built in: each agent name is
     registered at most once.
 
-    Notifications use a targeted watch mechanism — call
+    Notifications use a targeted watch mechanism: call
     ``watch(agent_name, handler)`` to be notified when a specific agent
     registers.
 

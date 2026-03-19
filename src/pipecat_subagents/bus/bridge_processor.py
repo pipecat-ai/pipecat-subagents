@@ -6,7 +6,7 @@
 
 """Bidirectional bus bridge for transport/session agent pipelines.
 
-Provides the ``BusBridgeProcessor`` — a mid-pipeline processor that exchanges
+Provides the ``BusBridgeProcessor``, a mid-pipeline processor that exchanges
 frames with other agents through the bus. Unlike the edge-to-bus mechanism used
 by child agents, the bridge is placed explicitly in a pipeline (typically a
 session/transport agent) and acts as a crossing point for both downstream and
@@ -102,7 +102,7 @@ class BusBridgeProcessor(FrameProcessor, BusSubscriber):
             await self.push_frame(frame, direction)
             return
 
-        # Urgent transport frames pass through directly — they need to
+        # Urgent transport frames pass through directly. They need to
         # reach the transport even when no child agent is active yet.
         if isinstance(frame, _PASSTHROUGH_FRAMES):
             await self.push_frame(frame, direction)
@@ -122,7 +122,7 @@ class BusBridgeProcessor(FrameProcessor, BusSubscriber):
         await self._bus.send(msg)
 
     async def on_bus_message(self, message: BusMessage) -> None:
-        """Handle incoming bus messages — inject frames at bridge position.
+        """Handle incoming bus messages. Injects frames at bridge position.
 
         Args:
             message: The bus message to handle.
