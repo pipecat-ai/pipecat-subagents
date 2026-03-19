@@ -16,6 +16,7 @@ from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 from pipecat_subagents.agents.base_agent import BaseAgent
 from pipecat_subagents.agents.detached_agent import DetachedAgent
 from pipecat_subagents.bus import (
+    AsyncQueueBus,
     BusActivateAgentMessage,
     BusAddAgentMessage,
     BusCancelAgentMessage,
@@ -30,7 +31,6 @@ from pipecat_subagents.bus import (
     BusTaskStreamEndMessage,
     BusTaskStreamStartMessage,
     BusTaskUpdateMessage,
-    AsyncQueueBus,
 )
 
 

@@ -7,6 +7,7 @@
 """Agent runner for orchestrating multi-agent lifecycle and pipeline tasks."""
 
 import asyncio
+import uuid
 from typing import Optional
 
 from loguru import logger
@@ -55,18 +56,22 @@ class AgentRunner(BaseObject, BusSubscriber):
     def __init__(
         self,
         *,
+        name: Optional[str] = None,
         bus: Optional[AgentBus] = None,
         handle_sigint: bool = True,
     ):
         """Initialize the `AgentRunner`.
 
         Args:
+            name: Optional unique name for this runner. Defaults to a
+                UUID-based name. Must be unique across all runners in a
+                distributed setup.
             bus: Optional `AgentBus` instance. Creates an `AsyncQueueBus`
                 if not provided.
             handle_sigint: Whether to handle SIGINT for graceful shutdown.
                 Defaults to True.
         """
-        super().__init__()
+        super().__init__(name=name or f"runner-{uuid.uuid4().hex[:8]}")
         self._bus = bus or AsyncQueueBus()
         self._registry = AgentRegistry(runner_name=self.name)
 
@@ -123,7 +128,7 @@ class AgentRunner(BaseObject, BusSubscriber):
         agent.set_registry(self._registry)
         self._registry.watch(agent.name, self._on_agent_ready)
         self._agents[agent.name] = agent
-        logger.debug(f"{self}: added agent '{agent.name}'")
+        logger.debug(f"AgentRunner '{self}': added agent '{agent.name}'")
 
         if self._running:
             await self._start_agent_task(agent)
@@ -168,7 +173,7 @@ class AgentRunner(BaseObject, BusSubscriber):
         """
         if self._shutdown_event.is_set():
             return
-        logger.debug(f"{self}: ending gracefully (reason={reason})")
+        logger.debug(f"AgentRunner '{self}': ending gracefully (reason={reason})")
         self._shutdown_event.set()
         for name, agent in self._agents.items():
             if agent.parent is None:
@@ -188,7 +193,7 @@ class AgentRunner(BaseObject, BusSubscriber):
         """
         if self._shutdown_event.is_set():
             return
-        logger.debug(f"{self}: cancelling (reason={reason})")
+        logger.debug(f"AgentRunner '{self}': cancelling (reason={reason})")
         self._shutdown_event.set()
         for name, agent in self._agents.items():
             if agent.parent is None:
@@ -199,11 +204,13 @@ class AgentRunner(BaseObject, BusSubscriber):
 
     async def _start_agent_task(self, agent: BaseAgent) -> None:
         """Create an agent's pipeline task and start it as a background asyncio task."""
-        logger.debug(f"{self}: starting agent '{agent.name}'")
+        logger.debug(f"AgentRunner '{self}': starting agent '{agent.name}'")
         try:
             pipeline_task = await agent.create_pipeline_task()
         except Exception:
-            logger.exception(f"{self}: failed to create pipeline task for agent '{agent.name}'")
+            logger.exception(
+                f"AgentRunner '{self}': failed to create pipeline task for agent '{agent.name}'"
+            )
             return
 
         asyncio_task = asyncio.create_task(
@@ -250,6 +257,7 @@ class AgentRunner(BaseObject, BusSubscriber):
         """Broadcast this runner's root agents to the bus."""
         agents = [name for name, agent in self._agents.items() if agent.parent is None]
         if agents:
+            logger.debug(f"AgentRunner '{self}': broadcasting registry: {agents}")
             await self._bus.send(
                 BusAgentRegistryMessage(
                     source=self.name,
@@ -265,11 +273,16 @@ class AgentRunner(BaseObject, BusSubscriber):
         hasn't seen this remote runner before, sends its own registry back
         so both sides discover each other.
         """
+        logger.debug(
+            f"AgentRunner '{self}': received registry from '{message.runner}' with agents: {message.agents}"
+        )
         for agent_name in message.agents:
             await self._registry.register(
                 RegisteredAgentData(agent_name=agent_name, runner=message.runner)
             )
         if message.runner not in self._known_runners:
             self._known_runners.add(message.runner)
+            logger.debug(
+                f"AgentRunner '{self}': new runner '{message.runner}', sending our registry back"
+            )
             await self._send_registry()
-

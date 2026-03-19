@@ -11,10 +11,10 @@ from pipecat.frames.frames import TextFrame
 from pipecat.processors.frame_processor import FrameDirection
 
 from pipecat_subagents.bus import (
+    AsyncQueueBus,
     BusFrameMessage,
     BusMessage,
     BusSubscriber,
-    AsyncQueueBus,
 )
 
 
