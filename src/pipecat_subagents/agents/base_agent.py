@@ -579,6 +579,7 @@ class BaseAgent(BaseObject, BusSubscriber):
             agent_name: The name of the agent to watch for.
         """
         if self._registry:
+            logger.debug(f"Agent '{self}': watching for agent '{agent_name}'")
             self._registry.watch(agent_name, self._on_watched_agent_ready)
             data = self._registry.get(agent_name)
             if data:
