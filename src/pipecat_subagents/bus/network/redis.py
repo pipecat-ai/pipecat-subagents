@@ -8,6 +8,7 @@
 
 import asyncio
 from dataclasses import dataclass, field
+from typing import Optional
 
 from loguru import logger
 
@@ -23,6 +24,7 @@ except ModuleNotFoundError as e:
 
 from pipecat_subagents.bus.bus import AgentBus
 from pipecat_subagents.bus.messages import BusLocalMixin, BusMessage
+from pipecat_subagents.bus.serializers import JSONMessageSerializer
 from pipecat_subagents.bus.serializers.base import MessageSerializer
 
 
@@ -58,18 +60,16 @@ class RedisBus(AgentBus):
     Example::
 
         from redis.asyncio import Redis
-        from pipecat_subagents.bus.serializers import JSONMessageSerializer
 
         redis = Redis.from_url("redis://localhost:6379")
-        serializer = JSONMessageSerializer()
-        bus = RedisBus(redis=redis, serializer=serializer, channel="my-session")
+        bus = RedisBus(redis=redis, channel="my-session")
     """
 
     def __init__(
         self,
         *,
         redis: Redis,
-        serializer: MessageSerializer,
+        serializer: Optional[MessageSerializer] = None,
         channel: str = "pipecat:bus",
         **kwargs,
     ):
@@ -78,12 +78,13 @@ class RedisBus(AgentBus):
         Args:
             redis: A ``redis.asyncio.Redis`` client instance.
             serializer: The `MessageSerializer` for encoding/decoding messages.
+                Defaults to `JSONMessageSerializer`.
             channel: The Redis pub/sub channel name. Defaults to ``"pipecat:bus"``.
             **kwargs: Additional arguments passed to `AgentBus`.
         """
         super().__init__(**kwargs)
         self._redis = redis
-        self._serializer = serializer
+        self._serializer = serializer or JSONMessageSerializer()
         self._channel = channel
         self._connections: list[RedisConnection] = []
 
