@@ -13,11 +13,10 @@ Usage:
     python main_agent.py --redis-url redis://localhost:6379
 
 Requirements:
-    DEEPGRAM_API_KEY, CARTESIA_API_KEY, DAILY_API_KEY
+    DEEPGRAM_API_KEY, CARTESIA_API_KEY
 """
 
 import argparse
-import asyncio
 import os
 
 from dotenv import load_dotenv
@@ -30,9 +29,12 @@ from pipecat.processors.aggregators.llm_response_universal import (
     LLMContextAggregatorPair,
     LLMUserAggregatorParams,
 )
+from pipecat.runner.types import RunnerArguments
+from pipecat.runner.utils import create_transport
 from pipecat.services.cartesia.tts import CartesiaTTSService, CartesiaTTSSettings
 from pipecat.services.deepgram.stt import DeepgramSTTService
-from pipecat.transports.daily.transport import DailyParams, DailyTransport
+from pipecat.transports.base_transport import BaseTransport, TransportParams
+from pipecat.transports.daily.transport import DailyParams
 from redis.asyncio import Redis
 
 from pipecat_subagents.agents import BaseAgent, LLMActivationArgs
@@ -43,6 +45,17 @@ from pipecat_subagents.types import RegisteredAgentData
 
 load_dotenv(override=True)
 
+transport_params = {
+    "daily": lambda: DailyParams(
+        audio_in_enabled=True,
+        audio_out_enabled=True,
+    ),
+    "webrtc": lambda: TransportParams(
+        audio_in_enabled=True,
+        audio_out_enabled=True,
+    ),
+}
+
 
 class AcmeAgent(BaseAgent):
     """Owns the transport pipeline and bridges frames to/from the bus.
@@ -51,7 +64,7 @@ class AcmeAgent(BaseAgent):
     active, and receives responses back through TTS to the user.
     """
 
-    def __init__(self, name: str, *, bus: AgentBus, transport: DailyTransport):
+    def __init__(self, name: str, *, bus: AgentBus, transport: BaseTransport):
         super().__init__(name, bus=bus)
         self._transport = transport
         self._client_connected = False
@@ -131,21 +144,9 @@ class AcmeAgent(BaseAgent):
         )
 
 
-async def main():
-    parser = argparse.ArgumentParser(description="Main transport agent")
-    parser.add_argument("--redis-url", default="redis://localhost:6379", help="Redis URL")
-    parser.add_argument("--channel", default="pipecat:acme", help="Redis pub/sub channel")
-    args = parser.parse_args()
-
-    redis = Redis.from_url(args.redis_url)
-    bus = RedisBus(redis=redis, channel=args.channel)
-
-    transport = DailyTransport(
-        os.getenv("DAILY_ROOM_URL", ""),
-        os.getenv("DAILY_ROOM_TOKEN", ""),
-        "Acme Bot",
-        DailyParams(audio_in_enabled=True, audio_out_enabled=True),
-    )
+async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
+    redis = Redis.from_url(runner_args.cli_args.redis_url)
+    bus = RedisBus(redis=redis, channel=runner_args.cli_args.channel)
 
     runner = AgentRunner(bus=bus, handle_sigint=True)
     main_agent = AcmeAgent("acme", bus=bus, transport=transport)
@@ -153,5 +154,16 @@ async def main():
     await runner.run()
 
 
+async def bot(runner_args: RunnerArguments):
+    transport = await create_transport(runner_args, transport_params)
+    await run_bot(transport, runner_args)
+
+
 if __name__ == "__main__":
-    asyncio.run(main())
+    from pipecat.runner.run import main
+
+    parser = argparse.ArgumentParser(description="Main transport agent")
+    parser.add_argument("--redis-url", default="redis://localhost:6379", help="Redis URL")
+    parser.add_argument("--channel", default="pipecat:acme", help="Redis pub/sub channel")
+
+    main(parser)
