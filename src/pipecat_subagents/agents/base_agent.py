@@ -566,9 +566,7 @@ class BaseAgent(BaseObject, BusSubscriber):
         Args:
             agent_name: The name of the agent to deactivate.
         """
-        await self.send_message(
-            BusDeactivateAgentMessage(source=self.name, target=agent_name)
-        )
+        await self.send_message(BusDeactivateAgentMessage(source=self.name, target=agent_name))
 
     async def watch_agent(self, agent_name: str) -> None:
         """Request notification when an agent registers.

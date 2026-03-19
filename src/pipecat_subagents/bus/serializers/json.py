@@ -163,7 +163,10 @@ class JSONMessageSerializer(MessageSerializer):
                     post_init[key] = deserialized
             for name, f in init_fields.items():
                 if name not in init_kwargs:
-                    if f.default is dataclasses.MISSING and f.default_factory is dataclasses.MISSING:
+                    if (
+                        f.default is dataclasses.MISSING
+                        and f.default_factory is dataclasses.MISSING
+                    ):
                         init_kwargs[name] = None
             obj = cls(**init_kwargs)
             for key, value in post_init.items():

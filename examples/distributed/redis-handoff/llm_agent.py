@@ -118,15 +118,9 @@ class AcmeLLMAgent(LLMDetachedAgent):
 
 async def main():
     parser = argparse.ArgumentParser(description="LLM agent (greeter or support)")
-    parser.add_argument(
-        "agent", choices=["greeter", "support"], help="Which agent to run"
-    )
-    parser.add_argument(
-        "--redis-url", default="redis://localhost:6379", help="Redis URL"
-    )
-    parser.add_argument(
-        "--channel", default="pipecat:acme", help="Redis pub/sub channel"
-    )
+    parser.add_argument("agent", choices=["greeter", "support"], help="Which agent to run")
+    parser.add_argument("--redis-url", default="redis://localhost:6379", help="Redis URL")
+    parser.add_argument("--channel", default="pipecat:acme", help="Redis pub/sub channel")
     args = parser.parse_args()
 
     redis = Redis.from_url(args.redis_url)

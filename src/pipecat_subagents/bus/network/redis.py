@@ -17,9 +17,7 @@ try:
     from redis.asyncio.client import PubSub
 except ModuleNotFoundError as e:
     logger.error(f"Exception: {e}")
-    logger.error(
-        "In order to use RedisBus, you need to `pip install pipecat-ai-subagents[redis]`."
-    )
+    logger.error("In order to use RedisBus, you need to `pip install pipecat-ai-subagents[redis]`.")
     raise Exception(f"Missing module: {e}")
 
 from pipecat_subagents.bus.bus import AgentBus
@@ -142,9 +140,7 @@ class RedisBus(AgentBus):
         """
         return await client.queue.get()
 
-    async def _reader_task(
-        self, pubsub: PubSub, queue: asyncio.Queue[BusMessage]
-    ) -> None:
+    async def _reader_task(self, pubsub: PubSub, queue: asyncio.Queue[BusMessage]) -> None:
         """Read messages from Redis pub/sub and enqueue them."""
         try:
             async for raw_message in pubsub.listen():

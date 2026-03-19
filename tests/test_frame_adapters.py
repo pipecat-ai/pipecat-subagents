@@ -96,10 +96,12 @@ class TestLLMContextFrameRoundTrip(unittest.TestCase):
         return restored.frame.context
 
     def test_round_trip_messages_only(self):
-        ctx = LLMContext(messages=[
-            {"role": "system", "content": "You are helpful"},
-            {"role": "user", "content": "hello"},
-        ])
+        ctx = LLMContext(
+            messages=[
+                {"role": "system", "content": "You are helpful"},
+                {"role": "user", "content": "hello"},
+            ]
+        )
         restored = self._round_trip_context(ctx)
 
         self.assertEqual(len(restored.messages), 2)
@@ -109,10 +111,12 @@ class TestLLMContextFrameRoundTrip(unittest.TestCase):
         self.assertIsInstance(restored.tool_choice, NotGiven)
 
     def test_round_trip_with_specific_message(self):
-        ctx = LLMContext(messages=[
-            {"role": "user", "content": "hi"},
-            LLMSpecificMessage(llm="anthropic", message={"custom": "data"}),
-        ])
+        ctx = LLMContext(
+            messages=[
+                {"role": "user", "content": "hi"},
+                LLMSpecificMessage(llm="anthropic", message={"custom": "data"}),
+            ]
+        )
         restored = self._round_trip_context(ctx)
 
         self.assertEqual(len(restored.messages), 2)
@@ -125,14 +129,16 @@ class TestLLMContextFrameRoundTrip(unittest.TestCase):
         from pipecat.adapters.schemas.function_schema import FunctionSchema
         from pipecat.adapters.schemas.tools_schema import ToolsSchema
 
-        tools = ToolsSchema(standard_tools=[
-            FunctionSchema(
-                name="get_weather",
-                description="Get the weather",
-                properties={"location": {"type": "string"}},
-                required=["location"],
-            ),
-        ])
+        tools = ToolsSchema(
+            standard_tools=[
+                FunctionSchema(
+                    name="get_weather",
+                    description="Get the weather",
+                    properties={"location": {"type": "string"}},
+                    required=["location"],
+                ),
+            ]
+        )
         ctx = LLMContext(
             messages=[{"role": "user", "content": "weather?"}],
             tools=tools,

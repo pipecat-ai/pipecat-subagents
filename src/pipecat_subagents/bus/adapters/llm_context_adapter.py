@@ -68,7 +68,9 @@ class LLMContextAdapter(TypeAdapter):
         """
         messages = [self._deserialize_message(m, deserialize_value) for m in data["messages"]]
         tools = self._deserialize_tools(data["tools"]) if "tools" in data else OPENAI_NOT_GIVEN
-        tool_choice = deserialize_value(data["tool_choice"]) if "tool_choice" in data else OPENAI_NOT_GIVEN
+        tool_choice = (
+            deserialize_value(data["tool_choice"]) if "tool_choice" in data else OPENAI_NOT_GIVEN
+        )
         return LLMContext(messages=messages, tools=tools, tool_choice=tool_choice)
 
     def _serialize_message(self, msg: Any, serialize_value: SerializeFunc) -> dict[str, Any]:
