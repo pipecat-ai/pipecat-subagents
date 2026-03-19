@@ -49,19 +49,27 @@ Agents communicate through a shared **AgentBus**. The diagram below shows a comm
 
 Agents communicate through a shared bus using pub/sub messaging. Place a `BusBridgeProcessor` in a pipeline to exchange frames with other agents across the bus.
 
-| Class | Description |
-|---|---|
-| `AgentBus` | Abstract base for inter-agent messaging. |
+| Class           | Description                                                                                                             |
+|-----------------|-------------------------------------------------------------------------------------------------------------------------|
+| `AgentBus`      | Abstract base for inter-agent messaging.                                                                                |
 | `AsyncQueueBus` | In-process bus backed by `asyncio.Queue`s. No serialization overhead. This is the default bus created by `AgentRunner`. |
-| `RedisBus` | Distributed bus backed by Redis pub/sub for cross-process communication. |
-| `JSONMessageSerializer` | Default serializer for network buses. Register a `FrameAdapter` per frame type to handle Pipecat frame serialization. |
+| `RedisBus`      | Distributed bus backed by Redis pub/sub for cross-process communication.                                                |
+
+#### Serialization
+
+Network buses need to serialize messages to bytes. Types that aren't JSON-native (e.g. `LLMContext`, `ToolsSchema`) require a `TypeAdapter` to convert them to/from JSON. Common adapters are registered by default.
+
+| Class                   | Description                                                                                         |
+|-------------------------|-----------------------------------------------------------------------------------------------------|
+| `JSONMessageSerializer` | Default serializer for network buses. Encodes messages as JSON.                                     |
+| `TypeAdapter`           | Abstract base for serializing a specific type. Register via `MessageSerializer.register_adapter()`. |
 
 #### Bridge
 
 The `BusBridgeProcessor` is a Pipecat pipeline processor placed in an agent's pipeline (typically a transport/session agent) where an LLM would normally go. It sends non-lifecycle frames to the bus and injects incoming bus frames at its position, connecting the pipeline to whichever agent is active on the bus.
 
-| Class | Description |
-|---|---|
+| Class                | Description                                                                |
+|----------------------|----------------------------------------------------------------------------|
 | `BusBridgeProcessor` | Mid-pipeline processor that bridges frames between a pipeline and the bus. |
 
 ### Runner
