@@ -31,7 +31,7 @@ jobs:
         run: uv python install 3.12
 
       - name: Install development dependencies
-        run: uv sync --group dev
+        run: uv sync --group dev --extra redis
 
       - name: Build project
         run: uv build
