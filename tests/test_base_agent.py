@@ -14,6 +14,7 @@ from pipecat.processors.filters.identity_filter import IdentityFilter
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
 from pipecat_subagents.agents.base_agent import BaseAgent
+from pipecat_subagents.agents.detached_agent import DetachedAgent
 from pipecat_subagents.bus import (
     BusActivateAgentMessage,
     BusAddAgentMessage,
@@ -45,7 +46,14 @@ class _FrameGenerator(FrameProcessor):
 
 
 class StubAgent(BaseAgent):
-    """Minimal agent subclass for testing."""
+    """Minimal BaseAgent subclass for testing."""
+
+    async def build_pipeline(self) -> Pipeline:
+        return Pipeline([IdentityFilter()])
+
+
+class DetachedStubAgent(DetachedAgent):
+    """Minimal DetachedAgent subclass for testing."""
 
     async def build_pipeline(self) -> Pipeline:
         return Pipeline([IdentityFilter()])
@@ -66,58 +74,58 @@ def capture_bus(bus):
 
 class TestBaseAgentLifecycle(unittest.IsolatedAsyncioTestCase):
     async def test_agent_starts_inactive_by_default(self):
-        """Agent is inactive by default."""
+        """DetachedAgent is inactive by default."""
         bus = AsyncQueueBus()
-        agent = StubAgent("test", bus=bus)
+        agent = DetachedStubAgent("test", bus=bus)
         self.assertFalse(agent.active)
 
-    async def test_activation_via_bus_message_after_pipeline_start(self):
+    async def test_handoff_via_bus_message_after_pipeline_start(self):
         """Agent activates when BusActivateAgentMessage received and pipeline started."""
         bus = AsyncQueueBus()
-        agent = StubAgent("test", bus=bus)
+        agent = DetachedStubAgent("test", bus=bus)
 
-        activated = asyncio.Event()
-        activation_args_received = []
+        handoff_done = asyncio.Event()
+        handoff_args_received = []
 
-        @agent.event_handler("on_agent_activated")
-        async def on_activated(agent, args):
-            activation_args_received.append(args)
-            activated.set()
+        @agent.event_handler("on_agent_handoff")
+        async def on_handoff(agent, args):
+            handoff_args_received.append(args)
+            handoff_done.set()
 
         task = await agent.create_pipeline_task()
 
         args = {"messages": ["hello"]}
 
-        async def activate_after_start():
+        async def handoff_after_start():
             await asyncio.sleep(0.05)
             await bus.send(BusActivateAgentMessage(source="other", target="test", args=args))
-            await asyncio.wait_for(activated.wait(), timeout=2.0)
+            await asyncio.wait_for(handoff_done.wait(), timeout=2.0)
             await task.queue_frame(EndFrame())
 
         await bus.start()
         runner = PipelineRunner()
-        await asyncio.gather(runner.run(task), activate_after_start())
+        await asyncio.gather(runner.run(task), handoff_after_start())
         await bus.stop()
 
         self.assertTrue(agent.active)
-        self.assertEqual(len(activation_args_received), 1)
-        self.assertIs(activation_args_received[0], args)
+        self.assertEqual(len(handoff_args_received), 1)
+        self.assertIs(handoff_args_received[0], args)
 
-    async def test_active_true_constructor_activates_after_pipeline_start(self):
-        """active=True triggers on_agent_activated after pipeline starts."""
+    async def test_active_true_triggers_handoff_after_pipeline_start(self):
+        """active=True triggers on_agent_handoff after pipeline starts."""
         bus = AsyncQueueBus()
-        agent = StubAgent("test", bus=bus, active=True)
+        agent = DetachedStubAgent("test", bus=bus, active=True)
 
-        activated = asyncio.Event()
+        handoff_done = asyncio.Event()
 
-        @agent.event_handler("on_agent_activated")
-        async def on_activated(agent, args):
-            activated.set()
+        @agent.event_handler("on_agent_handoff")
+        async def on_handoff(agent, args):
+            handoff_done.set()
 
         task = await agent.create_pipeline_task()
 
         async def wait_and_end():
-            await asyncio.wait_for(activated.wait(), timeout=2.0)
+            await asyncio.wait_for(handoff_done.wait(), timeout=2.0)
             await task.queue_frame(EndFrame())
 
         await bus.start()
@@ -127,16 +135,16 @@ class TestBaseAgentLifecycle(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(agent.active)
 
-    async def test_activate_agent_sends_activate_without_deactivating_self(self):
-        """activate_agent() sends BusActivateAgentMessage without deactivating self."""
+    async def test_handoff_to_sends_activate_and_deactivates(self):
+        """handoff_to() sends BusActivateAgentMessage and deactivates self."""
         bus = AsyncQueueBus()
         sent = capture_bus(bus)
 
-        agent = StubAgent("agent_a", bus=bus, active=True)
+        agent = DetachedStubAgent("agent_a", bus=bus, active=True)
 
-        await agent.activate_agent("agent_b")
+        await agent.handoff_to("agent_b")
 
-        self.assertTrue(agent.active)  # NOT deactivated
+        self.assertFalse(agent.active)  # Deactivated
         activate_msgs = [m for m in sent if isinstance(m, BusActivateAgentMessage)]
         self.assertEqual(len(activate_msgs), 1)
         self.assertEqual(activate_msgs[0].target, "agent_b")
@@ -218,20 +226,13 @@ class TestBaseAgentLifecycle(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(started.is_set())
 
-    async def test_on_agent_deactivated_event(self):
-        """on_agent_deactivated fires on deactivation."""
+    async def test_handoff_deactivates(self):
+        """handoff_to() deactivates the calling agent."""
         bus = AsyncQueueBus()
-        agent = StubAgent("test", bus=bus, active=True)
+        agent = DetachedStubAgent("test", bus=bus, active=True)
 
-        deactivated = asyncio.Event()
-
-        @agent.event_handler("on_agent_deactivated")
-        async def on_deactivated(agent):
-            deactivated.set()
-
-        await agent.deactivate_agent()
-
-        await asyncio.wait_for(deactivated.wait(), timeout=1.0)
+        self.assertTrue(agent.active)
+        await agent.handoff_to("other")
         self.assertFalse(agent.active)
 
     async def test_bus_end_agent_message_ends_pipeline(self):
@@ -333,28 +334,28 @@ class TestBaseAgentLifecycle(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(received[0].text, "a")
         self.assertEqual(received[1].text, "b")
 
-    async def test_self_activation_via_activate_agent(self):
-        """An agent can activate itself via activate_agent(self.name)."""
+    async def test_self_handoff(self):
+        """An agent can handoff to itself via handoff_to(self.name)."""
         bus = AsyncQueueBus()
-        agent = StubAgent("test", bus=bus)
+        agent = DetachedStubAgent("test", bus=bus, active=True)
 
-        activated = asyncio.Event()
+        handoff_done = asyncio.Event()
 
-        @agent.event_handler("on_agent_activated")
-        async def on_activated(agent, args):
-            activated.set()
+        @agent.event_handler("on_agent_handoff")
+        async def on_handoff(agent, args):
+            handoff_done.set()
 
         task = await agent.create_pipeline_task()
 
-        async def self_activate():
+        async def self_handoff():
             await asyncio.sleep(0.05)
-            await agent.activate_agent("test")
-            await asyncio.wait_for(activated.wait(), timeout=2.0)
+            await agent.handoff_to("test")
+            await asyncio.wait_for(handoff_done.wait(), timeout=2.0)
             await task.queue_frame(EndFrame())
 
         await bus.start()
         runner = PipelineRunner()
-        await asyncio.gather(runner.run(task), self_activate())
+        await asyncio.gather(runner.run(task), self_handoff())
         await bus.stop()
 
         self.assertTrue(agent.active)
@@ -449,7 +450,7 @@ class TestBaseAgentLifecycle(unittest.IsolatedAsyncioTestCase):
         self.assertIn("child_b", targets)
 
 
-class _GeneratingAgent(BaseAgent):
+class _GeneratingAgent(DetachedAgent):
     """Agent whose pipeline generates new frames (for testing edge sinks)."""
 
     async def build_pipeline(self) -> Pipeline:
@@ -462,7 +463,7 @@ class TestEdgeToBus(unittest.IsolatedAsyncioTestCase):
         bus = AsyncQueueBus()
         sent = capture_bus(bus)
 
-        agent = _GeneratingAgent("agent", bus=bus, enable_bus_sinks=True)
+        agent = _GeneratingAgent("agent", bus=bus)
         task = await agent.create_pipeline_task()
 
         async def push_frames():
@@ -485,7 +486,7 @@ class TestEdgeToBus(unittest.IsolatedAsyncioTestCase):
         bus = AsyncQueueBus()
         sent = capture_bus(bus)
 
-        agent = StubAgent("agent", bus=bus, active=True, enable_bus_sinks=True)
+        agent = DetachedStubAgent("agent", bus=bus, active=True)
         task = await agent.create_pipeline_task()
 
         async def inject_frame():
@@ -519,8 +520,8 @@ class TestEdgeToBus(unittest.IsolatedAsyncioTestCase):
         # No infinite loop — total is exactly 2
         self.assertEqual(len(bus_frame_msgs), 2)
 
-    async def test_default_agent_no_edge_sinks(self):
-        """Agent without enable_bus_sinks does not get edge-to-bus wiring."""
+    async def test_base_agent_no_edge_sinks(self):
+        """BaseAgent does not get edge-to-bus wiring."""
         bus = AsyncQueueBus()
         sent = capture_bus(bus)
 
@@ -543,7 +544,7 @@ class TestEdgeToBus(unittest.IsolatedAsyncioTestCase):
     async def test_bus_frame_enters_agent_pipeline(self):
         """Bus frame messages enter the pipeline via edge source processor."""
         bus = AsyncQueueBus()
-        agent = StubAgent("agent", bus=bus, active=True, enable_bus_sinks=True)
+        agent = DetachedStubAgent("agent", bus=bus, active=True)
 
         task = await agent.create_pipeline_task()
 
@@ -579,7 +580,7 @@ class TestEdgeToBus(unittest.IsolatedAsyncioTestCase):
         bus = AsyncQueueBus()
         sent = capture_bus(bus)
 
-        agent = _GeneratingAgent("agent", bus=bus, enable_bus_sinks=True)
+        agent = _GeneratingAgent("agent", bus=bus)
         task = await agent.create_pipeline_task()
 
         async def push_frames():
