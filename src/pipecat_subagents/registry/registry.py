@@ -9,6 +9,8 @@
 from collections import defaultdict
 from typing import Callable, Coroutine, Optional
 
+from loguru import logger
+
 from pipecat_subagents.types import RegisteredAgentData
 
 WatchHandler = Callable[[RegisteredAgentData], Coroutine]
@@ -94,6 +96,8 @@ class AgentRegistry:
             return False
 
         target[agent_data.agent_name] = agent_data
+        locality = "local" if is_local else f"remote ({agent_data.runner})"
+        logger.debug(f"Agent '{agent_data.agent_name}' ready ({locality})")
         await self._notify(agent_data)
         return True
 
