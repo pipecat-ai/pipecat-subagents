@@ -47,6 +47,7 @@ from pipecat_flows import FlowManager, FlowResult, NodeConfig
 from pipecat_subagents.agents import BaseAgent, FlowsAgent, LLMActivationArgs, LLMAgent, tool
 from pipecat_subagents.bus import AgentBus, BusBridgeProcessor
 from pipecat_subagents.runner import AgentRunner
+from pipecat_subagents.types import RegisteredAgentData
 
 load_dotenv(override=True)
 
@@ -196,8 +197,7 @@ class ReservationAgent(FlowsAgent):
             reason (str): Why the user is being transferred.
         """
         logger.info(f"Agent '{self.name}': transferring to '{agent}' ({reason})")
-        await self.deactivate_agent()
-        await self.activate_agent(
+        await self.handoff_to(
             agent,
             args=LLMActivationArgs(
                 messages=[{"role": "user", "content": reason}],
@@ -233,12 +233,12 @@ class RouterAgent(LLMAgent):
             reason (str): Why the user is being transferred.
         """
         logger.info(f"Agent '{self.name}': transferring to '{agent}' ({reason})")
-        await self.deactivate_agent(result_callback=params.result_callback)
-        await self.activate_agent(
+        await self.handoff_to(
             agent,
             args=LLMActivationArgs(
                 messages=[{"role": "user", "content": reason}],
             ),
+            result_callback=params.result_callback,
         )
 
     @tool
@@ -275,19 +275,20 @@ class RestaurantAgent(BaseAgent):
         for agent in [router, reservation]:
             await self.add_agent(agent)
 
-    async def on_agent_registered(self, agent_name: str) -> None:
-        if agent_name == "router":
-            await self.activate_agent(
-                "router",
-                args=LLMActivationArgs(
-                    messages=[
-                        {
-                            "role": "user",
-                            "content": "Greet the user and ask how you can help.",
-                        }
-                    ],
-                ),
-            )
+    async def on_agent_ready(self, agent_info: RegisteredAgentData) -> None:
+        if agent_info.agent_name != "router":
+            return
+        await self.activate_agent(
+            "router",
+            args=LLMActivationArgs(
+                messages=[
+                    {
+                        "role": "user",
+                        "content": "Greet the user and ask how you can help.",
+                    }
+                ],
+            ),
+        )
 
     def build_pipeline_task(self, pipeline: Pipeline) -> PipelineTask:
         return PipelineTask(pipeline, enable_rtvi=True)

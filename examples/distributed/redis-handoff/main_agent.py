@@ -19,7 +19,6 @@ Requirements:
 import argparse
 import asyncio
 import os
-from typing import Optional
 
 from dotenv import load_dotenv
 from loguru import logger
@@ -39,8 +38,8 @@ from redis.asyncio import Redis
 from pipecat_subagents.agents import BaseAgent, LLMActivationArgs
 from pipecat_subagents.bus import AgentBus, BusBridgeProcessor
 from pipecat_subagents.bus.network.redis import RedisBus
-from pipecat_subagents.bus.serializers import JSONMessageSerializer
 from pipecat_subagents.runner import AgentRunner
+from pipecat_subagents.types import RegisteredAgentData
 
 load_dotenv(override=True)
 
@@ -55,10 +54,20 @@ class AcmeAgent(BaseAgent):
     def __init__(self, name: str, *, bus: AgentBus, transport: DailyTransport):
         super().__init__(name, bus=bus)
         self._transport = transport
+        self._client_connected = False
+        self._greeter_registered = False
 
-    async def on_agent_activated(self, args: Optional[dict]) -> None:
-        await super().on_agent_activated(args)
+    async def on_agent_started(self) -> None:
+        await super().on_agent_started()
+        await self.watch_agent("greeter")
 
+    async def on_agent_ready(self, agent_info: RegisteredAgentData) -> None:
+        self._greeter_registered = True
+        await self._maybe_activate_greeter()
+
+    async def _maybe_activate_greeter(self) -> None:
+        if not self._client_connected or not self._greeter_registered:
+            return
         await self.activate_agent(
             "greeter",
             args=LLMActivationArgs(
@@ -101,7 +110,8 @@ class AcmeAgent(BaseAgent):
         @self._transport.event_handler("on_client_connected")
         async def on_client_connected(transport, client):
             logger.info("Client connected")
-            await self.activate_agent(self.name)
+            self._client_connected = True
+            await self._maybe_activate_greeter()
 
         @self._transport.event_handler("on_client_disconnected")
         async def on_client_disconnected(transport, client):
@@ -128,8 +138,7 @@ async def main():
     args = parser.parse_args()
 
     redis = Redis.from_url(args.redis_url)
-    serializer = JSONMessageSerializer()
-    bus = RedisBus(redis=redis, serializer=serializer, channel=args.channel)
+    bus = RedisBus(redis=redis, channel=args.channel)
 
     transport = DailyTransport(
         os.getenv("DAILY_ROOM_URL", ""),

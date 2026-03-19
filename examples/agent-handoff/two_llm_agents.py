@@ -47,6 +47,7 @@ from pipecat.transports.daily.transport import DailyParams
 from pipecat_subagents.agents import BaseAgent, LLMActivationArgs, LLMAgent, tool
 from pipecat_subagents.bus import AgentBus, BusBridgeProcessor
 from pipecat_subagents.runner import AgentRunner
+from pipecat_subagents.types import RegisteredAgentData
 
 load_dotenv(override=True)
 
@@ -74,12 +75,12 @@ class AcmeLLMAgent(LLMAgent):
             reason (str): Why the user is being transferred.
         """
         logger.info(f"Agent '{self.name}': transferring to '{agent}' ({reason})")
-        await self.deactivate_agent(result_callback=params.result_callback)
-        await self.activate_agent(
+        await self.handoff_to(
             agent,
             args=LLMActivationArgs(
                 messages=[{"role": "user", "content": reason}],
             ),
+            result_callback=params.result_callback,
         )
 
     @tool
@@ -154,27 +155,24 @@ class AcmeAgent(BaseAgent):
     async def on_agent_started(self) -> None:
         await super().on_agent_started()
 
-        greeter = GreeterAgent("greeter", bus=self.bus)
-        support = SupportAgent("support", bus=self.bus)
-        for agent in [greeter, support]:
-            await self.add_agent(agent)
+    async def on_agent_ready(self, agent_info: RegisteredAgentData) -> None:
+        if agent_info.agent_name != "greeter":
+            return
 
-    async def on_agent_registered(self, agent_name: str) -> None:
-        if agent_name == "greeter":
-            await self.activate_agent(
-                "greeter",
-                args=LLMActivationArgs(
-                    messages=[
-                        {
-                            "role": "user",
-                            "content": (
-                                "Welcome the user to Acme Corp, mention the available products "
-                                "and ask how you can help."
-                            ),
-                        },
-                    ],
-                ),
-            )
+        await self.activate_agent(
+            "greeter",
+            args=LLMActivationArgs(
+                messages=[
+                    {
+                        "role": "user",
+                        "content": (
+                            "Welcome the user to Acme Corp, mention the available products "
+                            "and ask how you can help."
+                        ),
+                    },
+                ],
+            ),
+        )
 
     def build_pipeline_task(self, pipeline: Pipeline) -> PipelineTask:
         return PipelineTask(pipeline, enable_rtvi=True)
@@ -203,7 +201,10 @@ class AcmeAgent(BaseAgent):
         @self._transport.event_handler("on_client_connected")
         async def on_client_connected(transport, client):
             logger.info("Client connected")
-            await self.activate_agent(self.name)
+            greeter = GreeterAgent("greeter", bus=self.bus)
+            support = SupportAgent("support", bus=self.bus)
+            for agent in [greeter, support]:
+                await self.add_agent(agent)
 
         @self._transport.event_handler("on_client_disconnected")
         async def on_client_disconnected(transport, client):

@@ -32,43 +32,54 @@ from redis.asyncio import Redis
 
 from pipecat_subagents.agents import LLMActivationArgs, LLMAgent, tool
 from pipecat_subagents.bus.network.redis import RedisBus
-from pipecat_subagents.bus.serializers import JSONMessageSerializer
 from pipecat_subagents.runner import AgentRunner
 
 load_dotenv(override=True)
 
-SYSTEM_INSTRUCTIONS = {
-    "greeter": (
-        "You are a friendly greeter for Acme Corp. The available products "
-        "are: the Acme Rocket Boots, the Acme Invisible Paint, and the Acme "
-        "Tornado Kit. Ask which one they'd like to learn more about. "
-        "When the user picks a product or asks a question about one, "
-        "immediately call the transfer_to_agent tool with agent 'support'. "
-        "Do not answer product questions yourself. If the user says goodbye, "
-        "call the end_conversation tool. Do not mention transferring — just do it "
-        "seamlessly. Keep responses brief — this is a voice conversation."
-    ),
-    "support": (
-        "You are a support agent for Acme Corp. You know about three "
-        "products: Acme Rocket Boots (jet-powered boots, $299, run up "
-        "to 60 mph), Acme Invisible Paint (makes anything invisible for "
-        "24 hours, $49 per can), and Acme Tornado Kit (portable tornado "
-        "generator, $199, batteries included). Answer the user's questions "
-        "about these products. If the user wants to browse other products "
-        "or start over, call the transfer_to_agent tool with agent "
-        "'greeter'. If the user says goodbye, call the end_conversation "
-        "tool. Do not mention transferring — just do it seamlessly. "
-        "Keep responses brief — this is a voice conversation."
-    ),
+AGENT_CONFIG = {
+    "greeter": {
+        "system_instruction": (
+            "You are a friendly greeter for Acme Corp. The available products "
+            "are: the Acme Rocket Boots, the Acme Invisible Paint, and the Acme "
+            "Tornado Kit. Ask which one they'd like to learn more about. "
+            "When the user picks a product or asks a question about one, "
+            "immediately call the transfer_to_agent tool with agent 'support'. "
+            "Do not answer product questions yourself. If the user says goodbye, "
+            "call the end_conversation tool. Do not mention transferring — just do it "
+            "seamlessly. Keep responses brief — this is a voice conversation."
+        ),
+        "watch_agents": ["support"],
+    },
+    "support": {
+        "system_instruction": (
+            "You are a support agent for Acme Corp. You know about three "
+            "products: Acme Rocket Boots (jet-powered boots, $299, run up "
+            "to 60 mph), Acme Invisible Paint (makes anything invisible for "
+            "24 hours, $49 per can), and Acme Tornado Kit (portable tornado "
+            "generator, $199, batteries included). Answer the user's questions "
+            "about these products. If the user wants to browse other products "
+            "or start over, call the transfer_to_agent tool with agent "
+            "'greeter'. If the user says goodbye, call the end_conversation "
+            "tool. Do not mention transferring — just do it seamlessly. "
+            "Keep responses brief — this is a voice conversation."
+        ),
+        "watch_agents": ["greeter"],
+    },
 }
 
 
 class AcmeLLMAgent(LLMAgent):
     """LLM agent for Acme Corp with transfer and end tools."""
 
-    def __init__(self, name: str, *, bus, system_instruction: str):
+    def __init__(self, name: str, *, bus, system_instruction: str, watch_agents: list[str]):
         super().__init__(name, bus=bus)
         self._system_instruction = system_instruction
+        self._watch_agents = watch_agents
+
+    async def on_agent_started(self) -> None:
+        await super().on_agent_started()
+        for agent_name in self._watch_agents:
+            await self.watch_agent(agent_name)
 
     def build_llm(self) -> LLMService:
         return OpenAILLMService(
@@ -85,10 +96,10 @@ class AcmeLLMAgent(LLMAgent):
             reason (str): Why the user is being transferred.
         """
         logger.info(f"Agent '{self.name}': transferring to '{agent}' ({reason})")
-        await self.deactivate_agent(result_callback=params.result_callback)
-        await self.activate_agent(
+        await self.handoff_to(
             agent,
             args=LLMActivationArgs(messages=[{"role": "user", "content": reason}]),
+            result_callback=params.result_callback,
         )
 
     @tool
@@ -119,13 +130,14 @@ async def main():
     args = parser.parse_args()
 
     redis = Redis.from_url(args.redis_url)
-    serializer = JSONMessageSerializer()
-    bus = RedisBus(redis=redis, serializer=serializer, channel=args.channel)
+    bus = RedisBus(redis=redis, channel=args.channel)
 
+    config = AGENT_CONFIG[args.agent]
     agent = AcmeLLMAgent(
         args.agent,
         bus=bus,
-        system_instruction=SYSTEM_INSTRUCTIONS[args.agent],
+        system_instruction=config["system_instruction"],
+        watch_agents=config["watch_agents"],
     )
 
     runner = AgentRunner(bus=bus, handle_sigint=True)

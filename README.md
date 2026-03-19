@@ -58,9 +58,8 @@ Each agent runs its own Pipecat pipeline and communicates via the bus.
 | Hook                       | When it fires                                            |
 |----------------------------|----------------------------------------------------------|
 | `on_agent_started()`       | Pipeline is ready. Add child agents here.                |
-| `on_agent_registered()`    | A child agent is on the bus and ready. Activate it here. |
-| `on_agent_activated(args)` | Agent is activated (receives frames).                    |
-| `on_agent_deactivated()`   | Agent is deactivated (stops receiving frames).           |
+| `on_agent_ready()`         | Another agent is ready to receive messages.              |
+| `on_agent_handoff(args)`   | Agent receives focus via `handoff_to()`.                 |
 
 ### Bus
 

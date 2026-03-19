@@ -64,15 +64,6 @@ class SimpleAgent(BaseAgent):
         super().__init__(name, bus=bus)
         self._transport = transport
 
-    async def on_agent_activated(self, args):
-        await super().on_agent_activated(args)
-        await self.queue_frame(
-            LLMMessagesAppendFrame(
-                messages=[{"role": "user", "content": "Greet the user and ask how you can help."}],
-                run_llm=True,
-            )
-        )
-
     def build_pipeline_task(self, pipeline: Pipeline) -> PipelineTask:
         return PipelineTask(pipeline, enable_rtvi=True)
 
@@ -88,10 +79,10 @@ class SimpleAgent(BaseAgent):
             api_key=os.getenv("OPENAI_API_KEY"),
             settings=OpenAILLMSettings(
                 system_instruction=(
-                    "You are a helpful LLM in a WebRTC call. Your goal is to demonstrate "
-                    "your capabilities in a succinct way. Your output will be spoken aloud, "
-                    "so avoid special characters that can't easily be spoken, such as emojis "
-                    "or bullet points. Respond to what the user said in a creative and helpful way."
+                    "You are a helpful assistant in a voice conversation. Your responses "
+                    "will be spoken aloud, so avoid emojis, bullet points, or other formatting "
+                    "that can't be spoken. Respond to what the user said in a creative, helpful, "
+                    "and brief way."
                 ),
             ),
         )
@@ -105,7 +96,14 @@ class SimpleAgent(BaseAgent):
         @self._transport.event_handler("on_client_connected")
         async def on_client_connected(transport, client):
             logger.info("Client connected")
-            await self.activate_agent(self.name)
+            await self.queue_frame(
+                LLMMessagesAppendFrame(
+                    messages=[
+                        {"role": "user", "content": "Greet the user and ask how you can help."}
+                    ],
+                    run_llm=True,
+                )
+            )
 
         @self._transport.event_handler("on_client_disconnected")
         async def on_client_disconnected(transport, client):
