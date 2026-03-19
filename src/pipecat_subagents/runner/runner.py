@@ -18,6 +18,7 @@ from pipecat_subagents.bus import (
     AgentBus,
     AsyncQueueBus,
     BusAddAgentMessage,
+    BusAgentRegistryMessage,
     BusCancelAgentMessage,
     BusCancelMessage,
     BusEndAgentMessage,
@@ -25,6 +26,8 @@ from pipecat_subagents.bus import (
     BusMessage,
 )
 from pipecat_subagents.bus.subscriber import BusSubscriber
+from pipecat_subagents.registry import AgentRegistry
+from pipecat_subagents.types import RegisteredAgentData
 
 
 class AgentRunner(BaseObject, BusSubscriber):
@@ -65,12 +68,14 @@ class AgentRunner(BaseObject, BusSubscriber):
         """
         super().__init__()
         self._bus = bus or AsyncQueueBus()
+        self._registry = AgentRegistry(runner_name=self.name)
 
         self._running: bool = False
         self._agents: dict[str, BaseAgent] = {}
         self._running_agent_tasks: dict[str, asyncio.Task] = {}
         self._pipecat_runner = PipelineRunner(handle_sigint=handle_sigint)
         self._shutdown_event = asyncio.Event()
+        self._known_runners: set[str] = set()
 
         self._register_event_handler("on_runner_started")
 
@@ -78,6 +83,11 @@ class AgentRunner(BaseObject, BusSubscriber):
     def bus(self) -> AgentBus:
         """The bus instance for agent communication."""
         return self._bus
+
+    @property
+    def registry(self) -> AgentRegistry:
+        """The shared agent registry."""
+        return self._registry
 
     async def on_bus_message(self, message: BusMessage) -> None:
         """Handle bus messages directed at the runner.
@@ -93,6 +103,8 @@ class AgentRunner(BaseObject, BusSubscriber):
             asyncio.create_task(self.cancel(message.reason))
         elif isinstance(message, BusAddAgentMessage) and message.agent:
             await self.add_agent(message.agent)
+        elif isinstance(message, BusAgentRegistryMessage):
+            await self._handle_agent_registry(message)
 
     async def add_agent(self, agent: BaseAgent) -> None:
         """Add an agent to this runner.
@@ -108,6 +120,8 @@ class AgentRunner(BaseObject, BusSubscriber):
         """
         if agent.name in self._agents:
             raise ValueError(f"Agent '{agent.name}' already exists")
+        agent.set_registry(self._registry)
+        self._registry.watch(agent.name, self._on_agent_ready)
         self._agents[agent.name] = agent
         logger.debug(f"{self}: added agent '{agent.name}'")
 
@@ -211,3 +225,54 @@ class AgentRunner(BaseObject, BusSubscriber):
         agent = self._agents.get(name)
         if agent:
             agent.notify_finished()
+
+    async def _on_agent_ready(self, agent_data: RegisteredAgentData) -> None:
+        """Called when a local agent registers as ready.
+
+        For root agents, broadcasts ``on_agent_ready`` to all local
+        agents and sends an updated registry to remote runners.
+        Child readiness is handled by the parent directly (via its
+        own watch).
+        """
+        if agent_data.runner != self.name:
+            return
+
+        agent = self._agents.get(agent_data.agent_name)
+        if not agent or agent.parent is not None:
+            # Child agent — parent handles it via its own watch
+            return
+
+        # Root agent: broadcast to all local agents
+        for other in self._agents.values():
+            if other.name != agent_data.agent_name:
+                await other._on_watched_agent_ready(agent_data)
+
+        await self._send_registry()
+
+    async def _send_registry(self) -> None:
+        """Broadcast this runner's root agents to the bus."""
+        agents = [name for name, agent in self._agents.items() if agent.parent is None]
+        if agents:
+            await self._bus.send(
+                BusAgentRegistryMessage(
+                    source=self.name,
+                    runner=self.name,
+                    agents=agents,
+                )
+            )
+
+    async def _handle_agent_registry(self, message: BusAgentRegistryMessage) -> None:
+        """Handle a registry from a remote runner.
+
+        Merges remote agents into the shared registry and, if this runner
+        hasn't seen this remote runner before, sends its own registry back
+        so both sides discover each other.
+        """
+        for agent_name in message.agents:
+            await self._registry.register(
+                RegisteredAgentData(agent_name=agent_name, runner=message.runner)
+            )
+        if message.runner not in self._known_runners:
+            self._known_runners.add(message.runner)
+            await self._send_registry()
+

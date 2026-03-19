@@ -71,16 +71,20 @@ class BusFrameMessage(BusMessage):
 
 
 @dataclass
-class BusAgentRegisteredMessage(BusMessage):
-    """Announces that an agent is available on the bus.
+class BusAgentRegistryMessage(BusMessage):
+    """Snapshot of root agents managed by a runner.
 
-    Sent automatically when an agent's pipeline starts (on StartFrame).
+    Sent by the runner on startup to announce its root agents. When a
+    remote runner receives this, it responds with its own registry so
+    both sides discover each other's agents.
 
     Parameters:
-        agent_name: Name of the agent that registered.
+        runner: Name of the runner that owns these agents.
+        agents: List of root agent names.
     """
 
-    agent_name: str
+    runner: str
+    agents: list[str]
 
 
 @dataclass

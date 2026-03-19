@@ -6,8 +6,8 @@
 
 """LLM agent base class with startup behavior and tool registration.
 
-Provides the `LLMAgent` class that extends `BaseAgent` with an LLM pipeline
-and automatic tool registration.
+Provides the `LLMAgent` class that extends `DetachedAgent` with an LLM
+pipeline and automatic tool registration.
 """
 
 import asyncio
@@ -28,7 +28,8 @@ from pipecat.processors.frame_processor import FrameDirection
 from pipecat.services.llm_service import LLMService
 from pydantic import BaseModel
 
-from pipecat_subagents.agents.base_agent import ActivationArgs, BaseAgent
+from pipecat_subagents.agents.base_agent import ActivationArgs
+from pipecat_subagents.agents.detached_agent import DetachedAgent
 from pipecat_subagents.agents.tool import _collect_tools
 from pipecat_subagents.bus import AgentBus
 
@@ -36,17 +37,17 @@ FunctionCallResultCallback = Callable[..., Any]
 
 
 class LLMActivationArgs(ActivationArgs):
-    """Activation arguments for LLM agents.
+    """Handoff arguments for LLM agents.
 
     Extends ``ActivationArgs`` with LLM-specific fields. Use at call
     sites for type safety and validation::
 
-        await self.activate_agent(
+        await self.handoff_to(
             "other",
             args=LLMActivationArgs(messages=[...]),
         )
 
-    ``LLMAgent.on_agent_activated`` reconstructs this from the raw dict
+    ``LLMAgent.on_agent_handoff`` reconstructs this from the raw dict
     via ``model_validate``.
 
     Attributes:
@@ -71,7 +72,7 @@ class PipelineFlushFrame(ControlFrame, UninterruptibleFrame):
     pass
 
 
-class LLMAgent(BaseAgent):
+class LLMAgent(DetachedAgent):
     """Base class for agents with an LLM pipeline.
 
     Subclasses provide an LLM service via ``build_llm()`` and define tools
@@ -97,7 +98,6 @@ class LLMAgent(BaseAgent):
         *,
         bus: AgentBus,
         active: bool = False,
-        enable_bus_sinks: bool = True,
     ):
         """Initialize the LLMAgent.
 
@@ -105,27 +105,24 @@ class LLMAgent(BaseAgent):
             name: Unique name for this agent.
             bus: The `AgentBus` for inter-agent communication.
             active: Whether the agent starts active. Defaults to False.
-            enable_bus_sinks: Whether to forward pipeline frames to the
-                bus and receive frames from the bus. Defaults to False.
         """
         super().__init__(
             name,
             bus=bus,
             active=active,
-            enable_bus_sinks=enable_bus_sinks,
             exclude_frames=(PipelineFlushFrame,),
         )
         self._llm: Optional[LLMService] = None
         self._flush_done: asyncio.Event = asyncio.Event()
         self._flush_handlers_registered: bool = False
 
-    async def on_agent_activated(self, args: Optional[dict]) -> None:
-        """Configure the LLM with tools and activation messages.
+    async def on_agent_handoff(self, args: Optional[dict]) -> None:
+        """Configure the LLM with tools and handoff messages.
 
         Args:
-            args: Optional activation arguments with messages to append.
+            args: Optional handoff arguments with messages to append.
         """
-        await super().on_agent_activated(args)
+        await super().on_agent_handoff(args)
 
         activation = LLMActivationArgs.model_validate(args) if args else LLMActivationArgs()
 
@@ -199,42 +196,27 @@ class LLMAgent(BaseAgent):
         await self._close_function_call(result_callback)
         await super().end(reason=reason)
 
-    async def activate_agent(
+    async def handoff_to(
         self,
         agent_name: str,
         *,
         args: Union[BaseModel, dict, None] = None,
         result_callback: Optional[FunctionCallResultCallback] = None,
     ) -> None:
-        """Activate another agent without stopping this one.
+        """Hand off to another agent.
 
         When called from a ``@tool`` handler, pass ``params.result_callback`` to
-        ensure any pending LLM output is fully delivered before activating.
+        ensure any pending LLM output is fully delivered before handing off.
 
         Args:
-            agent_name: The name of the agent to activate.
-            args: Optional activation arguments forwarded to the target
-                agent's ``on_agent_activated`` handler. Accepts a
-                ``BaseModel`` (e.g. ``LLMActivationArgs``), a plain
-                dict, or None.
+            agent_name: The name of the agent to hand off to.
+            args: Optional arguments forwarded to the target agent's
+                ``on_agent_handoff`` handler. Accepts a ``BaseModel``
+                (e.g. ``LLMActivationArgs``), a plain dict, or None.
             result_callback: The ``result_callback`` from `FunctionCallParams`.
         """
         await self._close_function_call(result_callback)
-        await super().activate_agent(agent_name, args=args)
-
-    async def deactivate_agent(
-        self, *, result_callback: Optional[FunctionCallResultCallback] = None
-    ) -> None:
-        """Deactivate this agent so it stops receiving frames from other agents.
-
-        When called from a ``@tool`` handler, pass ``params.result_callback`` to
-        ensure any pending LLM output is fully delivered before deactivating.
-
-        Args:
-            result_callback: The ``result_callback`` from `FunctionCallParams`.
-        """
-        await self._close_function_call(result_callback)
-        await super().deactivate_agent()
+        await super().handoff_to(agent_name, args=args)
 
     async def _close_function_call(
         self, result_callback: Optional[FunctionCallResultCallback]

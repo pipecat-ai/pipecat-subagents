@@ -7,15 +7,15 @@
 """Abstract base agent for the multi-agent framework.
 
 Provides the `BaseAgent` class that all agents inherit from, handling
-agent lifecycle, activation, transfer, parent-child relationships, and
-long-running task coordination.
+agent lifecycle, parent-child relationships, and long-running task
+coordination.
 """
 
 import asyncio
 import uuid
 from abc import abstractmethod
 from dataclasses import dataclass, field
-from typing import Optional, Tuple, Type, Union
+from typing import Optional, Union
 
 from loguru import logger
 from pipecat.frames.frames import (
@@ -23,11 +23,10 @@ from pipecat.frames.frames import (
     EndFrame,
     Frame,
     StartFrame,
-    StopFrame,
 )
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.task import PipelineTask
-from pipecat.processors.frame_processor import FrameDirection, FrameProcessor, FrameProcessorSetup
+from pipecat.processors.frame_processor import FrameDirection
 from pipecat.utils.base_object import BaseObject
 from pydantic import BaseModel
 
@@ -35,7 +34,6 @@ from pipecat_subagents.bus import (
     AgentBus,
     BusActivateAgentMessage,
     BusAddAgentMessage,
-    BusAgentRegisteredMessage,
     BusCancelAgentMessage,
     BusCancelMessage,
     BusEndAgentMessage,
@@ -52,9 +50,8 @@ from pipecat_subagents.bus import (
 )
 from pipecat_subagents.bus.messages import BusFrameMessage
 from pipecat_subagents.bus.subscriber import BusSubscriber
-from pipecat_subagents.types import TaskStatus
-
-_LIFECYCLE_FRAMES = (StartFrame, EndFrame, CancelFrame, StopFrame)
+from pipecat_subagents.registry import AgentRegistry
+from pipecat_subagents.types import RegisteredAgentData, TaskStatus
 
 
 class ActivationArgs(BaseModel, extra="ignore"):
@@ -66,100 +63,6 @@ class ActivationArgs(BaseModel, extra="ignore"):
 
     metadata: Optional[dict] = None
 
-
-class _BusEdgeProcessor(FrameProcessor, BusSubscriber):
-    """Pipeline edge that bridges pipeline frames and bus messages.
-
-    Captures pipeline frames traveling in ``direction`` and sends them to the
-    bus.  Receives bus frames traveling in the *opposite* direction and pushes
-    them into the pipeline.
-
-    Place at pipeline start with ``direction=UPSTREAM`` or at pipeline end with
-    ``direction=DOWNSTREAM``.
-    """
-
-    def __init__(self, *, bus, agent, direction, exclude_frames=None, **kwargs):
-        """Initialize the edge processor.
-
-        Args:
-            bus: The ``AgentBus`` used for sending and receiving messages.
-            agent: The ``BaseAgent`` that owns this edge processor.
-            direction: The ``FrameDirection`` this edge captures. Frames
-                traveling in this direction are forwarded to the bus;
-                bus frames traveling in the opposite direction are pushed
-                into the pipeline.
-            exclude_frames: Tuple of frame types to exclude from bus
-                forwarding. Defaults to an empty tuple.
-            **kwargs: Additional arguments passed to ``FrameProcessor``.
-        """
-        super().__init__(**kwargs)
-        self._bus = bus
-        self._agent = agent
-        self._direction = direction
-        self._exclude_frames = exclude_frames or ()
-
-    async def setup(self, setup: FrameProcessorSetup):
-        """Subscribe to the bus when the processor is set up.
-
-        Args:
-            setup: The ``FrameProcessorSetup`` configuration.
-        """
-        await super().setup(setup)
-        await self._bus.subscribe(self)
-
-    async def cleanup(self):
-        """Unsubscribe from the bus when the processor is cleaned up."""
-        await super().cleanup()
-        await self._bus.unsubscribe(self)
-
-    async def process_frame(self, frame, direction):
-        """Forward pipeline frames to the bus.
-
-        Passes the frame through the pipeline unchanged. If the frame is
-        traveling in the configured direction and is not a lifecycle or
-        excluded frame, it is also sent to the bus as a
-        ``BusFrameMessage``.
-
-        Args:
-            frame: The pipeline frame to process.
-            direction: The direction the frame is traveling.
-        """
-        await super().process_frame(frame, direction)
-
-        await self.push_frame(frame, direction)
-
-        if direction != self._direction:
-            return
-        if isinstance(frame, _LIFECYCLE_FRAMES):
-            return
-        if isinstance(frame, self._exclude_frames):
-            return
-        await self._bus.send(
-            BusFrameMessage(source=self._agent.name, frame=frame, direction=direction)
-        )
-
-    async def on_bus_message(self, message):
-        """Receive bus frame messages and push them into the pipeline.
-
-        Only processes ``BusFrameMessage`` instances traveling in the
-        opposite direction from this edge. Ignores messages from the
-        owning agent, messages when the agent is inactive, and messages
-        targeted at other agents.
-
-        Args:
-            message: The incoming ``BusMessage``.
-        """
-        if not isinstance(message, BusFrameMessage):
-            return
-        if message.source == self._agent.name:
-            return
-        if message.direction == self._direction:
-            return
-        if not self._agent.active:
-            return
-        if message.target and message.target != self._agent.name:
-            return
-        await self.push_frame(message.frame, message.direction)
 
 
 @dataclass
@@ -183,20 +86,15 @@ class BaseAgent(BaseObject, BusSubscriber):
     """Abstract base class for agents in the multi-agent framework.
 
     Each agent owns a Pipecat pipeline defined by subclasses via
-    ``build_pipeline()``. The pipeline runs continuously once started,
-    regardless of whether the agent is active.
-
-    An agent is *active* when it is receiving frames from other agents.
-    Lifecycle messages (activation, end, cancel) are always delivered
-    regardless of active state.
+    ``build_pipeline()``. The pipeline runs continuously once started.
 
     Overridable lifecycle methods (always call ``super()``):
 
     - ``on_agent_started()``: Called once when the agent's pipeline is ready.
-    - ``on_agent_registered(agent_name)``: Called when any agent (local
-      or remote) has registered on the bus and is ready to receive messages.
-    - ``on_agent_activated(args)``: Called each time the agent is activated.
-    - ``on_agent_deactivated()``: Called when the agent is deactivated.
+    - ``on_agent_ready(agent_info)``: Called when another agent is ready
+      to receive messages. For local root agents, fires automatically.
+      For children, fires only on the parent. For remote agents, fires
+      only for agents watched via ``watch_agent()``.
     - ``on_task_request(task_id, requester, payload)``: Called when a task
       request is received.
     - ``on_task_response(task_id, agent_name, response, status)``: Called
@@ -221,9 +119,7 @@ class BaseAgent(BaseObject, BusSubscriber):
     Event handlers:
 
     - on_agent_started(agent)
-    - on_agent_registered(agent, agent_name)
-    - on_agent_activated(agent, args)
-    - on_agent_deactivated(agent)
+    - on_agent_ready(agent, agent_info)
     - on_task_request(agent, task_id, requester, payload)
     - on_task_response(agent, task_id, agent_name, response, status)
     - on_task_update(agent, task_id, agent_name, update)
@@ -239,9 +135,9 @@ class BaseAgent(BaseObject, BusSubscriber):
 
         agent = MyAgent(name="my_agent", bus=bus)
 
-        @agent.event_handler("on_agent_activated")
-        async def on_activated(agent, args: Optional[dict]):
-            logger.info(f"Agent activated with args: {args}")
+        @agent.event_handler("on_agent_started")
+        async def on_agent_started(agent):
+            logger.info("Agent pipeline is ready")
     """
 
     def __init__(
@@ -249,36 +145,21 @@ class BaseAgent(BaseObject, BusSubscriber):
         name: str,
         *,
         bus: AgentBus,
-        active: bool = False,
-        enable_bus_sinks: bool = False,
-        exclude_frames: Optional[Tuple[Type[Frame], ...]] = None,
     ):
         """Initialize the BaseAgent.
 
         Args:
             name: Unique name for this agent.
             bus: The `AgentBus` for inter-agent communication.
-            active: Whether the agent starts active (receiving frames
-                from other agents). When True, ``on_agent_activated``
-                fires after the pipeline starts. Defaults to False.
-            enable_bus_sinks: Whether to forward pipeline frames to the
-                bus and receive frames from the bus. Defaults to False.
-            exclude_frames: Frame types to exclude from bus forwarding.
-                Lifecycle frames are always excluded. Only used when
-                ``enable_bus_sinks`` is True.
         """
         super().__init__(name=name)
         self._bus = bus
         self._parent: Optional[str] = None
-        self._active = active
-        self._enable_bus_sinks = enable_bus_sinks
         self._task: Optional[PipelineTask] = None
         self._children: list["BaseAgent"] = []
         self._finished: asyncio.Event = asyncio.Event()
         self._pipeline_started = False
-        self._pending_activation = active
-        self._activation_args: Optional[dict] = None
-        self._exclude_frames = exclude_frames
+        self._registry: Optional[AgentRegistry] = None
 
         # Task state (as worker)
         self._task_id: Optional[str] = None
@@ -287,9 +168,7 @@ class BaseAgent(BaseObject, BusSubscriber):
         self._task_groups: dict[str, TaskGroup] = {}
 
         self._register_event_handler("on_agent_started")
-        self._register_event_handler("on_agent_registered")
-        self._register_event_handler("on_agent_activated")
-        self._register_event_handler("on_agent_deactivated")
+        self._register_event_handler("on_agent_ready")
         self._register_event_handler("on_bus_message")
         self._register_event_handler("on_task_request")
         self._register_event_handler("on_task_response")
@@ -312,14 +191,22 @@ class BaseAgent(BaseObject, BusSubscriber):
         return self._parent
 
     @property
+    def registry(self) -> Optional[AgentRegistry]:
+        """The shared agent registry, if set by a runner."""
+        return self._registry
+
+    def set_registry(self, registry: AgentRegistry) -> None:
+        """Set the shared agent registry.
+
+        Args:
+            registry: The shared registry instance.
+        """
+        self._registry = registry
+
+    @property
     def children(self) -> list["BaseAgent"]:
         """The list of child agents added via ``add_agent()``."""
         return self._children
-
-    @property
-    def active(self) -> bool:
-        """Whether this agent is currently receiving frames from other agents."""
-        return self._active
 
     @property
     def task(self) -> PipelineTask:
@@ -333,11 +220,6 @@ class BaseAgent(BaseObject, BusSubscriber):
         return self._task
 
     @property
-    def activation_args(self) -> Optional[dict]:
-        """The most recent activation arguments, if any."""
-        return self._activation_args
-
-    @property
     def task_id(self) -> Optional[str]:
         """The ID of the task this agent is currently working on."""
         return self._task_id
@@ -346,35 +228,17 @@ class BaseAgent(BaseObject, BusSubscriber):
         """Called once when the agent's pipeline is ready."""
         pass
 
-    async def on_agent_registered(self, agent_name: str) -> None:
-        """Called when another agent has registered on the bus.
+    async def on_agent_ready(self, agent_info: RegisteredAgentData) -> None:
+        """Called when another agent is ready to receive messages.
 
-        Fires for every agent (local or remote) except this agent itself
-        (use ``on_agent_started`` for self-readiness).
-
-        Args:
-            agent_name: The name of the agent that registered.
-        """
-        logger.debug(f"Agent '{agent_name}' registered")
-
-    async def on_agent_activated(self, args: Optional[dict]) -> None:
-        """Called each time the agent is activated.
-
-        Override in subclasses to react to activation (e.g. set tools,
-        append messages). Always call ``super().on_agent_activated(args)``.
+        For local root agents this fires automatically. For remote agents
+        it fires only for agents watched via ``watch_agent()``. For child
+        agents it fires only on the parent that created them.
 
         Args:
-            args: Optional activation arguments.
+            agent_info: Information about the ready agent.
         """
-        pass
-
-    async def on_agent_deactivated(self) -> None:
-        """Called when the agent is deactivated.
-
-        Override in subclasses for cleanup on deactivation. Always call
-        ``super().on_agent_deactivated()``.
-        """
-        pass
+        logger.debug(f"Agent '{agent_info.agent_name}' ready")
 
     async def on_task_request(self, task_id: str, requester: str, payload: Optional[dict]) -> None:
         """Called when this agent receives a task request.
@@ -499,11 +363,7 @@ class BaseAgent(BaseObject, BusSubscriber):
         if message.target and message.target != self.name:
             return
 
-        if isinstance(message, BusAgentRegisteredMessage):
-            await self._handle_agent_registered(message)
-        elif isinstance(message, BusActivateAgentMessage):
-            await self._handle_agent_activate(message)
-        elif isinstance(message, BusEndAgentMessage):
+        if isinstance(message, BusEndAgentMessage):
             await self._handle_agent_end(message)
         elif isinstance(message, BusCancelAgentMessage):
             await self._handle_agent_cancel(message)
@@ -530,13 +390,10 @@ class BaseAgent(BaseObject, BusSubscriber):
     async def build_pipeline(self) -> Pipeline:
         """Return this agent's pipeline.
 
-        Subclasses implement this to define their pipeline.  When
-        ``enable_bus_sinks`` is True, edge-to-bus sink processors are added around
-        the returned pipeline.
+        Subclasses implement this to define their processing pipeline.
 
         Returns:
             A ``Pipeline`` object.
-
         """
         pass
 
@@ -571,26 +428,7 @@ class BaseAgent(BaseObject, BusSubscriber):
         await self._bus.subscribe(self)
 
         user_pipeline = await self.build_pipeline()
-
-        # Wrap with edge-to-bus processors when opted in
-        if self._enable_bus_sinks:
-            edge_source = _BusEdgeProcessor(
-                bus=self._bus,
-                agent=self,
-                direction=FrameDirection.UPSTREAM,
-                exclude_frames=self._exclude_frames,
-                name=f"{self.name}::EdgeSource",
-            )
-            edge_sink = _BusEdgeProcessor(
-                bus=self._bus,
-                agent=self,
-                direction=FrameDirection.DOWNSTREAM,
-                exclude_frames=self._exclude_frames,
-                name=f"{self.name}::EdgeSink",
-            )
-            pipeline = Pipeline([edge_source, user_pipeline, edge_sink])
-        else:
-            pipeline = Pipeline([user_pipeline])
+        pipeline = await self._assemble_pipeline(user_pipeline)
 
         task = self.build_pipeline_task(pipeline)
         self._task = task
@@ -599,12 +437,10 @@ class BaseAgent(BaseObject, BusSubscriber):
         async def on_pipeline_started(task, frame: StartFrame):
             logger.debug(f"Agent '{self}': pipeline started")
             self._pipeline_started = True
-            await self.send_message(
-                BusAgentRegisteredMessage(source=self.name, agent_name=self.name)
-            )
             await self.on_agent_started()
             await self._call_event_handler("on_agent_started")
-            await self._maybe_activate()
+            await self._register_ready()
+            await self._on_pipeline_started()
 
         @task.event_handler("on_pipeline_finished")
         async def on_pipeline_finished(task, frame):
@@ -630,7 +466,8 @@ class BaseAgent(BaseObject, BusSubscriber):
         """Register a child agent under this parent.
 
         The child's lifecycle (end, cancel) is automatically managed
-        by this parent agent.
+        by this parent agent. The parent is notified via
+        ``on_agent_ready`` when the child's pipeline starts.
 
         Args:
             agent: The child `BaseAgent` instance to add.
@@ -642,6 +479,8 @@ class BaseAgent(BaseObject, BusSubscriber):
             raise ValueError(f"Agent '{agent.name}' already has parent '{agent._parent}'")
         agent._parent = self.name
         self._children.append(agent)
+        if self._registry:
+            self._registry.watch(agent.name, self._on_watched_agent_ready)
         await self.send_message(BusAddAgentMessage(source=self.name, agent=agent))
 
     async def wait(self) -> None:
@@ -658,14 +497,22 @@ class BaseAgent(BaseObject, BusSubscriber):
         *,
         args: Union[BaseModel, dict, None] = None,
     ) -> None:
-        """Activate another agent without stopping this one.
+        """Activate a detached agent.
+
+        Sends a ``BusActivateAgentMessage`` to the target agent, which
+        triggers ``on_agent_handoff(args)`` on the target. This is a
+        convenience method for triggering the first handoff from a
+        non-detached agent (e.g. a transport agent).
+
+        For transferring between detached agents, use
+        ``DetachedAgent.handoff_to()`` instead — it also deactivates the
+        calling agent.
 
         Args:
             agent_name: The name of the agent to activate.
-            args: Optional activation arguments forwarded to the target
-                agent's ``on_agent_activated`` handler. Accepts a
-                ``BaseModel`` (e.g. ``LLMActivationArgs``), a plain
-                dict, or None.
+            args: Optional arguments forwarded to the target agent's
+                ``on_agent_handoff`` handler. Accepts a ``BaseModel``,
+                a plain dict, or None.
         """
         if isinstance(args, BaseModel):
             args = args.model_dump(exclude_none=True)
@@ -673,12 +520,67 @@ class BaseAgent(BaseObject, BusSubscriber):
             BusActivateAgentMessage(source=self.name, target=agent_name, args=args)
         )
 
-    async def deactivate_agent(self) -> None:
-        """Deactivate this agent so it stops receiving frames from other agents."""
-        logger.debug(f"Agent '{self}': deactivated")
-        self._active = False
-        await self.on_agent_deactivated()
-        await self._call_event_handler("on_agent_deactivated")
+    async def watch_agent(self, agent_name: str) -> None:
+        """Request notification when an agent registers.
+
+        If the agent is already registered, ``on_agent_ready`` fires
+        immediately. Otherwise ``on_agent_ready`` fires when the
+        agent eventually registers.
+
+        Args:
+            agent_name: The name of the agent to watch for.
+        """
+        if self._registry:
+            self._registry.watch(agent_name, self._on_watched_agent_ready)
+            data = self._registry.get(agent_name)
+            if data:
+                await self._on_watched_agent_ready(data)
+
+    async def _register_ready(self) -> None:
+        """Register this agent as ready in the shared registry.
+
+        Called automatically after ``on_agent_started()`` completes.
+        The registry notifies watchers (parent for children, runner
+        for root agents).
+        """
+        if self._registry:
+            await self._registry.register(
+                RegisteredAgentData(
+                    agent_name=self.name,
+                    runner=self._registry.runner_name,
+                )
+            )
+
+    async def _on_watched_agent_ready(self, agent_data: RegisteredAgentData) -> None:
+        """Called when a watched agent is ready.
+
+        Proxies to ``on_agent_ready``.
+        """
+        await self.on_agent_ready(agent_data)
+        await self._call_event_handler("on_agent_ready", agent_data)
+
+    async def _on_pipeline_started(self) -> None:
+        """Hook called after pipeline starts and agent is registered.
+
+        Subclasses can override to perform additional initialization
+        after the pipeline is running. ``DetachedAgent`` uses this to
+        trigger pending handoffs.
+        """
+        pass
+
+    async def _assemble_pipeline(self, user_pipeline: Pipeline) -> Pipeline:
+        """Assemble the final pipeline from the user pipeline.
+
+        ``DetachedAgent`` overrides this to wrap the user pipeline with
+        bus edge processors.
+
+        Args:
+            user_pipeline: The pipeline returned by ``build_pipeline()``.
+
+        Returns:
+            The assembled ``Pipeline``.
+        """
+        return Pipeline([user_pipeline])
 
     async def start_task(
         self,
@@ -695,7 +597,7 @@ class BaseAgent(BaseObject, BusSubscriber):
         Args:
             *agents: One or more agent instances to launch as task workers.
             args: Optional activation arguments forwarded to each agent's
-                ``on_agent_activated``.
+                ``on_agent_handoff``.
             payload: Optional structured data describing the work, forwarded
                 via ``BusTaskRequestMessage``.
             timeout: Optional timeout in seconds. If set, the task is
@@ -946,29 +848,6 @@ class BaseAgent(BaseObject, BusSubscriber):
         if self._task:
             await self._task.queue_frames(frames, direction)
 
-    async def _handle_agent_registered(self, message: BusAgentRegisteredMessage) -> None:
-        """Notify this agent that another agent has registered on the bus.
-
-        Skips the agent's own registration (use ``on_agent_started`` instead).
-        """
-        if message.agent_name == self.name:
-            return
-        await self.on_agent_registered(message.agent_name)
-        await self._call_event_handler("on_agent_registered", message.agent_name)
-
-    async def _handle_agent_activate(self, message: BusActivateAgentMessage) -> None:
-        """Handle an activation message.
-
-        Stores the activation arguments and marks the agent as pending
-        activation, then delegates to ``_maybe_activate()``.
-
-        Args:
-            message: The ``BusActivateAgentMessage`` requesting activation.
-        """
-        self._activation_args = message.args
-        self._pending_activation = True
-        await self._maybe_activate()
-
     async def _handle_agent_end(self, message: BusEndAgentMessage) -> None:
         """Propagate end to children, wait for them, then end own pipeline.
 
@@ -1083,11 +962,3 @@ class BaseAgent(BaseObject, BusSubscriber):
                 await self.on_task_completed(task_id, group.responses)
                 await self._call_event_handler("on_task_completed", task_id, group.responses)
 
-    async def _maybe_activate(self) -> None:
-        """Activate the agent, call on_agent_activated, and fire event handlers."""
-        if self._pipeline_started and self._pending_activation:
-            logger.debug(f"Agent '{self}': activated")
-            self._active = True
-            self._pending_activation = False
-            await self.on_agent_activated(self._activation_args)
-            await self._call_event_handler("on_agent_activated", self._activation_args)

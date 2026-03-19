@@ -6,8 +6,9 @@
 
 """Flows agent that integrates Pipecat Flows into the multi-agent framework.
 
-Provides the `FlowsAgent` class that extends `BaseAgent` with a FlowManager
-for structured conversation flows (nodes, functions, transitions, actions).
+Provides the `FlowsAgent` class that extends `DetachedAgent` with a
+FlowManager for structured conversation flows (nodes, functions, transitions,
+actions).
 """
 
 from abc import abstractmethod
@@ -19,12 +20,12 @@ from pipecat.services.llm_service import LLMService
 from pipecat_flows import ContextStrategyConfig, FlowManager, FlowsFunctionSchema, NodeConfig
 from pipecat_flows.types import FlowsDirectFunction
 
-from pipecat_subagents.agents.base_agent import BaseAgent
+from pipecat_subagents.agents.detached_agent import DetachedAgent
 from pipecat_subagents.agents.tool import _collect_tools
 from pipecat_subagents.bus import AgentBus
 
 
-class FlowsAgent(BaseAgent):
+class FlowsAgent(DetachedAgent):
     """Agent that uses Pipecat Flows for structured conversation.
 
     Manages a ``FlowManager`` for node-based conversation flows with
@@ -51,7 +52,6 @@ class FlowsAgent(BaseAgent):
         context_strategy: Optional[ContextStrategyConfig] = None,
         global_functions: Optional[List[FlowsFunctionSchema | FlowsDirectFunction]] = None,
         active: bool = False,
-        enable_bus_sinks: bool = True,
     ):
         """Initialize the FlowsAgent.
 
@@ -65,14 +65,11 @@ class FlowsAgent(BaseAgent):
             global_functions: Optional list of functions available at every
                 node, forwarded to `FlowManager`.
             active: Whether the agent starts active. Defaults to False.
-            enable_bus_sinks: Whether to forward pipeline frames to the
-                bus and receive frames from the bus. Defaults to False.
         """
         super().__init__(
             name,
             bus=bus,
             active=active,
-            enable_bus_sinks=enable_bus_sinks,
         )
         self._context_aggregator = context_aggregator
         self._context_strategy = context_strategy
@@ -81,13 +78,13 @@ class FlowsAgent(BaseAgent):
         self._flow_manager: Optional[FlowManager] = None
         self._flow_initialized = False
 
-    async def on_agent_activated(self, args: Optional[dict]) -> None:
-        """Initialize or resume the flow on activation.
+    async def on_agent_handoff(self, args: Optional[dict]) -> None:
+        """Initialize or resume the flow on handoff.
 
         Args:
-            args: Optional activation arguments.
+            args: Optional handoff arguments.
         """
-        await super().on_agent_activated(args)
+        await super().on_agent_handoff(args)
 
         if not self._flow_initialized:
             self._flow_initialized = True
