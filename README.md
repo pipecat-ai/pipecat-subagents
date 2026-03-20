@@ -80,11 +80,13 @@ The runner orchestrates the system: it creates pipeline tasks, manages agent lif
 |---------------|-----------------------------------------------------------------------------------------------------|
 | `AgentRunner` | Entry point for running a multi-agent system. Owns the bus (or accepts one) and the agent registry. |
 
-### Registry
+### Registry and visibility
 
-The registry tracks which agents are ready. When a **root agent** (added via `AgentRunner.add_agent()`) becomes ready, the runner announces it to all other local agents via `on_agent_ready()`. In distributed setups, root agents are also announced to remote runners over the network bus.
+Only **root agents** (added via `AgentRunner.add_agent()`) are visible across the system. When a root agent becomes ready, the runner announces it to all local agents and to remote runners over the network bus. This same visibility rule applies to error reporting: when a root agent calls `send_error()`, the error is broadcast over the network.
 
-**Child agents** (added via `BaseAgent.add_agent()`) are not broadcast. Only the parent is notified when a child is ready. Other agents can opt in via `watch_agent(name)`.
+**Child agents** (added via `BaseAgent.add_agent()`) are private to their parent. Readiness notifications and errors stay local and never cross the network. Only the parent receives `on_agent_ready()` and `on_agent_error()` for its children.
+
+Use `watch_agent(name)` to request notification when a specific agent registers.
 
 | Class           | Description                                                                             |
 |-----------------|-----------------------------------------------------------------------------------------|
@@ -105,19 +107,21 @@ Agents are the building blocks of a multi-agent system. Each agent connects to t
 
 Hooks about this agent's own state.
 
-| Hook                 | When it fires                                  |
-|----------------------|------------------------------------------------|
-| `on_started()`       | Agent is ready. Add child agents here.         |
-| `on_activated(args)` | Agent is activated via `activate_agent()`.     |
-| `on_deactivated()`   | Agent is deactivated via `deactivate_agent()`. |
+| Hook                    | When it fires                                  |
+|-------------------------|------------------------------------------------|
+| `on_started()`          | Agent is ready. Add child agents here.         |
+| `on_error(error, fatal)`| A pipeline error occurred.                     |
+| `on_activated(args)`    | Agent is activated via `activate_agent()`.     |
+| `on_deactivated()`      | Agent is deactivated via `deactivate_agent()`. |
 
 #### Other agent events
 
 Hooks about other agents in the system.
 
-| Hook                         | When it fires                               |
-|------------------------------|---------------------------------------------|
-| `on_agent_ready(agent_info)` | Another agent is ready to receive messages. |
+| Hook                                | When it fires                                       |
+|-------------------------------------|-----------------------------------------------------|
+| `on_agent_ready(agent_info)`        | Another agent is ready to receive messages.         |
+| `on_agent_error(agent_name, error)` | A child agent reported an error via `send_error()`. |
 
 ### Tasks
 
