@@ -103,6 +103,10 @@ Agents are the building blocks of a multi-agent system. Each agent connects to t
 | `LLMDetachedAgent`   | Your detached agent needs an LLM. Adds `build_llm()`, `@tool` registration, and message injection on activation.                                                                        |
 | `FlowsDetachedAgent` | Your detached agent needs structured conversation flows via [Pipecat Flows](https://github.com/pipecat-ai/pipecat-flows).                                                               |
 
+#### Naming
+
+Every agent has a unique name passed at construction. Names are used for bus message targeting, activation, task routing, and logging. Choose short, descriptive names (e.g. `"greeter"`, `"support"`, `"worker"`). In distributed setups, agent names must be unique across all runners.
+
 #### Agent lifecycle
 
 Hooks about this agent's own state.
