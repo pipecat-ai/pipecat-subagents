@@ -40,7 +40,7 @@ class AgentRunner(BaseObject, BusSubscriber):
 
     Event handlers:
 
-    on_runner_started(runner)
+    on_started(runner)
         Fired after all registered agents have been started.
 
     Example::
@@ -82,7 +82,7 @@ class AgentRunner(BaseObject, BusSubscriber):
         self._shutdown_event = asyncio.Event()
         self._known_runners: set[str] = set()
 
-        self._register_event_handler("on_runner_started")
+        self._register_event_handler("on_started")
 
     @property
     def bus(self) -> AgentBus:
@@ -138,7 +138,7 @@ class AgentRunner(BaseObject, BusSubscriber):
     async def run(self) -> None:
         """Start all agents, block until shutdown.
 
-        Starts all registered agents, fires ``on_runner_started``, then blocks
+        Starts all registered agents, fires ``on_started``, then blocks
         until `end()` or `cancel()` is called. New agents can be added
         dynamically via `add_agent()` after ``run()`` has started.
         """
@@ -151,7 +151,7 @@ class AgentRunner(BaseObject, BusSubscriber):
         for agent in self._agents.values():
             await self._start_agent_task(agent)
 
-        await self._call_event_handler("on_runner_started")
+        await self._call_event_handler("on_started")
 
         await self._shutdown_event.wait()
 
