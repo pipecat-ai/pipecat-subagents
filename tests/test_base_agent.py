@@ -15,7 +15,6 @@ from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 from pipecat.utils.asyncio.task_manager import TaskManager, TaskManagerParams
 
 from pipecat_subagents.agents.base_agent import BaseAgent
-
 from pipecat_subagents.bus import (
     AsyncQueueBus,
     BusActivateAgentMessage,
