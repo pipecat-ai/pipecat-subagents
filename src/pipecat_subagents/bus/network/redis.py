@@ -123,9 +123,11 @@ class RedisBus(AgentBus):
             message: The bus message to send.
         """
         if isinstance(message, BusLocalMixin):
+            logger.trace(f"{self}: sending local {message}")
             for conn in self._connections:
                 conn.queue.put_nowait(message)
             return
+        logger.trace(f"{self}: publishing {message} to {self._channel}")
         data = self._serializer.serialize(message)
         await self._redis.publish(self._channel, data)
 
@@ -138,7 +140,9 @@ class RedisBus(AgentBus):
         Returns:
             The next `BusMessage` available on this connection.
         """
-        return await client.queue.get()
+        message = await client.queue.get()
+        logger.trace(f"{self}: received {message}")
+        return message
 
     async def _reader_task(self, pubsub: PubSub, queue: asyncio.Queue[BusMessage]) -> None:
         """Read messages from Redis pub/sub and enqueue them."""

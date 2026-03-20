@@ -8,6 +8,8 @@
 
 import asyncio
 
+from loguru import logger
+
 from pipecat_subagents.bus.bus import AgentBus
 from pipecat_subagents.bus.messages import BusMessage
 
@@ -51,6 +53,7 @@ class AsyncQueueBus(AgentBus):
         Args:
             message: The bus message to send.
         """
+        logger.trace(f"{self}: sending {message}")
         for queue in self._queues:
             queue.put_nowait(message)
 
@@ -63,4 +66,6 @@ class AsyncQueueBus(AgentBus):
         Returns:
             The next `BusMessage` in the queue.
         """
-        return await client.get()
+        message = await client.get()
+        logger.trace(f"{self}: received {message}")
+        return message
