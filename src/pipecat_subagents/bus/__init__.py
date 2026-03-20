@@ -25,6 +25,8 @@ from pipecat_subagents.bus.local import AsyncQueueBus
 from pipecat_subagents.bus.messages import (
     BusActivateAgentMessage,
     BusAddAgentMessage,
+    BusAgentErrorMessage,
+    BusAgentLocalErrorMessage,
     BusAgentRegistryMessage,
     BusAssistantTurnStartedMessage,
     BusAssistantTurnStoppedMessage,
@@ -58,6 +60,8 @@ __all__ = [
     "AsyncQueueBus",
     "BusActivateAgentMessage",
     "BusAddAgentMessage",
+    "BusAgentErrorMessage",
+    "BusAgentLocalErrorMessage",
     "BusAgentRegistryMessage",
     "BusAssistantTurnStartedMessage",
     "BusAssistantTurnStoppedMessage",

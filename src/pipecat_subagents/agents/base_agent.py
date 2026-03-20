@@ -34,6 +34,8 @@ from pipecat_subagents.bus import (
     AgentBus,
     BusActivateAgentMessage,
     BusAddAgentMessage,
+    BusAgentErrorMessage,
+    BusAgentLocalErrorMessage,
     BusCancelAgentMessage,
     BusCancelMessage,
     BusDeactivateAgentMessage,
@@ -74,12 +76,14 @@ class TaskGroup:
         agent_names: Names of the agents in the group.
         responses: Collected responses keyed by agent name.
         timeout_task: Optional asyncio task that cancels the group on timeout.
+        cancel_on_error: Whether to cancel the group if a worker errors.
     """
 
     task_id: str
     agent_names: set[str]
     responses: dict[str, dict] = field(default_factory=dict)
     timeout_task: Optional[asyncio.Task] = None
+    cancel_on_error: bool = True
 
 
 class BaseAgent(BaseObject, BusSubscriber):
@@ -193,6 +197,7 @@ class BaseAgent(BaseObject, BusSubscriber):
 
         # Other agents
         self._register_event_handler("on_agent_ready")
+        self._register_event_handler("on_agent_error")
 
     @property
     def bus(self) -> AgentBus:
@@ -289,6 +294,15 @@ class BaseAgent(BaseObject, BusSubscriber):
             agent_info: Information about the ready agent.
         """
         logger.debug(f"Agent '{agent_info.agent_name}' ready")
+
+    async def on_agent_error(self, agent_name: str, error: str) -> None:
+        """Called when a child or watched agent reports an error.
+
+        Args:
+            agent_name: The name of the agent that errored.
+            error: Description of the error.
+        """
+        pass
 
     async def on_task_request(self, task_id: str, requester: str, payload: Optional[dict]) -> None:
         """Called when this agent receives a task request.
@@ -414,7 +428,9 @@ class BaseAgent(BaseObject, BusSubscriber):
         if message.target and message.target != self.name:
             return
 
-        if isinstance(message, BusActivateAgentMessage):
+        if isinstance(message, (BusAgentErrorMessage, BusAgentLocalErrorMessage)):
+            await self._handle_agent_error(message)
+        elif isinstance(message, BusActivateAgentMessage):
             await self._handle_agent_activate(message)
         elif isinstance(message, BusDeactivateAgentMessage):
             await self._handle_agent_deactivate(message)
@@ -551,6 +567,20 @@ class BaseAgent(BaseObject, BusSubscriber):
         """
         await self._bus.send(message)
 
+    async def send_error(self, error: str) -> None:
+        """Report an error on the bus.
+
+        Child agents send a local-only message to the parent.
+        Root agents broadcast over the network.
+
+        Args:
+            error: Description of the error.
+        """
+        if self._parent:
+            await self.send_message(BusAgentLocalErrorMessage(source=self.name, error=error))
+        else:
+            await self.send_message(BusAgentErrorMessage(source=self.name, error=error))
+
     async def queue_frame(
         self, frame: Frame, direction: FrameDirection = FrameDirection.DOWNSTREAM
     ) -> None:
@@ -653,6 +683,7 @@ class BaseAgent(BaseObject, BusSubscriber):
         args: Optional[dict] = None,
         payload: Optional[dict] = None,
         timeout: Optional[float] = None,
+        cancel_on_error: bool = True,
     ) -> str:
         """Launch new task agents with a shared task_id.
 
@@ -666,12 +697,14 @@ class BaseAgent(BaseObject, BusSubscriber):
             payload: Optional structured data describing the work.
             timeout: Optional timeout in seconds. If set, the task is
                 automatically cancelled after this duration.
+            cancel_on_error: Whether to cancel the entire group if a
+                worker responds with an error status. Defaults to True.
 
         Returns:
             The generated task_id shared by all agents in the group.
         """
         agent_names = [a.name for a in agents]
-        task_id = self._create_task_group(agent_names, timeout=timeout)
+        task_id = self._create_task_group(agent_names, timeout=timeout, cancel_on_error=cancel_on_error)
 
         for agent in agents:
             await self.add_agent(agent)
@@ -685,6 +718,7 @@ class BaseAgent(BaseObject, BusSubscriber):
         *agent_names: str,
         payload: Optional[dict] = None,
         timeout: Optional[float] = None,
+        cancel_on_error: bool = True,
     ) -> str:
         """Send a task request to already-running agents.
 
@@ -696,11 +730,13 @@ class BaseAgent(BaseObject, BusSubscriber):
             payload: Optional structured data describing the work.
             timeout: Optional timeout in seconds. If set, the task is
                 automatically cancelled after this duration.
+            cancel_on_error: Whether to cancel the entire group if a
+                worker responds with an error status. Defaults to True.
 
         Returns:
             The generated task_id shared by all agents in the group.
         """
-        task_id = self._create_task_group(list(agent_names), timeout=timeout)
+        task_id = self._create_task_group(list(agent_names), timeout=timeout, cancel_on_error=cancel_on_error)
 
         for name in agent_names:
             await self._send_task_request(name, task_id, payload)
@@ -890,10 +926,11 @@ class BaseAgent(BaseObject, BusSubscriber):
         agent_names: list[str],
         *,
         timeout: Optional[float] = None,
+        cancel_on_error: bool = True,
     ) -> str:
         """Create a task group and return the generated task_id."""
         task_id = str(uuid.uuid4())
-        group = TaskGroup(task_id=task_id, agent_names=set(agent_names))
+        group = TaskGroup(task_id=task_id, agent_names=set(agent_names), cancel_on_error=cancel_on_error)
         self._task_groups[task_id] = group
 
         if timeout is not None:
@@ -910,6 +947,15 @@ class BaseAgent(BaseObject, BusSubscriber):
                 source=self.name, target=agent_name, task_id=task_id, payload=payload
             )
         )
+
+    async def _handle_agent_error(
+        self, message: Union[BusAgentErrorMessage, BusAgentLocalErrorMessage]
+    ) -> None:
+        """Handle an error reported by a child or remote agent."""
+        child_names = {child.name for child in self._children}
+        if message.source in child_names:
+            await self.on_agent_error(message.source, message.error)
+            await self._call_event_handler("on_agent_error", message.source, message.error)
 
     async def _task_timeout(self, task_id: str, timeout: float) -> None:
         try:
@@ -994,6 +1040,14 @@ class BaseAgent(BaseObject, BusSubscriber):
             message.response,
             message.status,
         )
+
+        # Auto-cancel the group on error/failed if cancel_on_error is set
+        if message.status in (TaskStatus.ERROR, TaskStatus.FAILED):
+            group = self._task_groups.get(message.task_id)
+            if group and group.cancel_on_error:
+                await self.cancel_task(message.task_id, reason=f"worker '{message.source}' errored")
+                return
+
         await self._track_task_group_response(message.task_id, message.source, message.response)
 
     async def _handle_task_update(self, message: BusTaskUpdateMessage) -> None:

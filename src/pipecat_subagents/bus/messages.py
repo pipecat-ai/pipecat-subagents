@@ -99,6 +99,34 @@ class BusDeactivateAgentMessage(BusMessage):
 
 
 @dataclass
+class BusAgentErrorMessage(BusMessage):
+    """Reports an error from a root agent.
+
+    Sent over the network so remote agents can react. For child agent
+    errors, see ``BusAgentLocalErrorMessage``.
+
+    Parameters:
+        error: Description of the error.
+    """
+
+    error: str
+
+
+@dataclass
+class BusAgentLocalErrorMessage(BusMessage, BusLocalMixin):
+    """Reports an error from a child agent to its parent.
+
+    Local-only: never crosses the network. The parent receives it
+    via ``on_agent_error()``.
+
+    Parameters:
+        error: Description of the error.
+    """
+
+    error: str
+
+
+@dataclass
 class BusCancelMessage(BusMessage):
     """Request a hard cancel of the session.
 
