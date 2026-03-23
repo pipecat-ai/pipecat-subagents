@@ -81,6 +81,12 @@ class RedisBus(AgentBus):
         self._channel = channel
         self._connections: list[RedisConnection] = []
 
+    async def cleanup(self):
+        """Cancel all reader tasks and close connections."""
+        for conn in list(self._connections):
+            await self.disconnect(conn)
+        await super().cleanup()
+
     async def connect(self) -> RedisConnection:
         """Create a Redis pub/sub subscription for a subscriber.
 
@@ -89,10 +95,16 @@ class RedisBus(AgentBus):
         """
         pubsub = self._redis.pubsub()
         await pubsub.subscribe(self._channel)
+
         queue: asyncio.Queue[BusMessage] = asyncio.Queue()
-        task = self._create_task(self._reader_task(pubsub, queue), "redis_reader")
+        task = self.create_asyncio_task(self._reader_task(pubsub, queue), f"{self}::redis_reader")
+
         conn = RedisConnection(pubsub=pubsub, queue=queue, task=task)
         self._connections.append(conn)
+
+        # Schedule task right away.
+        await asyncio.sleep(0)
+
         return conn
 
     async def disconnect(self, client: RedisConnection) -> None:
@@ -101,17 +113,10 @@ class RedisBus(AgentBus):
         Args:
             client: The `RedisConnection` returned by `connect()`.
         """
-        try:
-            self._connections.remove(client)
-        except ValueError:
-            pass
-        client.task.cancel()
-        try:
-            await client.task
-        except asyncio.CancelledError:
-            pass
+        await self.cancel_asyncio_task(client.task)
         await client.pubsub.unsubscribe(self._channel)
         await client.pubsub.close()
+        self._connections.remove(client)
 
     async def send(self, message: BusMessage) -> None:
         """Send a message to all subscribers.
@@ -146,14 +151,11 @@ class RedisBus(AgentBus):
 
     async def _reader_task(self, pubsub: PubSub, queue: asyncio.Queue[BusMessage]) -> None:
         """Read messages from Redis pub/sub and enqueue them."""
-        try:
-            async for raw_message in pubsub.listen():
-                if raw_message["type"] != "message":
-                    continue
-                try:
-                    message = self._serializer.deserialize(raw_message["data"])
-                    queue.put_nowait(message)
-                except Exception:
-                    logger.exception(f"{self}: failed to deserialize message")
-        except asyncio.CancelledError:
-            pass
+        async for raw_message in pubsub.listen():
+            if raw_message["type"] != "message":
+                continue
+            try:
+                message = self._serializer.deserialize(raw_message["data"])
+                queue.put_nowait(message)
+            except Exception:
+                logger.exception(f"{self}: failed to deserialize message")

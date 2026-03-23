@@ -67,6 +67,58 @@ class AgentBus(BaseObject):
         """
         self._task_manager = task_manager
 
+    def create_asyncio_task(self, coroutine: Coroutine, name: str) -> asyncio.Task:
+        """Create a managed asyncio task.
+
+        Args:
+            coroutine: The coroutine to run.
+            name: Human-readable name for the task (used in logs).
+
+        Returns:
+            The created `asyncio.Task`.
+
+        Raises:
+            RuntimeError: If the task manager has not been set.
+        """
+        if not self._task_manager:
+            raise RuntimeError(f"Agent '{self}': task manager not set")
+        return self._task_manager.create_task(coroutine, name)
+
+    async def cancel_asyncio_task(self, task: asyncio.Task) -> None:
+        """Cancel a managed asyncio task.
+
+        Args:
+            task: The task to cancel.
+
+        Raises:
+            RuntimeError: If the task manager has not been set.
+        """
+        if not self._task_manager:
+            raise RuntimeError(f"Agent '{self}': task manager not set")
+        await self._task_manager.cancel_task(task)
+
+    async def start(self):
+        """Start delivery tasks for all registered subscribers."""
+        if self._running:
+            return
+        self._running = True
+        for sub in self._subscriptions:
+            sub.task = self.create_asyncio_task(
+                self._subscriber_task(sub), f"bus_subscriber_{sub.subscriber}"
+            )
+        # Schedule tasks right away.
+        await asyncio.sleep(0)
+
+    async def stop(self):
+        """Stop all subscriber tasks and disconnect them."""
+        if not self._running:
+            return
+        self._running = False
+        for sub in self._subscriptions:
+            if sub.task:
+                await self.cancel_asyncio_task(sub.task)
+                sub.task = None
+
     async def subscribe(self, subscriber: BusSubscriber) -> None:
         """Register a subscriber to receive messages from the bus.
 
@@ -76,9 +128,11 @@ class AgentBus(BaseObject):
         client = await self.connect()
         sub = BusSubscription(subscriber=subscriber, client=client)
         if self._running:
-            sub.task = self._create_task(
+            sub.task = self.create_asyncio_task(
                 self._subscriber_task(sub), f"bus_subscriber_{sub.subscriber}"
             )
+            # Schedule task right away.
+            await asyncio.sleep(0)
         self._subscriptions.append(sub)
 
     async def unsubscribe(self, subscriber: BusSubscriber) -> None:
@@ -90,41 +144,11 @@ class AgentBus(BaseObject):
         for i, sub in enumerate(self._subscriptions):
             if sub.subscriber is subscriber:
                 if sub.task:
-                    sub.task.cancel()
-                    try:
-                        await sub.task
-                    except asyncio.CancelledError:
-                        pass
+                    await self.cancel_asyncio_task(sub.task)
                 else:
                     await self.disconnect(sub.client)
                 self._subscriptions.pop(i)
                 return
-
-    async def start(self):
-        """Start delivery tasks for all registered subscribers."""
-        if self._running:
-            return
-        self._running = True
-        for sub in self._subscriptions:
-            sub.task = self._create_task(
-                self._subscriber_task(sub), f"bus_subscriber_{sub.subscriber}"
-            )
-
-    async def stop(self):
-        """Stop all subscriber tasks and disconnect them."""
-        if not self._running:
-            return
-        self._running = False
-        for sub in self._subscriptions:
-            if sub.task:
-                sub.task.cancel()
-        for sub in self._subscriptions:
-            if sub.task:
-                try:
-                    await sub.task
-                except asyncio.CancelledError:
-                    pass
-                sub.task = None
 
     @abstractmethod
     async def connect(self) -> Any:
@@ -135,6 +159,7 @@ class AgentBus(BaseObject):
         """
         pass
 
+    @abstractmethod
     async def disconnect(self, client: Any) -> None:
         """Clean up a connection created by `connect()`.
 
@@ -174,9 +199,3 @@ class AgentBus(BaseObject):
             pass
         finally:
             await self.disconnect(sub.client)
-
-    def _create_task(self, coroutine: Coroutine, name: str) -> asyncio.Task:
-        """Create an asyncio task via the task manager."""
-        if not self._task_manager:
-            raise RuntimeError(f"{self}: task manager not set")
-        return self._task_manager.create_task(coroutine, f"{self}::{name}")
