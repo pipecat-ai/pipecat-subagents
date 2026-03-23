@@ -27,13 +27,13 @@ Machine A                    Redis                  Machine B
 docker run --rm -p 6379:6379 redis:7
 
 # Terminal 2: start the greeter agent
-python llm_agent.py greeter
+uv run llm_agent.py greeter
 
 # Terminal 3: start the support agent
-python llm_agent.py support
+uv run llm_agent.py support
 
 # Terminal 4: start the main transport agent
-python main_agent.py
+uv run main_agent.py
 ```
 
 All three agent processes connect to `redis://localhost:6379` by default.
@@ -44,13 +44,13 @@ Point each process at the same Redis instance:
 
 ```bash
 # Machine A
-python main_agent.py --redis-url redis://your-redis-host:6379
+uv run main_agent.py --redis-url redis://your-redis-host:6379
 
 # Machine B
-python llm_agent.py greeter --redis-url redis://your-redis-host:6379
+uv run llm_agent.py greeter --redis-url redis://your-redis-host:6379
 
 # Machine C
-python llm_agent.py support --redis-url redis://your-redis-host:6379
+uv run llm_agent.py support --redis-url redis://your-redis-host:6379
 ```
 
 ## Environment variables
