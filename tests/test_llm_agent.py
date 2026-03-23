@@ -38,6 +38,10 @@ def _create_agent():
     return agent
 
 
+def _make_frame(content: str, run_llm: bool = True) -> LLMMessagesAppendFrame:
+    return LLMMessagesAppendFrame(messages=[{"role": "user", "content": content}], run_llm=run_llm)
+
+
 class TestToolCallTracking(unittest.IsolatedAsyncioTestCase):
     async def test_tool_call_active_initially_false(self):
         agent = _create_agent()
@@ -62,34 +66,30 @@ class TestToolCallTracking(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(observed[0])
         self.assertFalse(agent.tool_call_active)
 
-    async def test_inject_context_delivers_immediately_when_idle(self):
+    async def test_queue_frame_after_tools_delivers_immediately_when_idle(self):
         agent = _create_agent()
-        messages = [{"role": "user", "content": "hello"}]
+        frame = _make_frame("hello")
 
-        await agent.inject_context(messages, run_llm=True)
+        await agent.queue_frame_after_tools(frame)
 
-        agent.queue_frame.assert_called_once()
-        frame = agent.queue_frame.call_args[0][0]
-        self.assertIsInstance(frame, LLMMessagesAppendFrame)
-        self.assertEqual(frame.messages, messages)
-        self.assertTrue(frame.run_llm)
+        agent.queue_frame.assert_called_once_with(frame)
 
-    async def test_inject_context_defers_when_tool_active(self):
+    async def test_queue_frame_after_tools_defers_when_tool_active(self):
         agent = _create_agent()
         agent._tool_call_inflight = 1
 
-        messages = [{"role": "user", "content": "deferred"}]
-        await agent.inject_context(messages, run_llm=False)
+        frame = _make_frame("deferred")
+        await agent.queue_frame_after_tools(frame)
 
         agent.queue_frame.assert_not_called()
-        self.assertEqual(len(agent._deferred_messages), 1)
-        self.assertEqual(agent._deferred_messages[0], (messages, False))
+        self.assertEqual(len(agent._deferred_frames), 1)
+        self.assertIs(agent._deferred_frames[0], frame)
 
-    async def test_deferred_messages_flush_when_tool_completes(self):
-        """Messages deferred during a tool call are delivered when it finishes."""
+    async def test_deferred_frames_flush_when_tool_completes(self):
+        """Frames deferred during a tool call are delivered when it finishes."""
         agent = _create_agent()
         gate = asyncio.Event()
-        messages = [{"role": "user", "content": "event data"}]
+        frame = _make_frame("event data")
 
         @tool
         async def blocking_tool(self, params):
@@ -103,18 +103,15 @@ class TestToolCallTracking(unittest.IsolatedAsyncioTestCase):
         task = asyncio.create_task(wrapped(params))
         await asyncio.sleep(0)  # Yield so the tool starts.
 
-        # Inject context while tool is running -- should defer.
-        await agent.inject_context(messages, run_llm=True)
+        # Queue frame while tool is running -- should defer.
+        await agent.queue_frame_after_tools(frame)
         agent.queue_frame.assert_not_called()
 
-        # Let the tool finish -- deferred messages should flush.
+        # Let the tool finish -- deferred frames should flush.
         gate.set()
         await task
 
-        agent.queue_frame.assert_called_once()
-        frame = agent.queue_frame.call_args[0][0]
-        self.assertIsInstance(frame, LLMMessagesAppendFrame)
-        self.assertEqual(frame.messages, messages)
+        agent.queue_frame.assert_called_once_with(frame)
 
     async def test_concurrent_tools_flush_only_when_all_done(self):
         """With two parallel tools, flush happens only when the last one completes."""
@@ -143,8 +140,8 @@ class TestToolCallTracking(unittest.IsolatedAsyncioTestCase):
         # Both running.
         self.assertEqual(agent._tool_call_inflight, 2)
 
-        messages = [{"role": "user", "content": "queued"}]
-        await agent.inject_context(messages)
+        frame = _make_frame("queued")
+        await agent.queue_frame_after_tools(frame)
 
         # First tool finishes -- should NOT flush yet.
         gate_a.set()
@@ -155,10 +152,10 @@ class TestToolCallTracking(unittest.IsolatedAsyncioTestCase):
         # Second tool finishes -- NOW flush.
         gate_b.set()
         await task_b
-        agent.queue_frame.assert_called_once()
+        agent.queue_frame.assert_called_once_with(frame)
 
-    async def test_inject_context_run_llm_false(self):
-        """run_llm=False is preserved through defer and flush."""
+    async def test_queue_frame_after_tools_preserves_frame_attributes(self):
+        """Frame attributes like run_llm are preserved through defer and flush."""
         agent = _create_agent()
         gate = asyncio.Event()
 
@@ -173,16 +170,17 @@ class TestToolCallTracking(unittest.IsolatedAsyncioTestCase):
         task = asyncio.create_task(wrapped(params))
         await asyncio.sleep(0)
 
-        await agent.inject_context([{"role": "user", "content": "no inference"}], run_llm=False)
+        frame = _make_frame("no inference", run_llm=False)
+        await agent.queue_frame_after_tools(frame)
 
         gate.set()
         await task
 
-        frame = agent.queue_frame.call_args[0][0]
-        self.assertFalse(frame.run_llm)
+        delivered = agent.queue_frame.call_args[0][0]
+        self.assertFalse(delivered.run_llm)
 
-    async def test_multiple_deferred_messages_flush_in_order(self):
-        """Multiple deferred messages are delivered in FIFO order."""
+    async def test_multiple_deferred_frames_flush_in_order(self):
+        """Multiple deferred frames are delivered in FIFO order."""
         agent = _create_agent()
         gate = asyncio.Event()
 
@@ -197,24 +195,20 @@ class TestToolCallTracking(unittest.IsolatedAsyncioTestCase):
         task = asyncio.create_task(wrapped(params))
         await asyncio.sleep(0)
 
-        msg_a = [{"role": "user", "content": "first"}]
-        msg_b = [{"role": "user", "content": "second"}]
-        await agent.inject_context(msg_a, run_llm=False)
-        await agent.inject_context(msg_b, run_llm=True)
+        frame_a = _make_frame("first", run_llm=False)
+        frame_b = _make_frame("second", run_llm=True)
+        await agent.queue_frame_after_tools(frame_a)
+        await agent.queue_frame_after_tools(frame_b)
 
         gate.set()
         await task
 
         self.assertEqual(agent.queue_frame.call_count, 2)
-        first_frame = agent.queue_frame.call_args_list[0][0][0]
-        second_frame = agent.queue_frame.call_args_list[1][0][0]
-        self.assertEqual(first_frame.messages, msg_a)
-        self.assertFalse(first_frame.run_llm)
-        self.assertEqual(second_frame.messages, msg_b)
-        self.assertTrue(second_frame.run_llm)
+        self.assertIs(agent.queue_frame.call_args_list[0][0][0], frame_a)
+        self.assertIs(agent.queue_frame.call_args_list[1][0][0], frame_b)
 
     async def test_tool_error_still_decrements_and_flushes(self):
-        """If a tool raises, the counter still decrements and deferred messages flush."""
+        """If a tool raises, the counter still decrements and deferred frames flush."""
         agent = _create_agent()
 
         @tool
@@ -225,14 +219,15 @@ class TestToolCallTracking(unittest.IsolatedAsyncioTestCase):
         wrapped = agent._track_tool_call(failing_tool.__get__(agent))
         params = MagicMock()
 
-        # Defer a message first by simulating inflight, then let the failing tool flush it.
+        # Defer a frame first by simulating inflight, then let the failing tool flush it.
+        frame = _make_frame("recover")
         agent._tool_call_inflight = 1
-        await agent.inject_context([{"role": "user", "content": "recover"}])
+        await agent.queue_frame_after_tools(frame)
         agent._tool_call_inflight = 0  # Reset -- the wrapped call will increment.
 
         with self.assertRaises(ValueError):
             await wrapped(params)
 
         self.assertFalse(agent.tool_call_active)
-        # The deferred message from the first simulated inflight should be flushed.
-        agent.queue_frame.assert_called_once()
+        # The deferred frame from the first simulated inflight should be flushed.
+        agent.queue_frame.assert_called_once_with(frame)

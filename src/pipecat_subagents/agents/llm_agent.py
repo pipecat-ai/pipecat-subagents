@@ -20,6 +20,7 @@ from typing import Any, Callable, Optional, Union
 from pipecat.adapters.schemas.tools_schema import ToolsSchema
 from pipecat.frames.frames import (
     ControlFrame,
+    Frame,
     FunctionCallResultProperties,
     LLMMessagesAppendFrame,
     LLMSetToolsFrame,
@@ -106,7 +107,7 @@ class LLMAgent(BaseAgent):
         self._flush_done: asyncio.Event = asyncio.Event()
         self._flush_handlers_registered: bool = False
         self._tool_call_inflight: int = 0
-        self._deferred_messages: deque[tuple[list, bool]] = deque()
+        self._deferred_frames: deque[Frame] = deque()
 
     async def on_activated(self, args: Optional[dict]) -> None:
         """Configure the LLM with tools and activation messages.
@@ -133,24 +134,20 @@ class LLMAgent(BaseAgent):
         """True when one or more ``@tool`` methods are executing."""
         return self._tool_call_inflight > 0
 
-    async def inject_context(self, messages: list, *, run_llm: bool = True) -> None:
-        """Inject messages into the LLM context.
+    async def queue_frame_after_tools(self, frame: Frame) -> None:
+        """Queue a frame, deferring delivery until all tools complete.
 
-        When tool calls are in progress, messages are deferred and delivered
-        automatically once all tools complete. This prevents new LLM turns
-        from colliding with in-progress tool results.
-
-        When no tools are active, messages are delivered immediately.
+        When tool calls are in progress, the frame is held in an internal
+        queue and delivered automatically once the last tool finishes.
+        When no tools are active, the frame is queued immediately.
 
         Args:
-            messages: LLM context messages to append.
-            run_llm: Whether the LLM should run inference after appending.
-                Defaults to True.
+            frame: Any ``Frame`` to deliver.
         """
         if self._tool_call_inflight > 0:
-            self._deferred_messages.append((messages, run_llm))
+            self._deferred_frames.append(frame)
         else:
-            await self.queue_frame(LLMMessagesAppendFrame(messages=messages, run_llm=run_llm))
+            await self.queue_frame(frame)
 
     def build_tools(self) -> list:
         """Return the tools for this agent's LLM.
@@ -177,7 +174,7 @@ class LLMAgent(BaseAgent):
 
         Calls ``build_llm()`` and registers all ``@tool`` decorated methods.
         Each tool is automatically wrapped with inflight tracking so that
-        ``inject_context`` can defer messages during tool execution.
+        ``queue_frame_after_tools`` can defer frames during tool execution.
         Override to customize the LLM setup.
 
         Returns:
@@ -250,14 +247,13 @@ class LLMAgent(BaseAgent):
             finally:
                 self._tool_call_inflight = max(0, self._tool_call_inflight - 1)
                 if self._tool_call_inflight == 0:
-                    await self._flush_deferred_messages()
+                    await self._flush_deferred_frames()
 
         return wrapper
 
-    async def _flush_deferred_messages(self) -> None:
-        while self._deferred_messages:
-            messages, run_llm = self._deferred_messages.popleft()
-            await self.queue_frame(LLMMessagesAppendFrame(messages=messages, run_llm=run_llm))
+    async def _flush_deferred_frames(self) -> None:
+        while self._deferred_frames:
+            await self.queue_frame(self._deferred_frames.popleft())
 
     async def _close_function_call(
         self, result_callback: Optional[FunctionCallResultCallback]
