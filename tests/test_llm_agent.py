@@ -173,9 +173,7 @@ class TestToolCallTracking(unittest.IsolatedAsyncioTestCase):
         task = asyncio.create_task(wrapped(params))
         await asyncio.sleep(0)
 
-        await agent.inject_context(
-            [{"role": "user", "content": "no inference"}], run_llm=False
-        )
+        await agent.inject_context([{"role": "user", "content": "no inference"}], run_llm=False)
 
         gate.set()
         await task

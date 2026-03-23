@@ -150,9 +150,7 @@ class LLMAgent(BaseAgent):
         if self._tool_call_inflight > 0:
             self._deferred_messages.append((messages, run_llm))
         else:
-            await self.queue_frame(
-                LLMMessagesAppendFrame(messages=messages, run_llm=run_llm)
-            )
+            await self.queue_frame(LLMMessagesAppendFrame(messages=messages, run_llm=run_llm))
 
     def build_tools(self) -> list:
         """Return the tools for this agent's LLM.
@@ -259,9 +257,7 @@ class LLMAgent(BaseAgent):
     async def _flush_deferred_messages(self) -> None:
         while self._deferred_messages:
             messages, run_llm = self._deferred_messages.popleft()
-            await self.queue_frame(
-                LLMMessagesAppendFrame(messages=messages, run_llm=run_llm)
-            )
+            await self.queue_frame(LLMMessagesAppendFrame(messages=messages, run_llm=run_llm))
 
     async def _close_function_call(
         self, result_callback: Optional[FunctionCallResultCallback]
