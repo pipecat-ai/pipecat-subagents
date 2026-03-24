@@ -15,7 +15,9 @@ try:
     from starlette.websockets import WebSocket, WebSocketDisconnect, WebSocketState
 except ModuleNotFoundError as e:
     logger.error(f"Exception: {e}")
-    logger.error("In order to use WebSocketProxyServerAgent, you need to `pip install starlette`.")
+    logger.error(
+        "In order to use WebSocketProxyServerAgent, you need to `pip install pipecat-ai-subagents[websocket]`."
+    )
     raise Exception(f"Missing module: {e}")
 
 from pipecat_subagents.agents.base_agent import BaseAgent
@@ -106,6 +108,7 @@ class WebSocketProxyServerAgent(BaseAgent):
     async def cleanup(self):
         """Cancel the receive loop task and release resources."""
         await super().cleanup()
+
         if self._receive_task:
             await self.cancel_asyncio_task(self._receive_task)
             self._receive_task = None
@@ -113,26 +116,38 @@ class WebSocketProxyServerAgent(BaseAgent):
     async def on_ready(self) -> None:
         """Start receiving messages from the WebSocket and watch the local agent."""
         await super().on_ready()
+
         logger.debug(f"Agent '{self}': WebSocket proxy server ready")
+
         await self._call_event_handler("on_client_connected", self._ws)
+
         self._receive_task = self.create_asyncio_task(
             self._receive_loop(), f"{self.name}::ws_receive"
         )
+
+        # Schedule task right away.
         await asyncio.sleep(0)
+
         # Watch the local agent so we can notify the remote side when it's ready
         await self.watch_agent(self._agent_name)
 
     async def on_agent_ready(self, data: AgentReadyData) -> None:
         """Notify the remote client that the local agent is ready."""
+        if not self._ws:
+            return
+
         if data.agent_name != self._agent_name:
             return
+
         logger.debug(f"Agent '{self}': local agent '{self._agent_name}' ready, notifying remote")
-        msg = BusAgentRegistryMessage(
-            source=self.name,
-            runner=data.runner,
-            agents=[self._agent_name],
-        )
+
         try:
+            msg = BusAgentRegistryMessage(
+                source=self.name,
+                runner=data.runner,
+                agents=[self._agent_name],
+            )
+
             await self._send_ws(msg)
         except Exception:
             logger.exception(f"Agent '{self}': failed to send registry to remote")
@@ -145,31 +160,21 @@ class WebSocketProxyServerAgent(BaseAgent):
         """
         await super().on_bus_message(message)
 
-        # Skip local-only messages
+        if not self._ws:
+            return
+
         if isinstance(message, BusLocalMixin):
             return
 
-        # Forward additional message types from the local agent (e.g. BusFrameMessage)
-        if self._forward_messages and isinstance(message, self._forward_messages):
-            if message.source == self._agent_name:
-                try:
-                    await self._send_ws(message)
-                    logger.trace(f"Agent '{self}': forwarded {message} to client")
-                except Exception:
-                    logger.exception(f"Agent '{self}': failed to forward message to client")
+        if message.source != self._agent_name:
             return
 
         # Forward targeted messages from the local agent to the remote agent
-        if message.source != self._agent_name:
-            return
-        if message.target != self._remote_agent_name:
-            return
-
-        try:
+        if message.target == self._remote_agent_name:
             await self._send_ws(message)
-            logger.trace(f"Agent '{self}': forwarded {message} to client")
-        except Exception:
-            logger.exception(f"Agent '{self}': failed to forward message to client")
+        # Forward additional message types from the local agent
+        elif isinstance(message, self._forward_messages):
+            await self._send_ws(message)
 
     async def _stop(self) -> None:
         """Close the WebSocket connection and stop."""
@@ -180,8 +185,17 @@ class WebSocketProxyServerAgent(BaseAgent):
 
     async def _send_ws(self, message: BusMessage) -> None:
         """Serialize and send a message over the WebSocket."""
-        data = self._serializer.serialize(message)
-        await self._ws.send_bytes(data)
+        if not self._ws:
+            return
+        try:
+            data = self._serializer.serialize(message)
+            await self._ws.send_bytes(data)
+            logger.trace(f"Agent '{self}': sent {message}")
+        except (WebSocketDisconnect, Exception):
+            logger.warning(f"Agent '{self}': connection closed, stopping forwarding")
+            ws = self._ws
+            self._ws = None
+            await self._call_event_handler("on_client_disconnected", ws)
 
     async def _receive_loop(self) -> None:
         """Read messages from the WebSocket and put them on the local bus."""
@@ -213,6 +227,8 @@ class WebSocketProxyServerAgent(BaseAgent):
                     logger.exception(f"Agent '{self}': failed to deserialize client message")
         except WebSocketDisconnect:
             logger.warning(f"Agent '{self}': client disconnected")
-            await self._call_event_handler("on_client_disconnected", self._ws)
+            ws = self._ws
+            self._ws = None
+            await self._call_event_handler("on_client_disconnected", ws)
         except asyncio.CancelledError:
             pass

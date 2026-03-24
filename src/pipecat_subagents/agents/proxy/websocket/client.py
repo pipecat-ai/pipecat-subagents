@@ -16,7 +16,9 @@ try:
     from websockets.asyncio.client import connect
 except ModuleNotFoundError as e:
     logger.error(f"Exception: {e}")
-    logger.error("In order to use WebSocketProxyClientAgent, you need to `pip install websockets`.")
+    logger.error(
+        "In order to use WebSocketProxyClientAgent, you need to `pip install pipecat-ai-subagents[websocket]`."
+    )
     raise Exception(f"Missing module: {e}")
 
 from pipecat_subagents.agents.base_agent import BaseAgent
@@ -111,16 +113,23 @@ class WebSocketProxyClientAgent(BaseAgent):
             await self.cancel_asyncio_task(self._receive_task)
             self._receive_task = None
 
-    async def on_ready(self) -> None:
+    async def on_activated(self, args: Optional[dict]) -> None:
         """Connect to the remote WebSocket server."""
-        await super().on_ready()
+        await super().on_activated(args)
+
         logger.debug(f"Agent '{self}': connecting to {self._url}")
+
         self._ws = await connect(self._url, additional_headers=self._headers)
+
         logger.debug(f"Agent '{self}': connected to {self._url}")
+
         await self._call_event_handler("on_connected", self._ws)
+
         self._receive_task = self.create_asyncio_task(
             self._receive_loop(), f"{self.name}::ws_receive"
         )
+
+        # Schedule task right away.
         await asyncio.sleep(0)
 
     async def on_bus_message(self, message: BusMessage) -> None:
@@ -134,29 +143,16 @@ class WebSocketProxyClientAgent(BaseAgent):
         if not self._ws:
             return
 
-        # Skip local-only messages
         if isinstance(message, BusLocalMixin):
             return
 
-        # Forward additional message types from the local agent (e.g. BusFrameMessage)
-        if self._forward_messages and isinstance(message, self._forward_messages):
-            if message.source == self._local_agent_name:
-                try:
-                    await self._send_ws(message)
-                    logger.trace(f"Agent '{self}': forwarded {message} to remote")
-                except Exception:
-                    logger.exception(f"Agent '{self}': failed to forward message to remote")
-            return
-
         # Forward targeted messages to the remote agent
-        if message.target != self._remote_agent_name:
-            return
-
-        try:
+        if message.target == self._remote_agent_name:
             await self._send_ws(message)
-            logger.trace(f"Agent '{self}': forwarded {message} to remote")
-        except Exception:
-            logger.exception(f"Agent '{self}': failed to forward message to remote")
+        # Forward additional message types from the local agent
+        elif isinstance(message, self._forward_messages):
+            if message.source == self._local_agent_name:
+                await self._send_ws(message)
 
     async def _stop(self) -> None:
         """Close the WebSocket connection and stop."""
@@ -167,8 +163,17 @@ class WebSocketProxyClientAgent(BaseAgent):
 
     async def _send_ws(self, message: BusMessage) -> None:
         """Serialize and send a message over the WebSocket."""
-        data = self._serializer.serialize(message)
-        await self._ws.send(data)
+        if not self._ws:
+            return
+        try:
+            data = self._serializer.serialize(message)
+            await self._ws.send(data)
+            logger.trace(f"Agent '{self}': sent {message}")
+        except websockets.exceptions.ConnectionClosed:
+            logger.warning(f"Agent '{self}': connection closed, stopping forwarding")
+            ws = self._ws
+            self._ws = None
+            await self._call_event_handler("on_disconnected", ws)
 
     async def _receive_loop(self) -> None:
         """Read messages from the WebSocket and put them on the local bus."""
@@ -207,4 +212,6 @@ class WebSocketProxyClientAgent(BaseAgent):
                     logger.exception(f"Agent '{self}': failed to deserialize remote message")
         except websockets.exceptions.ConnectionClosed:
             logger.warning(f"Agent '{self}': WebSocket connection closed")
-            await self._call_event_handler("on_disconnected", self._ws)
+            ws = self._ws
+            self._ws = None
+            await self._call_event_handler("on_disconnected", ws)

@@ -38,7 +38,7 @@ from pipecat.transports.daily.transport import DailyParams
 
 from pipecat_subagents.agents import BaseAgent, LLMActivationArgs
 from pipecat_subagents.agents.proxy import WebSocketProxyClientAgent
-from pipecat_subagents.bus import AgentBus, BusBridgeProcessor
+from pipecat_subagents.bus import AgentBus, BusBridgeProcessor, BusFrameMessage
 from pipecat_subagents.runner import AgentRunner
 from pipecat_subagents.types import AgentReadyData
 
@@ -62,12 +62,9 @@ class AcmeAgent(BaseAgent):
     A WebSocket proxy forwards bus messages to the remote LLM server.
     """
 
-    def __init__(
-        self, name: str, *, bus: AgentBus, transport: BaseTransport, remote_agent_url: str
-    ):
+    def __init__(self, name: str, *, bus: AgentBus, transport: BaseTransport):
         super().__init__(name, bus=bus)
         self._transport = transport
-        self._remote_agent_url = remote_agent_url
 
     async def on_ready(self) -> None:
         await super().on_ready()
@@ -120,18 +117,7 @@ class AcmeAgent(BaseAgent):
         @self._transport.event_handler("on_client_connected")
         async def on_client_connected(transport, client):
             logger.info("Client connected")
-            # Create a proxy to the remote LLM server
-            from pipecat_subagents.bus import BusFrameMessage
-
-            proxy = WebSocketProxyClientAgent(
-                "proxy",
-                bus=self.bus,
-                url=self._remote_agent_url,
-                remote_agent_name="assistant",
-                local_agent_name=self.name,
-                forward_messages=(BusFrameMessage,),
-            )
-            await self.add_agent(proxy)
+            await self.activate_agent("proxy")
 
         @self._transport.event_handler("on_client_disconnected")
         async def on_client_disconnected(transport, client):
@@ -153,13 +139,21 @@ class AcmeAgent(BaseAgent):
 
 async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     runner = AgentRunner(handle_sigint=runner_args.handle_sigint)
-    main_agent = AcmeAgent(
-        "acme",
-        bus=runner.bus,
-        transport=transport,
-        remote_agent_url=runner_args.cli_args.remote_agent_url,
-    )
+
+    main_agent = AcmeAgent("acme", bus=runner.bus, transport=transport)
     await runner.add_agent(main_agent)
+
+    # Create a proxy to the remote LLM server. Will connect when activated.
+    proxy = WebSocketProxyClientAgent(
+        "proxy",
+        bus=runner.bus,
+        url=runner_args.cli_args.remote_agent_url,
+        local_agent_name="acme",
+        remote_agent_name="assistant",
+        forward_messages=(BusFrameMessage,),
+    )
+    await runner.add_agent(proxy)
+
     await runner.run()
 
 
