@@ -8,15 +8,32 @@ Pipecat Subagents is a distributed multi-agent framework for [Pipecat](https://g
 
 Whether local or distributed, the programming model is the same: create an `AgentRunner`, connect it to the bus, and add agents.
 
+## Features
+
+| Feature                   | Description                                                                                           |
+|---------------------------|-------------------------------------------------------------------------------------------------------|
+| **Run anywhere**          | In-process, multi-process, across machines, or externally via proxies                                 |
+| **Bus communication**     | Agents communicate via a shared bus (local or through network)                                        |
+| **Pipecat pipelines**     | Each agent runs its own Pipecat pipeline                                                              |
+| **Tasks and task groups** | Parallel workers with streaming, timeouts, and auto-cancel on error                                   |
+| **Framework integration** | Wrap other agent frameworks as processors or subagents                                                |
+| **Agent handoff**         | Transfer control between agents mid-conversation                                                      |
+| **Structured flows**      | [Pipecat Flows](https://github.com/pipecat-ai/pipecat-flows) integration for node-based conversations |
+| **Error handling**        | Pipeline errors propagate to parents with configurable recovery                                       |
+
 ## Installation
 
 ```bash
-uv add pipecat-ai-agents
+uv add pipecat-ai-subagents
 
-# or: pip install pipecat-ai-agents
+# or: pip install pipecat-ai-subagents
 ```
 
 > Requires Python 3.10+ and [Pipecat](https://github.com/pipecat-ai/pipecat?tab=readme-ov-file#-getting-started).
+
+## Examples
+
+The [examples](examples/) directory includes complete working implementations. See the [examples README](examples/README.md) for setup and running instructions.
 
 ## Architecture
 
@@ -94,7 +111,7 @@ Use `watch_agent(name)` to request notification when a specific agent registers.
 
 ### Agents
 
-Agents are the building blocks of a multi-agent system. Each agent connects to the bus and typically runs a Pipecat pipeline, exchanging frames and messages with other agents. Agents can also operate without a pipeline for lightweight coordination (e.g. task routing, agent factories). Agents can launch subagents, activate or deactivate each other, and coordinate work through tasks.
+Agents are the building blocks of a multi-agent system. Each agent connects to the bus and runs a Pipecat pipeline, exchanging frames and messages with other agents. Agents can launch subagents, activate or deactivate each other, and coordinate work through tasks.
 
 | Class        | Use when                                                                                                                                                                                |
 |--------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
@@ -211,55 +228,14 @@ Each proxy filters messages by agent name. Only the following cross the connecti
 - **Registry messages** for agent discovery (sent automatically when the remote agent is ready).
 - **Additional message types** opted in via `forward_messages` (e.g. `BusFrameMessage` for frame routing). These are forwarded based on source agent name only, regardless of target.
 
-By default, only targeted messages and registry messages cross the connection. Frame routing must be explicitly enabled:
-
-```python
-proxy = WebSocketProxyClientAgent(
-    "proxy",
-    bus=bus,
-    url="ws://server:8765/ws",
-    remote_agent_name="assistant",
-    local_agent_name="acme",
-    forward_messages=(BusFrameMessage,),
-)
-```
-
-Everything else is blocked: local-only messages, broadcast lifecycle messages (end/cancel), and messages for other agents. Closing the connection signals shutdown.
-
-## Examples
-
-The [examples](examples/) directory includes complete working implementations. See the [examples README](examples/README.md) for setup and running instructions.
-
-## Contributing to the framework
-
-1. Clone the repository and navigate to it:
-
-   ```bash
-   git clone https://github.com/pipecat-ai/pipecat-agents.git
-   cd pipecat-agents
-   ```
-
-2. Install development dependencies:
-
-   ```bash
-   uv sync --group dev
-   ```
-
-3. Install the git pre-commit hooks (these help ensure your code follows project rules):
-
-   ```bash
-   uv run pre-commit install
-   ```
-
-   > The package is automatically installed in editable mode when you run `uv sync`.
+By default, only targeted messages and registry messages cross the connection. Frame routing must be explicitly enabled by passing `forward_messages` to the proxy constructor. Everything else is blocked: local-only messages, broadcast lifecycle messages (end/cancel), and messages for other agents. Closing the connection signals shutdown.
 
 ## Contributing
 
 We welcome contributions from the community! Whether you're fixing bugs, improving documentation, or adding new features, here's how you can help:
 
-- **Found a bug?** Open an [issue](https://github.com/pipecat-ai/pipecat-agents/issues)
+- **Found a bug?** Open an [issue](https://github.com/pipecat-ai/pipecat-subagents/issues)
 - **Have a feature idea?** Start a [discussion](https://discord.gg/pipecat)
-- **Want to contribute code?** Check our [CONTRIBUTING.md](CONTRIBUTING.md) guide
 - **Documentation improvements?** [Docs](https://github.com/pipecat-ai/docs) PRs are always welcome
 
 Before submitting a pull request, please check existing issues and PRs to avoid duplicates.
