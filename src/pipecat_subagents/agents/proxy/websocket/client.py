@@ -33,6 +33,11 @@ class WebSocketProxyClientAgent(BaseAgent):
     agent and a remote agent. Only messages targeted at the remote agent
     are sent. Only messages targeted at the local agent are accepted.
 
+    Event handlers available:
+
+    - on_connected: Fired when the WebSocket connection is established.
+    - on_disconnected: Fired when the WebSocket connection is closed.
+
     Example::
 
         proxy = WebSocketProxyClientAgent(
@@ -42,6 +47,15 @@ class WebSocketProxyClientAgent(BaseAgent):
             remote_agent_name="worker",
             local_agent_name="voice",
         )
+
+        @proxy.event_handler("on_connected")
+        async def on_connected(agent, websocket):
+            logger.info("Connected to remote server")
+
+        @proxy.event_handler("on_disconnected")
+        async def on_disconnected(agent, websocket):
+            logger.info("Disconnected from remote server")
+
         await runner.add_agent(proxy)
     """
 
@@ -81,6 +95,9 @@ class WebSocketProxyClientAgent(BaseAgent):
         self._ws = None
         self._receive_task: Optional[asyncio.Task] = None
 
+        self._register_event_handler("on_connected")
+        self._register_event_handler("on_disconnected")
+
     async def cleanup(self):
         """Cancel the receive loop task and release resources."""
         await super().cleanup()
@@ -94,6 +111,7 @@ class WebSocketProxyClientAgent(BaseAgent):
         logger.debug(f"Agent '{self}': connecting to {self._url}")
         self._ws = await connect(self._url, additional_headers=self._headers)
         logger.debug(f"Agent '{self}': connected to {self._url}")
+        await self._call_event_handler("on_connected", self._ws)
         self._receive_task = self.create_asyncio_task(
             self._receive_loop(), f"{self.name}::ws_receive"
         )
@@ -183,3 +201,4 @@ class WebSocketProxyClientAgent(BaseAgent):
                     logger.exception(f"Agent '{self}': failed to deserialize remote message")
         except websockets.exceptions.ConnectionClosed:
             logger.warning(f"Agent '{self}': WebSocket connection closed")
+            await self._call_event_handler("on_disconnected", self._ws)

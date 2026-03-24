@@ -34,6 +34,11 @@ class WebSocketProxyServerAgent(BaseAgent):
     from the local agent targeted at the remote agent are sent. Only
     inbound messages targeted at the local agent are accepted.
 
+    Event handlers available:
+
+    - on_client_connected: Fired when the WebSocket client connects and the proxy is ready.
+    - on_client_disconnected: Fired when the WebSocket client disconnects.
+
     Example::
 
         @app.websocket("/ws")
@@ -46,6 +51,15 @@ class WebSocketProxyServerAgent(BaseAgent):
                 agent_name="worker",
                 remote_agent_name="voice",
             )
+
+            @proxy.event_handler("on_client_connected")
+            async def on_client_connected(agent, websocket):
+                logger.info("Client connected")
+
+            @proxy.event_handler("on_client_disconnected")
+            async def on_client_disconnected(agent, websocket):
+                logger.info("Client disconnected")
+
             await runner.add_agent(proxy)
     """
 
@@ -80,6 +94,9 @@ class WebSocketProxyServerAgent(BaseAgent):
         self._serializer = serializer or JSONMessageSerializer()
         self._receive_task: Optional[asyncio.Task] = None
 
+        self._register_event_handler("on_client_connected")
+        self._register_event_handler("on_client_disconnected")
+
     async def cleanup(self):
         """Cancel the receive loop task and release resources."""
         await super().cleanup()
@@ -91,6 +108,7 @@ class WebSocketProxyServerAgent(BaseAgent):
         """Start receiving messages from the WebSocket and watch the local agent."""
         await super().on_ready()
         logger.debug(f"Agent '{self}': WebSocket proxy server ready")
+        await self._call_event_handler("on_client_connected", self._ws)
         self._receive_task = self.create_asyncio_task(
             self._receive_loop(), f"{self.name}::ws_receive"
         )
@@ -189,5 +207,6 @@ class WebSocketProxyServerAgent(BaseAgent):
                     logger.exception(f"Agent '{self}': failed to deserialize client message")
         except WebSocketDisconnect:
             logger.warning(f"Agent '{self}': client disconnected")
+            await self._call_event_handler("on_client_disconnected", self._ws)
         except asyncio.CancelledError:
             pass
