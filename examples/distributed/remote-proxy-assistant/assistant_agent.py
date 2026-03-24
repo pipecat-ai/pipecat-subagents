@@ -79,7 +79,6 @@ class AcmeAssistant(LLMAgent):
 async def websocket_endpoint(websocket: WebSocket):
     """Handle a WebSocket connection from the main agent's proxy."""
     await websocket.accept()
-    logger.info("WebSocket client connected")
 
     runner = AgentRunner(handle_sigint=False)
 
@@ -92,15 +91,23 @@ async def websocket_endpoint(websocket: WebSocket):
         remote_agent_name="acme",
     )
 
+    @proxy.event_handler("on_client_connected")
+    async def on_client_connected(proxy, client):
+        logger.info("WebSocket client connected")
+
+    @proxy.event_handler("on_client_disconnected")
+    async def on_client_disconnected(proxy, client):
+        await runner.cancel()
+
     # Create the bridged LLM agent
     assistant = AcmeAssistant("assistant", bus=runner.bus)
 
     await runner.add_agent(proxy)
     await runner.add_agent(assistant)
 
-    logger.info("LLM server ready, waiting for activation")
+    logger.info("Assistant server ready, waiting for activation")
     await runner.run()
-    logger.info("LLM server session ended")
+    logger.info("Assistant server session ended")
 
 
 if __name__ == "__main__":
