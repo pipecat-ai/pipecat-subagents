@@ -177,6 +177,39 @@ Tasks let a parent agent spawn workers, wait for results, and optionally cancel 
 | `on_task_completed()`             | Parent: all workers in the task group have responded.                             |
 | `on_task_stream_start/data/end()` | Parent: a worker is streaming incremental results.                                |
 
+### Proxy Agents
+
+Proxy agents connect two independent bus instances that can't communicate directly. Each proxy is scoped to a specific agent name, so only messages for that agent cross the connection. This enables agents to operate across separate networks, third-party servers, or isolated processes without sharing a bus.
+
+```
+    +---------------+      +-------------------+           +-------------------+      +-----------------+
+    |               |      |                   |           |                   |      |                 |
+    |  Local Agent  |      |    Proxy Agent    |  <~~~~~>  |    Proxy Agent    |      |  Remote Agent   |
+    |               |      |                   |           |                   |      |                 |
+    +---------------+      +-------------------+           +-------------------+      +-----------------+
+        messages                 messages                        messages                   messages
+            │                       │                               │                          │
+  ══════════╧═══════════════════════╧════════════         ══════════╧══════════════════════════╧══════════
+                     Agent Bus                                                Agent Bus
+  ═══════════════════════════════════════════════         ════════════════════════════════════════════════
+```
+
+The framework includes a WebSocket proxy implementation. Other transports can be added by following the same pattern.
+
+| Class                       | Description                                                                 |
+|-----------------------------|-----------------------------------------------------------------------------|
+| `WebSocketProxyClientAgent` | Connects to a remote server and forwards bus messages for a specific agent. |
+| `WebSocketProxyServerAgent` | Accepts a WebSocket connection and routes messages to/from a local agent.   |
+
+Agent discovery works automatically: when the remote agent is ready, the proxy notifies the local side.
+
+Security: each proxy filters messages by agent name. Only the following cross the connection:
+- **Targeted messages** between the two configured agents (activation, tasks, errors).
+- **Frame messages** from the configured agent (pipeline frames via edge processors or bridge).
+- **Registry messages** for agent discovery (sent automatically when the remote agent is ready).
+
+Everything else is blocked: local-only messages, broadcast lifecycle messages (end/cancel), and messages for other agents. Closing the connection signals shutdown.
+
 ## Examples
 
 The [examples](examples/) directory includes complete working implementations. See the [examples README](examples/README.md) for setup and running instructions.

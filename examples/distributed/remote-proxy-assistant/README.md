@@ -1,18 +1,20 @@
 # Distributed LLM Agent via WebSocket Proxy
 
-Runs an LLM agent on a remote server, connected to the main transport
-agent via a WebSocket proxy. No shared bus (Redis) required, the proxy
-handles message forwarding over a point-to-point WebSocket connection.
+Runs an LLM agent on a remote server, connected to the main transport agent via a WebSocket proxy. No shared bus (Redis) required, the proxy handles message forwarding over a point-to-point WebSocket connection.
 
 ## Architecture
 
 ```
-Client Machine                    WebSocket                Server Machine
-+--------------+           +------------------+           +-----------------+
-| main_agent   |           |                  |           | assistant_agent |
-| (transport,  |  <------> | proxy <-> proxy  |  <------> | (LLM, tools)    |
-|  STT, TTS)   |           |                  |           |                 |
-+--------------+           +------------------+           +-----------------+
+      +---------------+      +-------------------+           +-------------------+      +-----------------+
+      |               |      |                   |           |                   |      |                 |
+      |  Main Agent   |      |    Proxy Agent    |  <~~~~~>  |    Proxy Agent    |      | Assistant Agent |
+      |               |      |                   |           |                   |      |                 |
+      +---------------+      +-------------------+           +-------------------+      +-----------------+
+          messages                 messages                        messages                   messages
+              │                       │                               │                          │
+    ══════════╧═══════════════════════╧════════════         ══════════╧══════════════════════════╧══════════
+                       Agent Bus                                                Agent Bus
+    ═══════════════════════════════════════════════         ════════════════════════════════════════════════
 ```
 
 - **main_agent.py**: Transport agent with STT, TTS, and a BusBridge. Creates a `WebSocketProxyClientAgent` that connects to the remote server.
