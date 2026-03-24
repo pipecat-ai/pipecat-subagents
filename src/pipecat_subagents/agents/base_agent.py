@@ -13,7 +13,6 @@ coordination.
 
 import asyncio
 import uuid
-from dataclasses import dataclass, field
 from typing import Coroutine, Optional, Union
 
 from loguru import logger
@@ -33,6 +32,7 @@ from pipecat.utils.asyncio.task_manager import TaskManager
 from pipecat.utils.base_object import BaseObject
 from pydantic import BaseModel
 
+from pipecat_subagents.agents.task_group import TaskGroup, TaskGroupContext
 from pipecat_subagents.bus import (
     AgentBus,
     BusActivateAgentMessage,
@@ -68,25 +68,6 @@ class ActivationArgs(BaseModel, extra="ignore"):
     """
 
     metadata: Optional[dict] = None
-
-
-@dataclass
-class TaskGroup:
-    """Tracks a group of task agents launched together.
-
-    Parameters:
-        task_id: Shared identifier for all agents in this group.
-        agent_names: Names of the agents in the group.
-        responses: Collected responses keyed by agent name.
-        timeout_task: Optional asyncio task that cancels the group on timeout.
-        cancel_on_error: Whether to cancel the group if a worker errors.
-    """
-
-    task_id: str
-    agent_names: set[str]
-    responses: dict[str, dict] = field(default_factory=dict)
-    timeout_task: Optional[asyncio.Task] = None
-    cancel_on_error: bool = True
 
 
 _LIFECYCLE_FRAMES = (StartFrame, EndFrame, CancelFrame, StopFrame)
@@ -868,19 +849,13 @@ class BaseAgent(BaseObject, BusSubscriber):
             The generated task_id shared by all agents in the group.
         """
         agent_names = [a.name for a in agents]
-        task_id = self._create_task_group(
+        group = self._create_task_group(
             agent_names, timeout=timeout, cancel_on_error=cancel_on_error
         )
 
-        # Schedule task right away.
-        await asyncio.sleep(0)
+        await self._start_task_agents(group, agents, args, payload)
 
-        for agent in agents:
-            await self.add_agent(agent)
-            await self.activate_agent(agent.name, args=args)
-            await self._send_task_request(agent.name, task_id, payload)
-
-        return task_id
+        return group.task_id
 
     async def request_task(
         self,
@@ -905,14 +880,14 @@ class BaseAgent(BaseObject, BusSubscriber):
         Returns:
             The generated task_id shared by all agents in the group.
         """
-        task_id = self._create_task_group(
+        group = self._create_task_group(
             list(agent_names), timeout=timeout, cancel_on_error=cancel_on_error
         )
 
         for name in agent_names:
-            await self._send_task_request(name, task_id, payload)
+            await self._send_task_request(name, group.task_id, payload)
 
-        return task_id
+        return group.task_id
 
     async def cancel_task(self, task_id: str, *, reason: Optional[str] = None) -> None:
         """Cancel a running task group.
@@ -931,6 +906,50 @@ class BaseAgent(BaseObject, BusSubscriber):
                         source=self.name, target=agent_name, task_id=task_id, reason=reason
                     )
                 )
+            group.fail(reason)
+
+    def task_group(
+        self,
+        *agents: "BaseAgent",
+        args: Optional[dict] = None,
+        payload: Optional[dict] = None,
+        timeout: Optional[float] = None,
+        cancel_on_error: bool = True,
+    ) -> TaskGroupContext:
+        """Create a structured task group context manager.
+
+        Returns an async context manager that starts task workers and
+        waits for all responses. On normal completion, results are
+        available via ``responses``. On worker error (with
+        ``cancel_on_error=True``) or timeout, raises ``TaskGroupError``.
+
+        Args:
+            *agents: Agent instances to launch as task workers.
+            args: Optional activation arguments forwarded to each agent.
+            payload: Optional structured data describing the work.
+            timeout: Optional timeout in seconds.
+            cancel_on_error: Whether to cancel the group if a worker
+                errors. Defaults to True.
+
+        Returns:
+            A ``TaskGroupContext`` to use with ``async with``.
+
+        Example::
+
+            async with self.task_group(w1, w2, payload=data) as tg:
+                pass
+
+            for name, result in tg.responses.items():
+                print(name, result)
+        """
+        return TaskGroupContext(
+            self,
+            agents,
+            args=args,
+            payload=payload,
+            timeout=timeout,
+            cancel_on_error=cancel_on_error,
+        )
 
     async def request_task_update(self, task_id: str, agent_name: str) -> None:
         """Request a progress update from a task agent.
@@ -1102,8 +1121,7 @@ class BaseAgent(BaseObject, BusSubscriber):
         *,
         timeout: Optional[float] = None,
         cancel_on_error: bool = True,
-    ) -> str:
-        """Create a task group and return the generated task_id."""
+    ) -> TaskGroup:
         task_id = str(uuid.uuid4())
         group = TaskGroup(
             task_id=task_id, agent_names=set(agent_names), cancel_on_error=cancel_on_error
@@ -1115,17 +1133,36 @@ class BaseAgent(BaseObject, BusSubscriber):
                 self._task_timeout(task_id, timeout), f"task_timeout_{task_id[:8]}"
             )
 
-        return task_id
+        return group
+
+    async def _start_task_agents(
+        self,
+        group: TaskGroup,
+        agents: tuple["BaseAgent", ...],
+        args: Optional[dict],
+        payload: Optional[dict],
+    ) -> None:
+        await asyncio.sleep(0)
+        for agent in agents:
+            await self.add_agent(agent)
+            await self.activate_agent(agent.name, args=args)
+            await self._send_task_request(agent.name, group.task_id, payload)
 
     async def _send_task_request(
         self, agent_name: str, task_id: str, payload: Optional[dict]
     ) -> None:
-        """Send a BusTaskRequestMessage to a single agent."""
         await self.send_message(
             BusTaskRequestMessage(
                 source=self.name, target=agent_name, task_id=task_id, payload=payload
             )
         )
+
+    async def _task_timeout(self, task_id: str, timeout: float) -> None:
+        try:
+            await asyncio.sleep(timeout)
+        except asyncio.CancelledError:
+            return
+        await self.cancel_task(task_id, reason="timeout")
 
     async def _handle_agent_error(
         self, message: Union[BusAgentErrorMessage, BusAgentLocalErrorMessage]
@@ -1136,13 +1173,6 @@ class BaseAgent(BaseObject, BusSubscriber):
             error_info = AgentErrorData(agent_name=message.source, error=message.error)
             await self.on_agent_error(error_info)
             await self._call_event_handler("on_agent_error", error_info)
-
-    async def _task_timeout(self, task_id: str, timeout: float) -> None:
-        try:
-            await asyncio.sleep(timeout)
-        except asyncio.CancelledError:
-            return
-        await self.cancel_task(task_id, reason="timeout")
 
     async def _handle_agent_activate(self, message: BusActivateAgentMessage) -> None:
         """Handle an activation message.
@@ -1289,6 +1319,7 @@ class BaseAgent(BaseObject, BusSubscriber):
                 del self._task_groups[task_id]
                 await self.on_task_completed(task_id, group.responses)
                 await self._call_event_handler("on_task_completed", task_id, group.responses)
+                group.complete()
 
     async def _maybe_activate(self) -> None:
         """Activate the agent, call on_agent_activated, and fire event handlers."""

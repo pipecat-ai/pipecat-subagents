@@ -1008,5 +1008,217 @@ class TestTaskLifecycle(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(group.timeout_task)
 
 
+class TestTaskGroupContext(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        self.bus, self.tm = create_test_bus()
+
+    async def test_task_group_collects_responses(self):
+        """task_group() context manager collects all responses."""
+        bus = self.bus
+        parent = StubAgent("parent", bus=bus)
+        w1 = StubAgent("w1", bus=bus)
+        w2 = StubAgent("w2", bus=bus)
+
+        async def respond():
+            await asyncio.sleep(0)
+            tg_ref = list(parent._task_groups.values())[0]
+            task_id = tg_ref.task_id
+            await parent.on_bus_message(
+                BusTaskResponseMessage(
+                    source="w1", target="parent", task_id=task_id, response={"a": 1}
+                )
+            )
+            await parent.on_bus_message(
+                BusTaskResponseMessage(
+                    source="w2", target="parent", task_id=task_id, response={"b": 2}
+                )
+            )
+
+        asyncio.get_event_loop().call_soon(lambda: asyncio.ensure_future(respond()))
+
+        async with parent.task_group(w1, w2, payload={"work": True}) as tg:
+            pass
+
+        self.assertEqual(tg.responses, {"w1": {"a": 1}, "w2": {"b": 2}})
+
+    async def test_task_group_sends_messages(self):
+        """task_group() sends add, activate, and request messages like start_task."""
+        bus = self.bus
+        sent = capture_bus(bus)
+
+        parent = StubAgent("parent", bus=bus)
+        w1 = StubAgent("w1", bus=bus)
+
+        async def respond():
+            await asyncio.sleep(0)
+            tg_ref = list(parent._task_groups.values())[0]
+            await parent.on_bus_message(
+                BusTaskResponseMessage(
+                    source="w1", target="parent", task_id=tg_ref.task_id, response={"ok": True}
+                )
+            )
+
+        asyncio.get_event_loop().call_soon(lambda: asyncio.ensure_future(respond()))
+
+        async with parent.task_group(w1, payload={"data": 1}) as tg:
+            pass
+
+        add_msgs = [m for m in sent if isinstance(m, BusAddAgentMessage)]
+        self.assertEqual(len(add_msgs), 1)
+
+        activate_msgs = [m for m in sent if isinstance(m, BusActivateAgentMessage)]
+        self.assertEqual(len(activate_msgs), 1)
+
+        request_msgs = [m for m in sent if isinstance(m, BusTaskRequestMessage)]
+        self.assertEqual(len(request_msgs), 1)
+        self.assertEqual(request_msgs[0].payload, {"data": 1})
+
+    async def test_task_group_raises_on_cancel(self):
+        """task_group() raises TaskGroupError when group is cancelled."""
+        from pipecat_subagents.agents.task_group import TaskGroupError
+
+        bus = self.bus
+        parent = StubAgent("parent", bus=bus)
+        parent.set_task_manager(self.tm)
+        worker = StubAgent("worker", bus=bus)
+        worker.set_task_manager(self.tm)
+
+        async def cancel_it():
+            await asyncio.sleep(0)
+            tg_ref = list(parent._task_groups.values())[0]
+            await parent.cancel_task(tg_ref.task_id, reason="manual cancel")
+
+        asyncio.get_event_loop().call_soon(lambda: asyncio.ensure_future(cancel_it()))
+
+        with self.assertRaises(TaskGroupError) as ctx:
+            async with parent.task_group(worker) as tg:
+                pass
+
+        self.assertIn("manual cancel", str(ctx.exception))
+        await parent.cleanup()
+
+    async def test_task_group_raises_on_timeout(self):
+        """task_group() raises TaskGroupError on timeout."""
+        from pipecat_subagents.agents.task_group import TaskGroupError
+
+        bus = self.bus
+        parent = StubAgent("parent", bus=bus)
+        parent.set_task_manager(self.tm)
+        worker = StubAgent("worker", bus=bus)
+        worker.set_task_manager(self.tm)
+
+        with self.assertRaises(TaskGroupError) as ctx:
+            async with parent.task_group(worker, timeout=0.05) as tg:
+                pass
+
+        self.assertIn("timeout", str(ctx.exception))
+        await parent.cleanup()
+
+    async def test_task_group_cancels_on_block_exception(self):
+        """task_group() cancels remaining tasks when the block raises."""
+        bus = self.bus
+        sent = capture_bus(bus)
+
+        parent = StubAgent("parent", bus=bus)
+        parent.set_task_manager(self.tm)
+        worker = StubAgent("worker", bus=bus)
+        worker.set_task_manager(self.tm)
+
+        with self.assertRaises(ValueError):
+            async with parent.task_group(worker) as tg:
+                raise ValueError("something went wrong")
+
+        cancel_msgs = [m for m in sent if isinstance(m, BusTaskCancelMessage)]
+        self.assertEqual(len(cancel_msgs), 1)
+        self.assertEqual(cancel_msgs[0].reason, "context exited with error")
+        await parent.cleanup()
+
+    async def test_task_group_raises_on_worker_error(self):
+        """task_group() raises TaskGroupError when a worker errors with cancel_on_error."""
+        from pipecat_subagents.agents.task_group import TaskGroupError
+        from pipecat_subagents.types import TaskStatus
+
+        bus = self.bus
+        parent = StubAgent("parent", bus=bus)
+        parent.set_task_manager(self.tm)
+        worker = StubAgent("worker", bus=bus)
+        worker.set_task_manager(self.tm)
+
+        async def error_response():
+            await asyncio.sleep(0)
+            tg_ref = list(parent._task_groups.values())[0]
+            await parent.on_bus_message(
+                BusTaskResponseMessage(
+                    source="worker",
+                    target="parent",
+                    task_id=tg_ref.task_id,
+                    response={"error": "failed"},
+                    status=TaskStatus.ERROR,
+                )
+            )
+
+        asyncio.get_event_loop().call_soon(lambda: asyncio.ensure_future(error_response()))
+
+        with self.assertRaises(TaskGroupError):
+            async with parent.task_group(worker) as tg:
+                pass
+
+        await parent.cleanup()
+
+    async def test_task_group_task_id_available(self):
+        """task_id is available inside the async with block."""
+        bus = self.bus
+        parent = StubAgent("parent", bus=bus)
+        worker = StubAgent("worker", bus=bus)
+
+        captured_task_id = None
+
+        async def respond():
+            await asyncio.sleep(0)
+            tg_ref = list(parent._task_groups.values())[0]
+            await parent.on_bus_message(
+                BusTaskResponseMessage(
+                    source="worker", target="parent", task_id=tg_ref.task_id, response={}
+                )
+            )
+
+        asyncio.get_event_loop().call_soon(lambda: asyncio.ensure_future(respond()))
+
+        async with parent.task_group(worker) as tg:
+            captured_task_id = tg.task_id
+
+        self.assertIsNotNone(captured_task_id)
+        self.assertEqual(captured_task_id, tg.task_id)
+
+    async def test_task_group_on_task_completed_still_fires(self):
+        """on_task_completed callback still fires when using task_group()."""
+        bus = self.bus
+        parent = StubAgent("parent", bus=bus)
+        w1 = StubAgent("w1", bus=bus)
+
+        completed = []
+
+        @parent.event_handler("on_task_completed")
+        async def on_completed(agent, task_id, responses):
+            completed.append((task_id, responses))
+
+        async def respond():
+            await asyncio.sleep(0)
+            tg_ref = list(parent._task_groups.values())[0]
+            await parent.on_bus_message(
+                BusTaskResponseMessage(
+                    source="w1", target="parent", task_id=tg_ref.task_id, response={"ok": True}
+                )
+            )
+
+        asyncio.get_event_loop().call_soon(lambda: asyncio.ensure_future(respond()))
+
+        async with parent.task_group(w1) as tg:
+            pass
+
+        self.assertEqual(len(completed), 1)
+        self.assertEqual(completed[0][1], {"w1": {"ok": True}})
+
+
 if __name__ == "__main__":
     unittest.main()
