@@ -38,8 +38,8 @@ class TaskWorkerAgent(BaseAgent):
     async def build_pipeline(self) -> Pipeline:
         return Pipeline([IdentityFilter()])
 
-    async def on_task_request(self, task_id, requester, payload):
-        await super().on_task_request(task_id, requester, payload)
+    async def on_task_request(self, message):
+        await super().on_task_request(message)
         await self.send_task_response(self._auto_response, status=self._auto_status)
 
 
@@ -54,8 +54,8 @@ class UpdatingWorkerAgent(BaseAgent):
     async def build_pipeline(self) -> Pipeline:
         return Pipeline([IdentityFilter()])
 
-    async def on_task_request(self, task_id, requester, payload):
-        await super().on_task_request(task_id, requester, payload)
+    async def on_task_request(self, message):
+        await super().on_task_request(message)
         for update in self._updates:
             await self.send_task_update(update)
         await self.send_task_response(self._auto_response)
@@ -72,8 +72,8 @@ class StreamingWorkerAgent(BaseAgent):
     async def build_pipeline(self) -> Pipeline:
         return Pipeline([IdentityFilter()])
 
-    async def on_task_request(self, task_id, requester, payload):
-        await super().on_task_request(task_id, requester, payload)
+    async def on_task_request(self, message):
+        await super().on_task_request(message)
         await self.send_task_stream_start({"content_type": "text"})
         for chunk in self._chunks:
             await self.send_task_stream_data(chunk)

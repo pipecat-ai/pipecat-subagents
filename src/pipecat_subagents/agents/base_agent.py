@@ -153,8 +153,7 @@ class BaseAgent(BaseObject, BusSubscriber):
       to receive messages. For local root agents, fires automatically.
       For children, fires only on the parent. For remote agents, fires
       only for agents watched via ``watch_agent()``.
-    - ``on_task_request(task_id, requester, payload)``: Called when a task
-      request is received.
+    - ``on_task_request(message)``: Called when a task request is received.
     - ``on_task_response(task_id, agent_name, response, status)``: Called
       when a task agent sends a response.
     - ``on_task_update(task_id, agent_name, update)``: Called when a task
@@ -435,16 +434,15 @@ class BaseAgent(BaseObject, BusSubscriber):
         """
         pass
 
-    async def on_task_request(self, task_id: str, requester: str, payload: Optional[dict]) -> None:
+    async def on_task_request(self, message: BusTaskRequestMessage) -> None:
         """Called when this agent receives a task request.
 
         Override to perform work. Use ``send_task_update()`` to report
         progress and ``send_task_response()`` to return results.
 
         Args:
-            task_id: The unique identifier for this task.
-            requester: The name of the agent that launched this task.
-            payload: Optional structured data describing the work.
+            message: The ``BusTaskRequestMessage`` with task_id, source,
+                and payload.
         """
         pass
 
@@ -1280,10 +1278,8 @@ class BaseAgent(BaseObject, BusSubscriber):
         """Handle an incoming task request."""
         self._task_id = message.task_id
         self._task_requester = message.source
-        await self.on_task_request(message.task_id, message.source, message.payload)
-        await self._call_event_handler(
-            "on_task_request", message.task_id, message.source, message.payload
-        )
+        await self.on_task_request(message)
+        await self._call_event_handler("on_task_request", message)
 
     async def _handle_task_response(self, message: BusTaskResponseMessage) -> None:
         """Handle a task response and track group completion."""

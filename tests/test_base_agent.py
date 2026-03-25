@@ -679,15 +679,15 @@ class TestTaskLifecycle(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(m.task_id, task_id)
 
     async def test_on_task_request_called(self):
-        """BusTaskRequestMessage triggers on_task_request with correct args."""
+        """BusTaskRequestMessage triggers on_task_request with the message."""
         bus = self.bus
         agent = StubAgent("worker", bus=bus)
 
         received = []
 
         @agent.event_handler("on_task_request")
-        async def on_request(agent, task_id, requester, payload):
-            received.append((task_id, requester, payload))
+        async def on_request(agent, message):
+            received.append(message)
 
         await agent.on_bus_message(
             BusTaskRequestMessage(source="parent", target="worker", task_id="t1", payload={"x": 1})
@@ -695,7 +695,9 @@ class TestTaskLifecycle(unittest.IsolatedAsyncioTestCase):
         await asyncio.sleep(0)  # let async event handlers run
 
         self.assertEqual(len(received), 1)
-        self.assertEqual(received[0], ("t1", "parent", {"x": 1}))
+        self.assertEqual(received[0].task_id, "t1")
+        self.assertEqual(received[0].source, "parent")
+        self.assertEqual(received[0].payload, {"x": 1})
         self.assertEqual(agent.task_id, "t1")
 
     async def test_send_task_response(self):

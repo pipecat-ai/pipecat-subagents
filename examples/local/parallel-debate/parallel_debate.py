@@ -117,11 +117,11 @@ class DebateWorker(LLMAgent):
 
         return Pipeline([user_agg, llm, assistant_agg])
 
-    async def on_task_request(self, task_id: str, requester: str, payload):
-        await super().on_task_request(task_id, requester, payload)
+    async def on_task_request(self, message):
+        await super().on_task_request(message)
         await self.queue_frame(
             LLMMessagesAppendFrame(
-                messages=[{"role": "user", "content": f"Topic: {payload['topic']}"}],
+                messages=[{"role": "user", "content": f"Topic: {message.payload['topic']}"}],
                 run_llm=True,
             )
         )
