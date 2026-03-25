@@ -155,20 +155,20 @@ class BaseAgent(BaseObject, BusSubscriber):
       only for agents watched via ``watch_agent()``.
     - ``on_task_request(message)``: Called when a task request is received.
     - ``on_task_response(message)``: Called when a task agent sends a response.
-    - ``on_task_update(task_id, agent_name, update)``: Called when a task
-      agent sends a progress update.
-    - ``on_task_update_requested(task_id)``: Called when the requester asks
+    - ``on_task_update(message)``: Called when a task agent sends a progress
+      update.
+    - ``on_task_update_requested(message)``: Called when the requester asks
       for a progress update.
     - ``on_task_completed(task_id, responses)``: Called when all agents in a
       task group have responded.
-    - ``on_task_error(task_id, agent_name, response, status)``: Called when a
-      worker errors and the group is cancelled (``cancel_on_error``).
-    - ``on_task_stream_start(task_id, agent_name, data)``: Called when a task
-      agent begins streaming.
-    - ``on_task_stream_data(task_id, agent_name, data)``: Called for each
-      streaming chunk from a task agent.
-    - ``on_task_stream_end(task_id, agent_name, data)``: Called when a task
-      agent finishes streaming.
+    - ``on_task_error(message)``: Called when a worker errors and the group
+      is cancelled (``cancel_on_error``).
+    - ``on_task_stream_start(message)``: Called when a task agent begins
+      streaming.
+    - ``on_task_stream_data(message)``: Called for each streaming chunk from
+      a task agent.
+    - ``on_task_stream_end(message)``: Called when a task agent finishes
+      streaming.
     - ``on_task_cancelled(message)``: Called when this agent's task is
       cancelled by the requester.
     - ``on_bus_message(message)``: Called for bus messages after default
@@ -456,25 +456,24 @@ class BaseAgent(BaseObject, BusSubscriber):
         """
         pass
 
-    async def on_task_update(self, task_id: str, agent_name: str, update: Optional[dict]) -> None:
+    async def on_task_update(self, message: BusTaskUpdateMessage) -> None:
         """Called when a task agent sends a progress update.
 
         Override to handle intermediate progress reports.
 
         Args:
-            task_id: The task identifier.
-            agent_name: The name of the agent that sent the update.
-            update: Optional progress data.
+            message: The ``BusTaskUpdateMessage`` with task_id, source,
+                and update.
         """
         pass
 
-    async def on_task_update_requested(self, task_id: str) -> None:
+    async def on_task_update_requested(self, message: BusTaskUpdateRequestMessage) -> None:
         """Called when the requester asks for a progress update.
 
         Override to send back a progress update via ``send_task_update()``.
 
         Args:
-            task_id: The task identifier.
+            message: The ``BusTaskUpdateRequestMessage`` with task_id.
         """
         pass
 
@@ -503,37 +502,30 @@ class BaseAgent(BaseObject, BusSubscriber):
         """
         pass
 
-    async def on_task_stream_start(
-        self, task_id: str, agent_name: str, data: Optional[dict]
-    ) -> None:
+    async def on_task_stream_start(self, message: BusTaskStreamStartMessage) -> None:
         """Called when a task agent begins streaming.
 
         Args:
-            task_id: The task identifier.
-            agent_name: The name of the streaming agent.
-            data: Optional metadata about the stream.
+            message: The ``BusTaskStreamStartMessage`` with task_id, source,
+                and data.
         """
         pass
 
-    async def on_task_stream_data(
-        self, task_id: str, agent_name: str, data: Optional[dict]
-    ) -> None:
+    async def on_task_stream_data(self, message: BusTaskStreamDataMessage) -> None:
         """Called for each streaming chunk from a task agent.
 
         Args:
-            task_id: The task identifier.
-            agent_name: The name of the streaming agent.
-            data: The chunk payload.
+            message: The ``BusTaskStreamDataMessage`` with task_id, source,
+                and data.
         """
         pass
 
-    async def on_task_stream_end(self, task_id: str, agent_name: str, data: Optional[dict]) -> None:
+    async def on_task_stream_end(self, message: BusTaskStreamEndMessage) -> None:
         """Called when a task agent finishes streaming.
 
         Args:
-            task_id: The task identifier.
-            agent_name: The name of the streaming agent.
-            data: Optional final metadata.
+            message: The ``BusTaskStreamEndMessage`` with task_id, source,
+                and data.
         """
         pass
 
@@ -1294,10 +1286,8 @@ class BaseAgent(BaseObject, BusSubscriber):
 
     async def _handle_task_update(self, message: BusTaskUpdateMessage) -> None:
         """Handle a task progress update."""
-        await self.on_task_update(message.task_id, message.source, message.update)
-        await self._call_event_handler(
-            "on_task_update", message.task_id, message.source, message.update
-        )
+        await self.on_task_update(message)
+        await self._call_event_handler("on_task_update", message)
         self._push_task_group_event(
             message.task_id, TaskGroupEvent(TaskGroupEvent.UPDATE, message.source, message.update)
         )
@@ -1305,8 +1295,8 @@ class BaseAgent(BaseObject, BusSubscriber):
     async def _handle_task_update_request(self, message: BusTaskUpdateRequestMessage) -> None:
         """Handle a task update request from the requester."""
         if self._task_id == message.task_id:
-            await self.on_task_update_requested(message.task_id)
-            await self._call_event_handler("on_task_update_requested", message.task_id)
+            await self.on_task_update_requested(message)
+            await self._call_event_handler("on_task_update_requested", message)
 
     async def _handle_task_cancel(self, message: BusTaskCancelMessage) -> None:
         """Handle a task cancellation.
@@ -1323,10 +1313,8 @@ class BaseAgent(BaseObject, BusSubscriber):
 
     async def _handle_task_stream_start(self, message: BusTaskStreamStartMessage) -> None:
         """Handle the start of a streaming task response."""
-        await self.on_task_stream_start(message.task_id, message.source, message.data)
-        await self._call_event_handler(
-            "on_task_stream_start", message.task_id, message.source, message.data
-        )
+        await self.on_task_stream_start(message)
+        await self._call_event_handler("on_task_stream_start", message)
         self._push_task_group_event(
             message.task_id,
             TaskGroupEvent(TaskGroupEvent.STREAM_START, message.source, message.data),
@@ -1334,10 +1322,8 @@ class BaseAgent(BaseObject, BusSubscriber):
 
     async def _handle_task_stream_data(self, message: BusTaskStreamDataMessage) -> None:
         """Handle a streaming task data chunk."""
-        await self.on_task_stream_data(message.task_id, message.source, message.data)
-        await self._call_event_handler(
-            "on_task_stream_data", message.task_id, message.source, message.data
-        )
+        await self.on_task_stream_data(message)
+        await self._call_event_handler("on_task_stream_data", message)
         self._push_task_group_event(
             message.task_id,
             TaskGroupEvent(TaskGroupEvent.STREAM_DATA, message.source, message.data),
@@ -1345,10 +1331,8 @@ class BaseAgent(BaseObject, BusSubscriber):
 
     async def _handle_task_stream_end(self, message: BusTaskStreamEndMessage) -> None:
         """Handle the end of a streaming task response."""
-        await self.on_task_stream_end(message.task_id, message.source, message.data)
-        await self._call_event_handler(
-            "on_task_stream_end", message.task_id, message.source, message.data
-        )
+        await self.on_task_stream_end(message)
+        await self._call_event_handler("on_task_stream_end", message)
         self._push_task_group_event(
             message.task_id, TaskGroupEvent(TaskGroupEvent.STREAM_END, message.source, message.data)
         )
