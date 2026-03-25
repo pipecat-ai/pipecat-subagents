@@ -149,16 +149,18 @@ Errors are not propagated automatically. When a pipeline error occurs, `on_error
 
 `send_error()` follows the same visibility rules as readiness: child agent errors stay local (never cross the network), root agent errors are broadcast. The parent receives `on_agent_error(error_info)` for child errors.
 
-For task groups, `start_task(cancel_on_error=True)` (the default) automatically cancels all workers in the group if any worker responds with `ERROR` or `FAILED` status.
+For task groups, `cancel_on_error=True` (the default) automatically cancels all workers in the group if any worker responds with `ERROR` or `FAILED` status.
 
 ### Tasks
 
-Tasks let a parent agent spawn workers, wait for results, and optionally cancel or time out. Workers can send a single response or stream incremental results.
+Tasks let a parent agent dispatch work to one or more workers, wait for results, and optionally cancel or time out. Workers can send a single response or stream incremental results.
+
+A parent sends work with `request_task()` (fire-and-forget) or `request_task_group()` (structured context that waits for all responses). Workers receive `on_task_request()`, do work, and reply via `send_task_response()`. When multiple workers are grouped, `on_task_completed()` fires after all have responded.
 
 ```
                         Parent                              Worker
                            │                                  │
-                           │ start_task(payload, timeout)     │
+                           │ request_task(payload, timeout)   │
                            ├─────────────────────────────────►│ on_task_request()
                            │                                  │
                            │ request_task_update()            │
@@ -181,6 +183,19 @@ Tasks let a parent agent spawn workers, wait for results, and optionally cancel 
                            │       send_task_response(status) │
         on_task_response() │◄─────────────────────────────────┤
        on_task_completed() │                                  │
+```
+
+#### Task groups
+
+A task group tracks multiple workers launched together. Use `request_task_group()` for a structured context that waits for all workers to respond, with support for timeouts, cancellation, and an async iterator for intermediate events:
+
+```python
+async with self.request_task_group("w1", "w2", payload=data, timeout=30) as tg:
+    async for event in tg:
+        print(f"{event.agent_name} [{event.type}]: {event.data}")
+
+for name, result in tg.responses.items():
+    print(name, result)
 ```
 
 #### Task hooks
