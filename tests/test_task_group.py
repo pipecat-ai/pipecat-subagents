@@ -19,7 +19,8 @@ from pipecat_subagents.bus import (
     BusTaskRequestMessage,
 )
 from pipecat_subagents.registry import AgentRegistry
-from pipecat_subagents.types import AgentReadyData, TaskStatus
+from pipecat_subagents.agents.task_group import TaskStatus
+from pipecat_subagents.types import AgentReadyData
 
 
 class StubAgent(BaseAgent):

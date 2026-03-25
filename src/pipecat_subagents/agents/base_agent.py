@@ -38,6 +38,7 @@ from pipecat_subagents.agents.task_group import (
     TaskGroupError,
     TaskGroupEvent,
     TaskGroupResponse,
+    TaskStatus,
 )
 from pipecat_subagents.bus import (
     AgentBus,
@@ -63,7 +64,7 @@ from pipecat_subagents.bus import (
 from pipecat_subagents.bus.messages import BusFrameMessage
 from pipecat_subagents.bus.subscriber import BusSubscriber
 from pipecat_subagents.registry import AgentRegistry
-from pipecat_subagents.types import AgentErrorData, AgentReadyData, TaskStatus
+from pipecat_subagents.types import AgentErrorData, AgentReadyData
 
 
 class ActivationArgs(BaseModel, extra="ignore"):

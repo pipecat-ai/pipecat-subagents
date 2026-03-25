@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING, Optional
 from pipecat.frames.frames import DataFrame, Frame
 from pipecat.processors.frame_processor import FrameDirection
 
-from pipecat_subagents.types import TaskStatus
+from pipecat_subagents.agents.task_group import TaskStatus
 
 if TYPE_CHECKING:
     from pipecat_subagents.agents.base_agent import BaseAgent
