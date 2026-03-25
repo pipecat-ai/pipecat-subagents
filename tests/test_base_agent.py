@@ -637,7 +637,6 @@ class TestEdgeToBus(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(generated), 1)
         self.assertEqual(generated[0].direction, FrameDirection.DOWNSTREAM)
 
-
     async def test_bridged_agent_accepts_matching_bridge(self):
         """Bridged agent with named bridge accepts frames from that bridge."""
         bus = self.bus
