@@ -89,7 +89,9 @@ Network buses need to serialize messages to bytes. Types that aren't JSON-native
 
 #### Bridge
 
-The `BusBridgeProcessor` is a Pipecat pipeline processor placed in an agent's pipeline (typically a transport/session agent) where an LLM would normally go. It sends non-lifecycle frames to the bus and injects incoming bus frames at its position, connecting the pipeline to whichever agent is active on the bus. Child agents that participate in this frame flow use `bridged=True`, which adds edge processors that route frames to and from the bus.
+The `BusBridgeProcessor` is a Pipecat pipeline processor placed in an agent's pipeline (typically a transport/session agent) where an LLM would normally go. It sends non-lifecycle frames to the bus and injects incoming bus frames at its position, connecting the pipeline to whichever agent is active on the bus. Child agents that participate in this frame flow use `bridged=()`, which adds edge processors that route frames to and from the bus.
+
+Bridges support named routing for flexible topologies. Give each bridge a name (e.g. `BusBridgeProcessor(bridge="voice")`) and child agents specify which bridges they accept frames from via `bridged=("voice",)`. This enables parallel pipelines with independent frame streams, or multiple agents processing frames from the same bridge.
 
 | Class                | Description                                                                |
 |----------------------|----------------------------------------------------------------------------|
@@ -121,8 +123,8 @@ Agents are the building blocks of a multi-agent system. Each agent connects to t
 
 | Class        | Use when                                                                                                                                                                                |
 |--------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `BaseAgent`  | You need a pipeline on the bus with no extra wiring. Handles lifecycle, parent-child, and task coordination. Pass `bridged=True` to add edge processors for bus frame routing.          |
-| `LLMAgent`   | Your agent needs an LLM. Adds `build_llm()`, `@tool` registration, and message injection on activation. Pass `bridged=True` for agents that receive frames from a `BusBridgeProcessor`. |
+| `BaseAgent`  | You need a pipeline on the bus with no extra wiring. Handles lifecycle, parent-child, and task coordination. Pass `bridged=()` to add edge processors for bus frame routing.          |
+| `LLMAgent`   | Your agent needs an LLM. Adds `build_llm()`, `@tool` registration, and message injection on activation. Pass `bridged=()` for agents that receive frames from a `BusBridgeProcessor`. |
 | `FlowsAgent` | Your agent needs structured conversation flows via [Pipecat Flows](https://github.com/pipecat-ai/pipecat-flows). Always bridged.                                                        |
 
 #### Naming
