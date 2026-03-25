@@ -250,7 +250,6 @@ class TestTaskGroupContext(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(completed), 1)
         self.assertEqual(completed[0][1], {"w1": {"ok": True}})
 
-
     async def test_task_group_iterates_updates(self):
         """async for yields update events from workers."""
         parent = StubAgent("parent", bus=self.bus)
@@ -295,7 +294,15 @@ class TestTaskGroupContext(unittest.IsolatedAsyncioTestCase):
                 events.append(event)
 
         types = [e.type for e in events]
-        self.assertEqual(types, [TaskGroupEvent.STREAM_START, TaskGroupEvent.STREAM_DATA, TaskGroupEvent.STREAM_DATA, TaskGroupEvent.STREAM_END])
+        self.assertEqual(
+            types,
+            [
+                TaskGroupEvent.STREAM_START,
+                TaskGroupEvent.STREAM_DATA,
+                TaskGroupEvent.STREAM_DATA,
+                TaskGroupEvent.STREAM_END,
+            ],
+        )
         self.assertEqual(events[0].data, {"content_type": "text"})
         self.assertEqual(events[1].data, {"text": "hello "})
         self.assertEqual(events[2].data, {"text": "world"})

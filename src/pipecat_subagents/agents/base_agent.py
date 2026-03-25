@@ -1318,7 +1318,8 @@ class BaseAgent(BaseObject, BusSubscriber):
             "on_task_stream_start", message.task_id, message.source, message.data
         )
         self._push_task_group_event(
-            message.task_id, TaskGroupEvent(TaskGroupEvent.STREAM_START, message.source, message.data)
+            message.task_id,
+            TaskGroupEvent(TaskGroupEvent.STREAM_START, message.source, message.data),
         )
 
     async def _handle_task_stream_data(self, message: BusTaskStreamDataMessage) -> None:
@@ -1328,7 +1329,8 @@ class BaseAgent(BaseObject, BusSubscriber):
             "on_task_stream_data", message.task_id, message.source, message.data
         )
         self._push_task_group_event(
-            message.task_id, TaskGroupEvent(TaskGroupEvent.STREAM_DATA, message.source, message.data)
+            message.task_id,
+            TaskGroupEvent(TaskGroupEvent.STREAM_DATA, message.source, message.data),
         )
 
     async def _handle_task_stream_end(self, message: BusTaskStreamEndMessage) -> None:

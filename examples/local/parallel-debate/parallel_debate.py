@@ -164,7 +164,9 @@ class ModeratorAgent(LLMAgent):
         """
         logger.info(f"Agent '{self.name}': starting debate on '{topic}'")
 
-        async with self.request_task_group(*self._workers, payload={"topic": topic}, timeout=30) as tg:
+        async with self.request_task_group(
+            *self._workers, payload={"topic": topic}, timeout=30
+        ) as tg:
             pass
 
         result = "\n\n".join(f"{r['role'].upper()}: {r['text']}" for r in tg.responses.values())
