@@ -33,7 +33,7 @@ def _create_agent():
             """A tool that blocks on an event for coordination."""
             await params.result_callback("done")
 
-    agent = StubLLMAgent("test_agent", bus=bus, bridged=True, active=False)
+    agent = StubLLMAgent("test_agent", bus=bus, bridged=(), active=False)
     agent.queue_frame = AsyncMock()
     return agent
 

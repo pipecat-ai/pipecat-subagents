@@ -73,7 +73,7 @@ class AcmeTTSAgent(LLMAgent):
     """Base agent for Acme Corp with per-agent TTS voice."""
 
     def __init__(self, name: str, *, bus: AgentBus, voice_id: str):
-        super().__init__(name, bus=bus, bridged=True)
+        super().__init__(name, bus=bus, bridged=())
         self._voice_id = voice_id
 
     async def build_pipeline(self) -> Pipeline:

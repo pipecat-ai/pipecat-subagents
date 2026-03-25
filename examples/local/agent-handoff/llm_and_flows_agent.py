@@ -320,7 +320,7 @@ class RestaurantAgent(BaseAgent):
         @self._transport.event_handler("on_client_connected")
         async def on_client_connected(transport, client):
             logger.info("Client connected")
-            router = RouterAgent("router", bus=self.bus, bridged=True)
+            router = RouterAgent("router", bus=self.bus, bridged=())
             reservation = ReservationAgent(
                 "reservation",
                 bus=self.bus,

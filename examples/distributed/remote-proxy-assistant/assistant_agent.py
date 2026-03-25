@@ -43,7 +43,7 @@ class AcmeAssistant(LLMAgent):
     """Handles greetings, product questions, and conversation end."""
 
     def __init__(self, name: str, *, bus):
-        super().__init__(name, bus=bus, bridged=True)
+        super().__init__(name, bus=bus, bridged=())
 
     def build_llm(self) -> LLMService:
         return OpenAILLMService(

@@ -72,7 +72,7 @@ class AcmeLLMAgent(LLMAgent):
     """LLM agent for Acme Corp with transfer and end tools."""
 
     def __init__(self, name: str, *, bus, system_instruction: str, watch_agents: list[str]):
-        super().__init__(name, bus=bus, bridged=True)
+        super().__init__(name, bus=bus, bridged=())
         self._system_instruction = system_instruction
         self._watch_agents = watch_agents
 

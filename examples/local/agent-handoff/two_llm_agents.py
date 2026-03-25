@@ -67,7 +67,7 @@ class AcmeLLMAgent(LLMAgent):
     """Base agent for Acme Corp with transfer and end tools."""
 
     def __init__(self, name: str, *, bus: AgentBus):
-        super().__init__(name, bus=bus, bridged=True)
+        super().__init__(name, bus=bus, bridged=())
 
     @tool(cancel_on_interruption=False)
     async def transfer_to_agent(self, params: FunctionCallParams, agent: str, reason: str):

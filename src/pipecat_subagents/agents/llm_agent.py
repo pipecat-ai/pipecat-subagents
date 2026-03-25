@@ -62,7 +62,7 @@ class LLMAgent(BaseAgent):
     """Agent with an LLM pipeline and automatic tool registration.
 
     Subclasses provide an LLM service via ``build_llm()`` and define tools
-    with the ``@tool`` decorator. Pass ``bridged=True`` for agents that
+    with the ``@tool`` decorator. Pass ``bridged=()`` for agents that
     receive frames from a ``BusBridgeProcessor`` in another agent.
 
     Example::
@@ -85,7 +85,7 @@ class LLMAgent(BaseAgent):
         *,
         bus: AgentBus,
         active: bool = False,
-        bridged: bool = False,
+        bridged: Optional[tuple[str, ...]] = None,
     ):
         """Initialize the LLMAgent.
 
@@ -93,8 +93,7 @@ class LLMAgent(BaseAgent):
             name: Unique name for this agent.
             bus: The `AgentBus` for inter-agent communication.
             active: Whether the agent starts active. Defaults to False.
-            bridged: Whether to add edge processors for bus frame routing.
-                Defaults to False.
+            bridged: Bridge configuration. See ``BaseAgent`` for details.
         """
         super().__init__(
             name,

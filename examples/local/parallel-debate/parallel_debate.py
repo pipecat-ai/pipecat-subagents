@@ -132,7 +132,7 @@ class ModeratorAgent(LLMAgent):
     """Debate moderator that spawns parallel workers via request_task_group()."""
 
     def __init__(self, name: str, *, bus: AgentBus):
-        super().__init__(name, bus=bus, bridged=True)
+        super().__init__(name, bus=bus, bridged=())
         self._workers = []
 
     def build_llm(self) -> LLMService:
