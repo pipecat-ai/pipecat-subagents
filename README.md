@@ -89,6 +89,10 @@ The `BusBridgeProcessor` is a Pipecat pipeline processor placed in an agent's pi
 |----------------------|----------------------------------------------------------------------------|
 | `BusBridgeProcessor` | Mid-pipeline processor that bridges frames between a pipeline and the bus. |
 
+```python
+Pipeline([transport.input(), stt, context_agg.user(), bridge, tts, transport.output(), context_agg.assistant()])
+```
+
 ### Runner
 
 The runner orchestrates the system: it creates pipeline tasks, manages agent lifecycle, and coordinates shutdown. Agents can be added dynamically at runtime.
@@ -96,6 +100,12 @@ The runner orchestrates the system: it creates pipeline tasks, manages agent lif
 | Class         | Description                                                                                         |
 |---------------|-----------------------------------------------------------------------------------------------------|
 | `AgentRunner` | Entry point for running a multi-agent system. Owns the bus (or accepts one) and the agent registry. |
+
+```python
+runner = AgentRunner()
+await runner.add_agent(main_agent)
+await runner.run()
+```
 
 ### Registry and visibility
 
@@ -119,6 +129,16 @@ Agents are the building blocks of a multi-agent system. Each agent connects to t
 | `LLMAgent`   | Your agent needs an LLM. Adds `build_llm()`, `@tool` registration, and message injection on activation. Pass `bridged=True` for agents that receive frames from a `BusBridgeProcessor`. |
 | `FlowsAgent` | Your agent needs structured conversation flows via [Pipecat Flows](https://github.com/pipecat-ai/pipecat-flows). Always bridged.                                                        |
 
+```python
+class MyAgent(LLMAgent):
+    def build_llm(self) -> LLMService:
+        return OpenAILLMService(api_key="...", settings=OpenAILLMSettings(system_instruction="..."))
+
+    @tool
+    async def my_function(self, params, arg: str):
+        ...
+```
+
 #### Naming
 
 Every agent has a unique name passed at construction. Names are used for bus message targeting, activation, task routing, and logging. Choose short, descriptive names (e.g. `"greeter"`, `"support"`, `"worker"`). In distributed setups, agent names must be unique across all runners.
@@ -133,6 +153,11 @@ Hooks about this agent's own state.
 | `on_error(error, fatal)` | A pipeline error occurred.                              |
 | `on_activated(args)`     | Agent is activated via `activate_agent()`.              |
 | `on_deactivated()`       | Agent is deactivated via `deactivate_agent()`.          |
+
+```python
+# Transfer control to another agent
+await self.handoff_to("support", args=LLMActivationArgs(messages=[...]))
+```
 
 #### Other agent events
 
