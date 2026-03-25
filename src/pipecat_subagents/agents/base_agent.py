@@ -819,41 +819,6 @@ class BaseAgent(BaseObject, BusSubscriber):
             logger.debug(f"Agent '{self}': watching for agent '{agent_name}'")
             await self._registry.watch(agent_name, self._on_watched_agent_ready)
 
-    async def start_task(
-        self,
-        *agents: "BaseAgent",
-        args: Optional[dict] = None,
-        payload: Optional[dict] = None,
-        timeout: Optional[float] = None,
-        cancel_on_error: bool = True,
-    ) -> str:
-        """Launch new task agents with a shared task_id.
-
-        Creates agents (via ``add_agent``), activates them, and sends a
-        task request to each.
-
-        Args:
-            *agents: One or more agent instances to launch as task workers.
-            args: Optional activation arguments forwarded to each agent's
-                ``on_activated``.
-            payload: Optional structured data describing the work.
-            timeout: Optional timeout in seconds. If set, the task is
-                automatically cancelled after this duration.
-            cancel_on_error: Whether to cancel the entire group if a
-                worker responds with an error status. Defaults to True.
-
-        Returns:
-            The generated task_id shared by all agents in the group.
-        """
-        agent_names = [a.name for a in agents]
-        group = self._create_task_group(
-            agent_names, timeout=timeout, cancel_on_error=cancel_on_error
-        )
-
-        await self._start_task_agents(group, agents, args, payload)
-
-        return group.task_id
-
     async def request_task(
         self,
         *agent_names: str,
@@ -861,10 +826,9 @@ class BaseAgent(BaseObject, BusSubscriber):
         timeout: Optional[float] = None,
         cancel_on_error: bool = True,
     ) -> str:
-        """Send a task request to already-running agents.
+        """Send a task request to agents.
 
-        Unlike ``start_task``, this does not create or activate agents.
-        Use this for agents that are already running on the bus.
+        Waits for all agents to be ready before sending requests.
 
         Args:
             *agent_names: Names of the agents to send the task to.
@@ -877,6 +841,9 @@ class BaseAgent(BaseObject, BusSubscriber):
         Returns:
             The generated task_id shared by all agents in the group.
         """
+        ready = await self._wait_agents_ready(list(agent_names))
+        await ready
+
         group = self._create_task_group(
             list(agent_names), timeout=timeout, cancel_on_error=cancel_on_error
         )
@@ -907,22 +874,21 @@ class BaseAgent(BaseObject, BusSubscriber):
 
     def task_group(
         self,
-        *agents: "BaseAgent",
-        args: Optional[dict] = None,
+        *agent_names: str,
         payload: Optional[dict] = None,
         timeout: Optional[float] = None,
         cancel_on_error: bool = True,
     ) -> TaskGroupContext:
         """Create a structured task group context manager.
 
-        Returns an async context manager that starts task workers and
-        waits for all responses. On normal completion, results are
-        available via ``responses``. On worker error (with
-        ``cancel_on_error=True``) or timeout, raises ``TaskGroupError``.
+        Sends task requests on enter, waits for all responses on exit.
+        Agents must already be added and ready before entering the
+        context. On normal completion, results are available via
+        ``responses``. On worker error (with ``cancel_on_error=True``)
+        or timeout, raises ``TaskGroupError``.
 
         Args:
-            *agents: Agent instances to launch as task workers.
-            args: Optional activation arguments forwarded to each agent.
+            *agent_names: Names of the agents to send the task to.
             payload: Optional structured data describing the work.
             timeout: Optional timeout in seconds.
             cancel_on_error: Whether to cancel the group if a worker
@@ -933,7 +899,7 @@ class BaseAgent(BaseObject, BusSubscriber):
 
         Example::
 
-            async with self.task_group(w1, w2, payload=data) as tg:
+            async with self.task_group("w1", "w2", payload=data) as tg:
                 pass
 
             for name, result in tg.responses.items():
@@ -941,8 +907,7 @@ class BaseAgent(BaseObject, BusSubscriber):
         """
         return TaskGroupContext(
             self,
-            agents,
-            args=args,
+            agent_names,
             payload=payload,
             timeout=timeout,
             cancel_on_error=cancel_on_error,
@@ -1132,36 +1097,46 @@ class BaseAgent(BaseObject, BusSubscriber):
 
         return group
 
-    async def _start_task_agents(
-        self,
-        group: TaskGroup,
-        agents: tuple["BaseAgent", ...],
-        args: Optional[dict],
-        payload: Optional[dict],
-    ) -> None:
-        if not self._registry:
-            raise RuntimeError(f"Agent '{self}': registry not available.")
+    async def _wait_agents_ready(self, agent_names: list[str]) -> asyncio.Future:
+        """Return a future that resolves when all named agents are ready.
 
-        # Watch for each agent to become ready
+        Callers can race the returned future against a timeout or group
+        done signal.
+
+        Raises:
+            RuntimeError: If the registry is not available.
+        """
+        if not self._registry:
+            raise RuntimeError(f"Agent '{self}': registry not available")
+
         ready_events: dict[str, asyncio.Event] = {}
-        for agent in agents:
+        for name in agent_names:
             event = asyncio.Event()
-            ready_events[agent.name] = event
+            ready_events[name] = event
 
             async def _on_ready(data, ev=event):
                 ev.set()
 
-            await self._registry.watch(agent.name, _on_ready)
+            await self._registry.watch(name, _on_ready)
 
-        # Add all agents (runner starts their pipelines)
-        for agent in agents:
-            await self.add_agent(agent)
-
-        # Wait for all agents to be ready, or for the group to
-        # fail (e.g. timeout). Whichever comes first wins.
-        all_ready = asyncio.ensure_future(
+        return asyncio.ensure_future(
             asyncio.gather(*(ev.wait() for ev in ready_events.values()))
         )
+
+    async def _create_task_group_and_request(
+        self,
+        agent_names: list[str],
+        *,
+        payload: Optional[dict] = None,
+        timeout: Optional[float] = None,
+        cancel_on_error: bool = True,
+    ) -> TaskGroup:
+        group = self._create_task_group(
+            agent_names, timeout=timeout, cancel_on_error=cancel_on_error
+        )
+
+        # Wait for agents to be ready, racing against group timeout.
+        all_ready = await self._wait_agents_ready(agent_names)
         group_done = asyncio.ensure_future(group.wait())
 
         done, pending = await asyncio.wait(
@@ -1171,18 +1146,15 @@ class BaseAgent(BaseObject, BusSubscriber):
             task.cancel()
         await asyncio.gather(*pending, return_exceptions=True)
 
-        # If the group failed before agents were ready, bail out.
-        # Suppress the TaskGroupError here; the caller (task_group
-        # context or start_task) handles it.
         if group_done in done:
             if group_done.exception():
-                pass  # Consumed; __aexit__ will re-raise via group.wait()
-            return
+                pass  # Consumed; caller handles via group.wait()
+            return group
 
-        # Activate and send task requests
-        for agent in agents:
-            await self.activate_agent(agent.name, args=args)
-            await self._send_task_request(agent.name, group.task_id, payload)
+        for name in agent_names:
+            await self._send_task_request(name, group.task_id, payload)
+
+        return group
 
     async def _send_task_request(
         self, agent_name: str, task_id: str, payload: Optional[dict]

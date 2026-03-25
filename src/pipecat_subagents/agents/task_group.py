@@ -42,6 +42,11 @@ class TaskGroup:
     _done: asyncio.Event = field(default_factory=asyncio.Event, repr=False)
     _error: Optional[str] = field(default=None, repr=False)
 
+    @property
+    def is_done(self) -> bool:
+        """Whether the group has completed or failed."""
+        return self._done.is_set()
+
     async def wait(self) -> None:
         """Wait for all agents in the group to respond.
 
@@ -69,15 +74,15 @@ class TaskGroup:
 class TaskGroupContext:
     """Async context manager for structured task group execution.
 
-    Starts task workers on enter, waits for all responses on exit.
-    On normal completion, results are available via ``responses``.
-    On worker error (with ``cancel_on_error=True``) or timeout, raises
-    ``TaskGroupError``. If the ``async with`` block raises, remaining
-    tasks are cancelled.
+    Sends task requests on enter, waits for all responses on exit.
+    Agents must already be added and ready. On normal completion,
+    results are available via ``responses``. On worker error (with
+    ``cancel_on_error=True``) or timeout, raises ``TaskGroupError``.
+    If the ``async with`` block raises, remaining tasks are cancelled.
 
     Example::
 
-        async with self.task_group(worker1, worker2, payload=data) as tg:
+        async with self.task_group("w1", "w2", payload=data) as tg:
             pass
 
         for name, result in tg.responses.items():
@@ -87,16 +92,14 @@ class TaskGroupContext:
     def __init__(
         self,
         agent: BaseAgent,
-        agents: tuple[BaseAgent, ...],
+        agent_names: tuple[str, ...],
         *,
-        args: Optional[dict] = None,
         payload: Optional[dict] = None,
         timeout: Optional[float] = None,
         cancel_on_error: bool = True,
     ):
         self._agent = agent
-        self._agents = agents
-        self._args = args
+        self._agent_names = agent_names
         self._payload = payload
         self._timeout = timeout
         self._cancel_on_error = cancel_on_error
@@ -117,13 +120,12 @@ class TaskGroupContext:
         return self._group.responses
 
     async def __aenter__(self) -> TaskGroupContext:
-        agent_names = [a.name for a in self._agents]
-        self._group = self._agent._create_task_group(
-            agent_names,
+        self._group = await self._agent._create_task_group_and_request(
+            list(self._agent_names),
+            payload=self._payload,
             timeout=self._timeout,
             cancel_on_error=self._cancel_on_error,
         )
-        await self._agent._start_task_agents(self._group, self._agents, self._args, self._payload)
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> bool:

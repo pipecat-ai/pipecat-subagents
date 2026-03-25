@@ -82,11 +82,10 @@ def create_test_registry():
     return AgentRegistry(runner_name="test-runner")
 
 
-async def register_agents(registry, *agents):
-    """Pre-register agents so start_task's ready-wait completes immediately."""
-    for agent in agents:
-        agent.set_registry(registry)
-        await registry.register(AgentReadyData(agent_name=agent.name, runner="test-runner"))
+async def register_agents(registry, *names):
+    """Pre-register agent names so the ready-wait completes immediately."""
+    for name in names:
+        await registry.register(AgentReadyData(agent_name=name, runner="test-runner"))
 
 
 def capture_bus(bus):
@@ -644,25 +643,16 @@ class TestTaskLifecycle(unittest.IsolatedAsyncioTestCase):
         self.bus, self.tm = create_test_bus()
         self.registry = create_test_registry()
 
-    async def test_start_task_sends_add_activate_and_request(self):
-        """start_task() sends BusAddAgentMessage + BusActivateAgentMessage + BusTaskRequestMessage."""
+    async def test_request_task_sends_request(self):
+        """request_task() sends BusTaskRequestMessage to each agent."""
         bus = self.bus
         sent = capture_bus(bus)
 
         parent = StubAgent("parent", bus=bus)
-        worker = StubAgent("worker", bus=bus)
         parent.set_registry(self.registry)
-        await register_agents(self.registry, worker)
+        await self.registry.register(AgentReadyData(agent_name="worker", runner="test-runner"))
 
-        task_id = await parent.start_task(worker, payload={"key": "val"})
-
-        add_msgs = [m for m in sent if isinstance(m, BusAddAgentMessage)]
-        self.assertEqual(len(add_msgs), 1)
-        self.assertIs(add_msgs[0].agent, worker)
-
-        activate_msgs = [m for m in sent if isinstance(m, BusActivateAgentMessage)]
-        self.assertEqual(len(activate_msgs), 1)
-        self.assertEqual(activate_msgs[0].target, "worker")
+        task_id = await parent.request_task("worker", payload={"key": "val"})
 
         request_msgs = [m for m in sent if isinstance(m, BusTaskRequestMessage)]
         self.assertEqual(len(request_msgs), 1)
@@ -670,18 +660,16 @@ class TestTaskLifecycle(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(request_msgs[0].target, "worker")
         self.assertEqual(request_msgs[0].payload, {"key": "val"})
 
-    async def test_start_task_multiple_agents(self):
-        """start_task() with multiple agents sends messages for each."""
+    async def test_request_task_multiple_agents(self):
+        """request_task() with multiple agents sends messages for each."""
         bus = self.bus
         sent = capture_bus(bus)
 
         parent = StubAgent("parent", bus=bus)
-        w1 = StubAgent("w1", bus=bus)
-        w2 = StubAgent("w2", bus=bus)
         parent.set_registry(self.registry)
-        await register_agents(self.registry, w1, w2)
+        await register_agents(self.registry, "w1", "w2")
 
-        task_id = await parent.start_task(w1, w2, payload={"work": True})
+        task_id = await parent.request_task("w1", "w2", payload={"work": True})
 
         request_msgs = [m for m in sent if isinstance(m, BusTaskRequestMessage)]
         self.assertEqual(len(request_msgs), 2)
@@ -753,10 +741,8 @@ class TestTaskLifecycle(unittest.IsolatedAsyncioTestCase):
         bus = self.bus
 
         parent = StubAgent("parent", bus=bus)
-        w1 = StubAgent("w1", bus=bus)
-        w2 = StubAgent("w2", bus=bus)
         parent.set_registry(self.registry)
-        await register_agents(self.registry, w1, w2)
+        await register_agents(self.registry, "w1", "w2")
 
         completed = []
 
@@ -764,7 +750,7 @@ class TestTaskLifecycle(unittest.IsolatedAsyncioTestCase):
         async def on_completed(agent, task_id, responses):
             completed.append((task_id, responses))
 
-        task_id = await parent.start_task(w1, w2)
+        task_id = await parent.request_task("w1", "w2")
 
         # First response — should not trigger on_task_completed
         await parent.on_bus_message(
@@ -788,12 +774,10 @@ class TestTaskLifecycle(unittest.IsolatedAsyncioTestCase):
         sent = capture_bus(bus)
 
         parent = StubAgent("parent", bus=bus)
-        w1 = StubAgent("w1", bus=bus)
-        w2 = StubAgent("w2", bus=bus)
         parent.set_registry(self.registry)
-        await register_agents(self.registry, w1, w2)
+        await register_agents(self.registry, "w1", "w2")
 
-        task_id = await parent.start_task(w1, w2)
+        task_id = await parent.request_task("w1", "w2")
         sent.clear()
 
         await parent.cancel_task(task_id, reason="no longer needed")
@@ -922,10 +906,8 @@ class TestTaskLifecycle(unittest.IsolatedAsyncioTestCase):
         bus = self.bus
 
         parent = StubAgent("parent", bus=bus)
-        w1 = StubAgent("w1", bus=bus)
-        w2 = StubAgent("w2", bus=bus)
         parent.set_registry(self.registry)
-        await register_agents(self.registry, w1, w2)
+        await register_agents(self.registry, "w1", "w2")
 
         completed = []
 
@@ -933,7 +915,7 @@ class TestTaskLifecycle(unittest.IsolatedAsyncioTestCase):
         async def on_completed(agent, task_id, responses):
             completed.append((task_id, responses))
 
-        task_id = await parent.start_task(w1, w2)
+        task_id = await parent.request_task("w1", "w2")
 
         # First agent ends stream — should not trigger on_task_completed
         await parent.on_bus_message(
@@ -969,7 +951,7 @@ class TestTaskLifecycle(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(RuntimeError):
             await agent.send_task_stream_end()
 
-    async def test_start_task_timeout_cancels_task(self):
+    async def test_request_task_timeout_cancels_task(self):
         """Short timeout triggers BusTaskCancelMessage with reason 'timeout'."""
         bus = self.bus
         sent = capture_bus(bus)
@@ -977,11 +959,9 @@ class TestTaskLifecycle(unittest.IsolatedAsyncioTestCase):
         parent = StubAgent("parent", bus=bus)
         parent.set_task_manager(self.tm)
         parent.set_registry(self.registry)
-        worker = StubAgent("worker", bus=bus)
-        worker.set_task_manager(self.tm)
-        await register_agents(self.registry, worker)
+        await register_agents(self.registry, "worker")
 
-        task_id = await parent.start_task(worker, timeout=0.05)
+        task_id = await parent.request_task("worker", timeout=0.05)
 
         # Wait for timeout to fire
         await asyncio.sleep(0.1)
@@ -994,7 +974,7 @@ class TestTaskLifecycle(unittest.IsolatedAsyncioTestCase):
         # Clean up remaining tasks
         await parent.cleanup()
 
-    async def test_start_task_timeout_cancelled_on_completion(self):
+    async def test_request_task_timeout_cancelled_on_completion(self):
         """Responding before timeout prevents cancel from being sent."""
         bus = self.bus
         sent = capture_bus(bus)
@@ -1002,11 +982,9 @@ class TestTaskLifecycle(unittest.IsolatedAsyncioTestCase):
         parent = StubAgent("parent", bus=bus)
         parent.set_task_manager(self.tm)
         parent.set_registry(self.registry)
-        worker = StubAgent("worker", bus=bus)
-        worker.set_task_manager(self.tm)
-        await register_agents(self.registry, worker)
+        await register_agents(self.registry, "worker")
 
-        task_id = await parent.start_task(worker, timeout=0.5)
+        task_id = await parent.request_task("worker", timeout=0.5)
 
         # Respond immediately
         await parent.on_bus_message(
@@ -1024,16 +1002,15 @@ class TestTaskLifecycle(unittest.IsolatedAsyncioTestCase):
         # Clean up remaining tasks
         await parent.cleanup()
 
-    async def test_start_task_no_timeout_by_default(self):
+    async def test_request_task_no_timeout_by_default(self):
         """timeout_task is None when no timeout is given."""
         bus = self.bus
 
         parent = StubAgent("parent", bus=bus)
-        worker = StubAgent("worker", bus=bus)
         parent.set_registry(self.registry)
-        await register_agents(self.registry, worker)
+        await register_agents(self.registry, "worker")
 
-        task_id = await parent.start_task(worker)
+        task_id = await parent.request_task("worker")
 
         group = parent._task_groups[task_id]
         self.assertIsNone(group.timeout_task)
@@ -1051,7 +1028,7 @@ class TestTaskGroupContext(unittest.IsolatedAsyncioTestCase):
         w1 = StubAgent("w1", bus=bus)
         w2 = StubAgent("w2", bus=bus)
         parent.set_registry(self.registry)
-        await register_agents(self.registry, w1, w2)
+        await register_agents(self.registry, "w1", "w2")
 
         async def respond():
             await asyncio.sleep(0)
@@ -1070,23 +1047,21 @@ class TestTaskGroupContext(unittest.IsolatedAsyncioTestCase):
 
         asyncio.get_event_loop().call_soon(lambda: asyncio.ensure_future(respond()))
 
-        async with parent.task_group(w1, w2, payload={"work": True}) as tg:
+        async with parent.task_group("w1", "w2", payload={"work": True}) as tg:
             pass
 
         self.assertEqual(tg.responses, {"w1": {"a": 1}, "w2": {"b": 2}})
 
-    async def test_task_group_sends_messages(self):
-        """task_group() sends add, activate, and request messages like start_task."""
+    async def test_task_group_sends_request(self):
+        """task_group() sends BusTaskRequestMessage to each agent."""
         bus = self.bus
         sent = capture_bus(bus)
 
         parent = StubAgent("parent", bus=bus)
-        w1 = StubAgent("w1", bus=bus)
         parent.set_registry(self.registry)
-        await register_agents(self.registry, w1)
+        await register_agents(self.registry, "w1")
 
         async def respond():
-            # Wait for the task request to be sent before responding
             while not any(isinstance(m, BusTaskRequestMessage) for m in sent):
                 await asyncio.sleep(0)
             tg_ref = list(parent._task_groups.values())[0]
@@ -1098,14 +1073,8 @@ class TestTaskGroupContext(unittest.IsolatedAsyncioTestCase):
 
         asyncio.get_event_loop().call_soon(lambda: asyncio.ensure_future(respond()))
 
-        async with parent.task_group(w1, payload={"data": 1}) as tg:
+        async with parent.task_group("w1", payload={"data": 1}) as tg:
             pass
-
-        add_msgs = [m for m in sent if isinstance(m, BusAddAgentMessage)]
-        self.assertEqual(len(add_msgs), 1)
-
-        activate_msgs = [m for m in sent if isinstance(m, BusActivateAgentMessage)]
-        self.assertEqual(len(activate_msgs), 1)
 
         request_msgs = [m for m in sent if isinstance(m, BusTaskRequestMessage)]
         self.assertEqual(len(request_msgs), 1)
@@ -1121,7 +1090,7 @@ class TestTaskGroupContext(unittest.IsolatedAsyncioTestCase):
         parent.set_registry(self.registry)
         worker = StubAgent("worker", bus=bus)
         worker.set_task_manager(self.tm)
-        await register_agents(self.registry, worker)
+        await register_agents(self.registry, "worker")
 
         async def cancel_it():
             await asyncio.sleep(0)
@@ -1131,7 +1100,7 @@ class TestTaskGroupContext(unittest.IsolatedAsyncioTestCase):
         asyncio.get_event_loop().call_soon(lambda: asyncio.ensure_future(cancel_it()))
 
         with self.assertRaises(TaskGroupError) as ctx:
-            async with parent.task_group(worker) as tg:
+            async with parent.task_group("worker") as tg:
                 pass
 
         self.assertIn("manual cancel", str(ctx.exception))
@@ -1147,10 +1116,10 @@ class TestTaskGroupContext(unittest.IsolatedAsyncioTestCase):
         parent.set_registry(self.registry)
         worker = StubAgent("worker", bus=bus)
         worker.set_task_manager(self.tm)
-        await register_agents(self.registry, worker)
+        await register_agents(self.registry, "worker")
 
         with self.assertRaises(TaskGroupError) as ctx:
-            async with parent.task_group(worker, timeout=0.05) as tg:
+            async with parent.task_group("worker", timeout=0.05) as tg:
                 pass
 
         self.assertIn("timeout", str(ctx.exception))
@@ -1166,10 +1135,10 @@ class TestTaskGroupContext(unittest.IsolatedAsyncioTestCase):
         parent.set_registry(self.registry)
         worker = StubAgent("worker", bus=bus)
         worker.set_task_manager(self.tm)
-        await register_agents(self.registry, worker)
+        await register_agents(self.registry, "worker")
 
         with self.assertRaises(ValueError):
-            async with parent.task_group(worker) as tg:
+            async with parent.task_group("worker") as tg:
                 raise ValueError("something went wrong")
 
         cancel_msgs = [m for m in sent if isinstance(m, BusTaskCancelMessage)]
@@ -1188,7 +1157,7 @@ class TestTaskGroupContext(unittest.IsolatedAsyncioTestCase):
         parent.set_registry(self.registry)
         worker = StubAgent("worker", bus=bus)
         worker.set_task_manager(self.tm)
-        await register_agents(self.registry, worker)
+        await register_agents(self.registry, "worker")
 
         async def error_response():
             await asyncio.sleep(0)
@@ -1206,7 +1175,7 @@ class TestTaskGroupContext(unittest.IsolatedAsyncioTestCase):
         asyncio.get_event_loop().call_soon(lambda: asyncio.ensure_future(error_response()))
 
         with self.assertRaises(TaskGroupError):
-            async with parent.task_group(worker) as tg:
+            async with parent.task_group("worker") as tg:
                 pass
 
         await parent.cleanup()
@@ -1217,7 +1186,7 @@ class TestTaskGroupContext(unittest.IsolatedAsyncioTestCase):
         parent = StubAgent("parent", bus=bus)
         worker = StubAgent("worker", bus=bus)
         parent.set_registry(self.registry)
-        await register_agents(self.registry, worker)
+        await register_agents(self.registry, "worker")
 
         captured_task_id = None
 
@@ -1232,7 +1201,7 @@ class TestTaskGroupContext(unittest.IsolatedAsyncioTestCase):
 
         asyncio.get_event_loop().call_soon(lambda: asyncio.ensure_future(respond()))
 
-        async with parent.task_group(worker) as tg:
+        async with parent.task_group("worker") as tg:
             captured_task_id = tg.task_id
 
         self.assertIsNotNone(captured_task_id)
@@ -1244,7 +1213,7 @@ class TestTaskGroupContext(unittest.IsolatedAsyncioTestCase):
         parent = StubAgent("parent", bus=bus)
         w1 = StubAgent("w1", bus=bus)
         parent.set_registry(self.registry)
-        await register_agents(self.registry, w1)
+        await register_agents(self.registry, "w1")
 
         completed = []
 
@@ -1263,7 +1232,7 @@ class TestTaskGroupContext(unittest.IsolatedAsyncioTestCase):
 
         asyncio.get_event_loop().call_soon(lambda: asyncio.ensure_future(respond()))
 
-        async with parent.task_group(w1) as tg:
+        async with parent.task_group("w1") as tg:
             pass
 
         self.assertEqual(len(completed), 1)
