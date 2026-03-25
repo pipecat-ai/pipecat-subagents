@@ -34,7 +34,7 @@ from loguru import logger
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.frames.frames import LLMMessagesAppendFrame
 from pipecat.pipeline.pipeline import Pipeline
-from pipecat.pipeline.task import PipelineTask
+from pipecat.pipeline.task import PipelineParams, PipelineTask
 from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.aggregators.llm_response_universal import (
     LLMContextAggregatorPair,
@@ -50,7 +50,7 @@ from pipecat.services.openai.llm import OpenAILLMService
 from pipecat.transports.base_transport import BaseTransport, TransportParams
 from pipecat.transports.daily.transport import DailyParams
 
-from pipecat_subagents.agents import BaseAgent, LLMAgentActivationArgs, LLMAgent, tool
+from pipecat_subagents.agents import BaseAgent, LLMAgent, LLMAgentActivationArgs, tool
 from pipecat_subagents.bus import AgentBus, BusBridgeProcessor
 from pipecat_subagents.runner import AgentRunner
 from pipecat_subagents.types import AgentReadyData
@@ -213,7 +213,14 @@ class AcmeAgent(BaseAgent):
         )
 
     def build_pipeline_task(self, pipeline: Pipeline) -> PipelineTask:
-        return PipelineTask(pipeline, enable_rtvi=True)
+        return PipelineTask(
+            pipeline,
+            enable_rtvi=True,
+            params=PipelineParams(
+                enable_metrics=True,
+                enable_usage_metrics=True,
+            ),
+        )
 
     async def build_pipeline(self) -> Pipeline:
         stt = DeepgramSTTService(api_key=os.getenv("DEEPGRAM_API_KEY"))

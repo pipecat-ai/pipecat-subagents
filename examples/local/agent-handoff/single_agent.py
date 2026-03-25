@@ -24,7 +24,7 @@ from loguru import logger
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.frames.frames import LLMMessagesAppendFrame
 from pipecat.pipeline.pipeline import Pipeline
-from pipecat.pipeline.task import PipelineTask
+from pipecat.pipeline.task import PipelineParams, PipelineTask
 from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.aggregators.llm_response_universal import (
     LLMContextAggregatorPair,
@@ -65,7 +65,14 @@ class SimpleAgent(BaseAgent):
         self._transport = transport
 
     def build_pipeline_task(self, pipeline: Pipeline) -> PipelineTask:
-        return PipelineTask(pipeline, enable_rtvi=True)
+        return PipelineTask(
+            pipeline,
+            enable_rtvi=True,
+            params=PipelineParams(
+                enable_metrics=True,
+                enable_usage_metrics=True,
+            ),
+        )
 
     async def build_pipeline(self) -> Pipeline:
         stt = DeepgramSTTService(api_key=os.getenv("DEEPGRAM_API_KEY"))

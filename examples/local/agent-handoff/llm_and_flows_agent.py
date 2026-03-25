@@ -27,7 +27,7 @@ from loguru import logger
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.frames.frames import LLMMessagesAppendFrame
 from pipecat.pipeline.pipeline import Pipeline
-from pipecat.pipeline.task import PipelineTask
+from pipecat.pipeline.task import PipelineParams, PipelineTask
 from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.aggregators.llm_response_universal import (
     LLMContextAggregatorPair,
@@ -47,8 +47,8 @@ from pipecat_flows import FlowManager, FlowResult, NodeConfig
 from pipecat_subagents.agents import (
     BaseAgent,
     FlowsAgent,
-    LLMAgentActivationArgs,
     LLMAgent,
+    LLMAgentActivationArgs,
     tool,
 )
 from pipecat_subagents.bus import AgentBus, BusBridgeProcessor
@@ -287,7 +287,14 @@ class RestaurantAgent(BaseAgent):
         )
 
     def build_pipeline_task(self, pipeline: Pipeline) -> PipelineTask:
-        return PipelineTask(pipeline, enable_rtvi=True)
+        return PipelineTask(
+            pipeline,
+            enable_rtvi=True,
+            params=PipelineParams(
+                enable_metrics=True,
+                enable_usage_metrics=True,
+            ),
+        )
 
     async def build_pipeline(self) -> Pipeline:
         stt = DeepgramSTTService(api_key=os.getenv("DEEPGRAM_API_KEY"))
