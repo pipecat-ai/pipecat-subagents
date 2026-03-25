@@ -154,8 +154,7 @@ class BaseAgent(BaseObject, BusSubscriber):
       For children, fires only on the parent. For remote agents, fires
       only for agents watched via ``watch_agent()``.
     - ``on_task_request(message)``: Called when a task request is received.
-    - ``on_task_response(task_id, agent_name, response, status)``: Called
-      when a task agent sends a response.
+    - ``on_task_response(message)``: Called when a task agent sends a response.
     - ``on_task_update(task_id, agent_name, update)``: Called when a task
       agent sends a progress update.
     - ``on_task_update_requested(task_id)``: Called when the requester asks
@@ -446,18 +445,14 @@ class BaseAgent(BaseObject, BusSubscriber):
         """
         pass
 
-    async def on_task_response(
-        self, task_id: str, agent_name: str, response: Optional[dict], status: TaskStatus
-    ) -> None:
+    async def on_task_response(self, message: BusTaskResponseMessage) -> None:
         """Called when a task agent sends a response.
 
         Override to process individual results as they arrive.
 
         Args:
-            task_id: The task identifier.
-            agent_name: The name of the agent that responded.
-            response: Optional result data from the agent.
-            status: Completion status.
+            message: The ``BusTaskResponseMessage`` with task_id, source,
+                response, and status.
         """
         pass
 
@@ -1283,16 +1278,8 @@ class BaseAgent(BaseObject, BusSubscriber):
 
     async def _handle_task_response(self, message: BusTaskResponseMessage) -> None:
         """Handle a task response and track group completion."""
-        await self.on_task_response(
-            message.task_id, message.source, message.response, message.status
-        )
-        await self._call_event_handler(
-            "on_task_response",
-            message.task_id,
-            message.source,
-            message.response,
-            message.status,
-        )
+        await self.on_task_response(message)
+        await self._call_event_handler("on_task_response", message)
 
         # Auto-cancel the group on error/failed if cancel_on_error is set
         if message.status in (TaskStatus.ERROR, TaskStatus.FAILED):
