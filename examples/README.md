@@ -7,6 +7,7 @@ This directory contains example implementations demonstrating the Pipecat Subage
 Examples where all agents run in the same process.
 
 - **[`local/agent-handoff/`](local/agent-handoff/)**: Agents that transfer control between each other during a conversation.
+- **[`local/parallel-debate/`](local/parallel-debate/)**: Parallel task workers that debate a topic from multiple perspectives using a task group context.
 
 ## Distributed
 
