@@ -19,7 +19,7 @@ from loguru import logger
 from pipecat.utils.asyncio.task_manager import TaskManager
 from pipecat.utils.base_object import BaseObject
 
-from pipecat_subagents.bus.messages import BusMessage
+from pipecat_subagents.bus.messages import BusLocalMessage, BusMessage
 from pipecat_subagents.bus.queue import BusMessageQueue
 from pipecat_subagents.bus.subscriber import BusSubscriber
 
@@ -46,10 +46,11 @@ class AgentBus(BaseObject):
     independently through its own priority queue. System messages
     (e.g. cancel) are delivered before normal data messages.
 
-    Subclasses implement ``send()`` for the specific transport. For
-    network buses, override ``start()``/``stop()`` to manage connections.
-    Call ``on_message_received()`` to deliver incoming messages to all
-    local subscribers.
+    Subclasses implement ``publish()`` for the specific transport.
+    ``send()`` handles local-only messages automatically. For network
+    buses, override ``start()``/``stop()`` to manage connections and
+    call ``on_message_received()`` when messages arrive from the
+    network.
     """
 
     def __init__(self, **kwargs):
@@ -147,16 +148,29 @@ class AgentBus(BaseObject):
                 self._subscriptions.pop(i)
                 return
 
-    @abstractmethod
     async def send(self, message: BusMessage) -> None:
         """Send a message through the bus.
 
-        Implementations should call ``on_message_received()`` to deliver
-        the message to local subscribers. Network buses also publish
-        the message to the remote transport.
+        Local-only messages are delivered directly to subscribers.
+        All other messages are passed to ``publish()`` for transport.
 
         Args:
             message: The bus message to send.
+        """
+        if isinstance(message, BusLocalMessage):
+            self.on_message_received(message)
+            return
+        await self.publish(message)
+
+    @abstractmethod
+    async def publish(self, message: BusMessage) -> None:
+        """Publish a message to the transport.
+
+        Subclasses implement this for the specific transport. Called
+        by ``send()`` after filtering local-only messages.
+
+        Args:
+            message: The bus message to publish.
         """
         pass
 

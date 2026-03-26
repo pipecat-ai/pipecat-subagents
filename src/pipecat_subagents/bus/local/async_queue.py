@@ -15,11 +15,11 @@ from pipecat_subagents.bus.messages import BusMessage
 class AsyncQueueBus(AgentBus):
     """In-process bus that delivers messages via priority queues."""
 
-    async def send(self, message: BusMessage) -> None:
-        """Fan out a message to all subscriber priority queues.
+    async def publish(self, message: BusMessage) -> None:
+        """Deliver a message to all local subscriber queues.
 
         Args:
-            message: The bus message to send.
+            message: The bus message to deliver.
         """
         logger.trace(f"{self}: sending {message}")
         self.on_message_received(message)

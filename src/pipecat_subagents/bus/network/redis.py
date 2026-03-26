@@ -20,7 +20,7 @@ except ModuleNotFoundError as e:
     raise Exception(f"Missing module: {e}")
 
 from pipecat_subagents.bus.bus import AgentBus
-from pipecat_subagents.bus.messages import BusLocalMessage, BusMessage
+from pipecat_subagents.bus.messages import BusMessage
 from pipecat_subagents.bus.serializers import JSONMessageSerializer
 from pipecat_subagents.bus.serializers.base import MessageSerializer
 
@@ -85,19 +85,12 @@ class RedisBus(AgentBus):
             await self._pubsub.close()
             self._pubsub = None
 
-    async def send(self, message: BusMessage) -> None:
-        """Send a message to all subscribers.
-
-        ``BusLocalMessage`` messages are delivered directly to local
-        subscriber queues. All other messages are published to Redis.
+    async def publish(self, message: BusMessage) -> None:
+        """Publish a message to the Redis channel.
 
         Args:
-            message: The bus message to send.
+            message: The bus message to publish.
         """
-        if isinstance(message, BusLocalMessage):
-            logger.trace(f"{self}: sending local {message}")
-            self.on_message_received(message)
-            return
         logger.trace(f"{self}: publishing {message} to {self._channel}")
         data = self._serializer.serialize(message)
         await self._redis.publish(self._channel, data)
