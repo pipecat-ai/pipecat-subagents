@@ -12,9 +12,9 @@ from pipecat.processors.frame_processor import FrameDirection
 from pipecat_subagents.bus.messages import (
     BusActivateAgentMessage,
     BusCancelMessage,
+    BusDataMessage,
     BusEndMessage,
     BusFrameMessage,
-    BusDataMessage,
     BusMessage,
     BusTaskRequestMessage,
     BusTaskResponseMessage,

@@ -942,14 +942,26 @@ class TestTaskLifecycle(unittest.IsolatedAsyncioTestCase):
 
         # First response — should not trigger on_task_completed
         await parent.on_bus_message(
-            BusTaskResponseMessage(source="w1", target="parent", task_id=task_id, status=TaskStatus.COMPLETED, response={"a": 1})
+            BusTaskResponseMessage(
+                source="w1",
+                target="parent",
+                task_id=task_id,
+                status=TaskStatus.COMPLETED,
+                response={"a": 1},
+            )
         )
         await asyncio.sleep(0)  # let async event handlers run
         self.assertEqual(len(completed), 0)
 
         # Second response — should trigger on_task_completed
         await parent.on_bus_message(
-            BusTaskResponseMessage(source="w2", target="parent", task_id=task_id, status=TaskStatus.COMPLETED, response={"b": 2})
+            BusTaskResponseMessage(
+                source="w2",
+                target="parent",
+                task_id=task_id,
+                status=TaskStatus.COMPLETED,
+                response={"b": 2},
+            )
         )
         await asyncio.sleep(0)  # let async event handlers run
         self.assertEqual(len(completed), 1)
@@ -1181,7 +1193,11 @@ class TestTaskLifecycle(unittest.IsolatedAsyncioTestCase):
         # Respond before timeout fires
         await parent.on_bus_message(
             BusTaskResponseMessage(
-                source="worker", target="parent", task_id=task_id, status=TaskStatus.COMPLETED, response={"ok": True}
+                source="worker",
+                target="parent",
+                task_id=task_id,
+                status=TaskStatus.COMPLETED,
+                response={"ok": True},
             )
         )
 
