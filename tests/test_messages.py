@@ -13,6 +13,7 @@ from pipecat.utils.asyncio.task_manager import TaskManager, TaskManagerParams
 
 from pipecat_subagents.bus import (
     AsyncQueueBus,
+    BusDataMessage,
     BusFrameMessage,
     BusMessage,
     BusSubscriber,
@@ -22,12 +23,12 @@ from pipecat_subagents.bus import (
 class TestBusMessageRouting(unittest.IsolatedAsyncioTestCase):
     async def test_broadcast_message_no_target(self):
         """A BusMessage with no target is broadcast (target is None)."""
-        msg = BusMessage(source="agent_a")
+        msg = BusDataMessage(source="agent_a")
         self.assertIsNone(msg.target)
 
     async def test_targeted_message(self):
         """A BusMessage with target set is only for that agent."""
-        msg = BusMessage(source="agent_a", target="agent_b")
+        msg = BusDataMessage(source="agent_a", target="agent_b")
         self.assertEqual(msg.target, "agent_b")
 
     async def test_broadcast_reaches_all_subscribers(self):
@@ -51,7 +52,7 @@ class TestBusMessageRouting(unittest.IsolatedAsyncioTestCase):
         await bus.subscribe(SubB())
 
         await bus.start()
-        msg = BusMessage(source="agent_x")  # no target
+        msg = BusDataMessage(source="agent_x")  # no target
         await bus.send(msg)
         await asyncio.sleep(0.05)
         await bus.stop()

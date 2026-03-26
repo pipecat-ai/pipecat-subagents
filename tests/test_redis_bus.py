@@ -13,6 +13,7 @@ from pipecat.utils.asyncio.task_manager import TaskManager, TaskManagerParams
 
 from pipecat_subagents.bus import (
     BusAddAgentMessage,
+    BusDataMessage,
     BusEndMessage,
     BusFrameMessage,
     BusMessage,
@@ -92,7 +93,7 @@ class TestRedisBus(unittest.IsolatedAsyncioTestCase):
 
     async def test_send_publishes_to_redis(self):
         """send() serializes and publishes to the Redis channel."""
-        msg = BusMessage(source="agent_a", target="agent_b")
+        msg = BusDataMessage(source="agent_a", target="agent_b")
         await self.bus.send(msg)
 
         self.assertEqual(len(self.redis._published), 1)
@@ -179,7 +180,7 @@ class TestRedisBus(unittest.IsolatedAsyncioTestCase):
         await self.bus.subscribe(SubB())
         await self.bus.start()
 
-        msg = BusMessage(source="x")
+        msg = BusDataMessage(source="x")
         await self.bus.send(msg)
 
         await asyncio.sleep(0.1)
@@ -251,7 +252,7 @@ class TestRedisBus(unittest.IsolatedAsyncioTestCase):
             serializer=self.serializer,
             channel="custom:channel",
         )
-        await bus.send(BusMessage(source="a"))
+        await bus.send(BusDataMessage(source="a"))
         self.assertEqual(self.redis._published[0][0], "custom:channel")
 
     async def test_disconnect_cleans_up(self):

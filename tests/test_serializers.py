@@ -14,6 +14,7 @@ from pipecat_subagents.bus.messages import (
     BusCancelMessage,
     BusEndMessage,
     BusFrameMessage,
+    BusDataMessage,
     BusMessage,
     BusTaskRequestMessage,
     BusTaskResponseMessage,
@@ -27,7 +28,7 @@ class TestJSONMessageSerializer(unittest.TestCase):
 
     def test_round_trip_simple_message(self):
         """BusMessage serializes and deserializes correctly."""
-        msg = BusMessage(source="agent_a", target="agent_b")
+        msg = BusDataMessage(source="agent_a", target="agent_b")
         data = self.serializer.serialize(msg)
         restored = self.serializer.deserialize(data)
 
@@ -37,7 +38,7 @@ class TestJSONMessageSerializer(unittest.TestCase):
 
     def test_round_trip_broadcast_message(self):
         """Broadcast message (no target) round-trips."""
-        msg = BusMessage(source="agent_a")
+        msg = BusDataMessage(source="agent_a")
         data = self.serializer.serialize(msg)
         restored = self.serializer.deserialize(data)
 
@@ -158,7 +159,7 @@ class TestJSONMessageSerializer(unittest.TestCase):
 
     def test_serialized_is_bytes(self):
         """serialize() returns bytes."""
-        msg = BusMessage(source="a")
+        msg = BusDataMessage(source="a")
         data = self.serializer.serialize(msg)
         self.assertIsInstance(data, bytes)
 
@@ -179,7 +180,7 @@ class TestJSONMessageSerializer(unittest.TestCase):
 
     def test_non_init_fields_preserved(self):
         """Non-init dataclass fields survive round-trip via setattr."""
-        msg = BusMessage(source="agent_a", target="agent_b")
+        msg = BusDataMessage(source="agent_a", target="agent_b")
         # name is a non-init field on DataFrame
         msg.name = "custom_name"
 

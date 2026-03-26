@@ -13,6 +13,7 @@ from pipecat.utils.asyncio.task_manager import TaskManager, TaskManagerParams
 from pipecat_subagents.bus import (
     AsyncQueueBus,
     BusAddAgentMessage,
+    BusDataMessage,
     BusMessage,
 )
 from pipecat_subagents.bus.serializers import JSONMessageSerializer
@@ -106,7 +107,7 @@ class TestWebSocketProxyClientAgent(unittest.IsolatedAsyncioTestCase):
         fake_ws = FakeWebSocket()
         agent = self._create_client(fake_ws)
 
-        msg = BusMessage(source="voice", target="worker")
+        msg = BusDataMessage(source="voice", target="worker")
         await agent.on_bus_message(msg)
 
         self.assertEqual(len(fake_ws._sent), 1)
@@ -119,7 +120,7 @@ class TestWebSocketProxyClientAgent(unittest.IsolatedAsyncioTestCase):
         fake_ws = FakeWebSocket()
         agent = self._create_client(fake_ws)
 
-        msg = BusMessage(source="voice", target="other_agent")
+        msg = BusDataMessage(source="voice", target="other_agent")
         await agent.on_bus_message(msg)
 
         self.assertEqual(len(fake_ws._sent), 0)
@@ -129,7 +130,7 @@ class TestWebSocketProxyClientAgent(unittest.IsolatedAsyncioTestCase):
         fake_ws = FakeWebSocket()
         agent = self._create_client(fake_ws)
 
-        msg = BusMessage(source="voice")
+        msg = BusDataMessage(source="voice")
         await agent.on_bus_message(msg)
 
         self.assertEqual(len(fake_ws._sent), 0)
@@ -162,7 +163,7 @@ class TestWebSocketProxyClientAgent(unittest.IsolatedAsyncioTestCase):
 
         agent.send_message = capture_send
 
-        msg = BusMessage(source="worker", target="voice")
+        msg = BusDataMessage(source="worker", target="voice")
         fake_ws.inject(self.serializer.serialize(msg))
 
         receive_task = asyncio.create_task(agent._receive_loop())
@@ -191,7 +192,7 @@ class TestWebSocketProxyClientAgent(unittest.IsolatedAsyncioTestCase):
 
         agent.send_message = capture_send
 
-        msg = BusMessage(source="worker", target="other_agent")
+        msg = BusDataMessage(source="worker", target="other_agent")
         fake_ws.inject(self.serializer.serialize(msg))
 
         receive_task = asyncio.create_task(agent._receive_loop())
@@ -229,7 +230,7 @@ class TestWebSocketProxyServerAgent(unittest.IsolatedAsyncioTestCase):
         fake_ws = FakeStarletteWebSocket()
         agent = self._create_server(fake_ws)
 
-        msg = BusMessage(source="worker", target="voice")
+        msg = BusDataMessage(source="worker", target="voice")
         await agent.on_bus_message(msg)
 
         self.assertEqual(len(fake_ws._sent), 1)
@@ -242,7 +243,7 @@ class TestWebSocketProxyServerAgent(unittest.IsolatedAsyncioTestCase):
         fake_ws = FakeStarletteWebSocket()
         agent = self._create_server(fake_ws)
 
-        msg = BusMessage(source="other_agent", target="voice")
+        msg = BusDataMessage(source="other_agent", target="voice")
         await agent.on_bus_message(msg)
 
         self.assertEqual(len(fake_ws._sent), 0)
@@ -252,7 +253,7 @@ class TestWebSocketProxyServerAgent(unittest.IsolatedAsyncioTestCase):
         fake_ws = FakeStarletteWebSocket()
         agent = self._create_server(fake_ws)
 
-        msg = BusMessage(source="worker", target="other_agent")
+        msg = BusDataMessage(source="worker", target="other_agent")
         await agent.on_bus_message(msg)
 
         self.assertEqual(len(fake_ws._sent), 0)
@@ -271,7 +272,7 @@ class TestWebSocketProxyServerAgent(unittest.IsolatedAsyncioTestCase):
 
         agent.send_message = capture_send
 
-        msg = BusMessage(source="voice", target="worker")
+        msg = BusDataMessage(source="voice", target="worker")
         fake_ws.inject(self.serializer.serialize(msg))
 
         receive_task = asyncio.create_task(agent._receive_loop())
@@ -299,7 +300,7 @@ class TestWebSocketProxyServerAgent(unittest.IsolatedAsyncioTestCase):
 
         agent.send_message = capture_send
 
-        msg = BusMessage(source="voice", target="other_agent")
+        msg = BusDataMessage(source="voice", target="other_agent")
         fake_ws.inject(self.serializer.serialize(msg))
 
         receive_task = asyncio.create_task(agent._receive_loop())
