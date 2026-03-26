@@ -9,7 +9,7 @@ description = "Distributed Subagents Framework for Pipecat"
 license = { text = "BSD 2-Clause License" }
 readme = "README.md"
 requires-python = ">=3.10"
-keywords = ["pipecat", "agents", "distributed", "ai"]
+keywords = ["pipecat", "agents", "subagents", "distributed", "ai"]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
@@ -28,7 +28,7 @@ redis = ["redis[hiredis]>=5.0.0"]
 websocket = [ "websockets>=13.1,<16.0", "fastapi>=0.115.6,<1" ]
 
 [project.urls]
-Source = "https://github.com/pipecat-ai/pipecat-agents"
+Source = "https://github.com/pipecat-ai/pipecat-subagents"
 Website = "https://www.pipecat.ai"
 
 [dependency-groups]
