@@ -8,6 +8,7 @@ Examples where all agents run in the same process.
 
 - **[`local/agent-handoff/`](local/agent-handoff/)**: Agents that transfer control between each other during a conversation.
 - **[`local/parallel-debate/`](local/parallel-debate/)**: Parallel task workers that debate a topic from multiple perspectives using a task group context.
+- **[`local/code-assistant/`](local/code-assistant/)**: Voice code assistant that explores your codebase using Claude Agent SDK.
 
 ## Distributed
 
