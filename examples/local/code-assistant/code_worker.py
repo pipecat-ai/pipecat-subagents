@@ -8,12 +8,20 @@
 
 import asyncio
 
-from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 from loguru import logger
 
 from pipecat_subagents.agents import BaseAgent
 from pipecat_subagents.agents.task_group import TaskStatus
 from pipecat_subagents.bus import AgentBus
+
+try:
+    from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
+except ModuleNotFoundError as e:
+    logger.error(f"Exception: {e}")
+    logger.error(
+        "In order to use CodeWorker, you need to `pip install pipecat-ai-subagents[examples]`."
+    )
+    raise Exception(f"Missing module: {e}")
 
 
 class CodeWorker(BaseAgent):

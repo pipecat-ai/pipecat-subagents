@@ -1,6 +1,6 @@
 # Voice Code Assistant (Local)
 
-Talk to your codebase hands-free. Ask questions about code, project structure, or file contents and get spoken answers based on actual files. The Claude Agent SDK worker navigates the filesystem using Read, Bash, Glob, and Grep tools.
+Talk to your codebase hands-free. Ask questions about code, project structure, or file contents and get spoken answers based on actual files. The Claude Agent SDK worker navigates the filesystem using Read, Write, Bash, Glob, and Grep tools.
 
 ## Architecture
 
@@ -49,14 +49,14 @@ uv run examples/local/code-assistant/code_assistant.py --transport daily
 
 ## Environment variables
 
-| Variable           | Required by                   |
-|--------------------|-------------------------------|
-| `ANTHROPIC_API_KEY`| Code Worker (Claude Agent SDK)|
-| `OPENAI_API_KEY`   | Voice Agent (LLM)             |
-| `DEEPGRAM_API_KEY` | STT                           |
-| `CARTESIA_API_KEY` | TTS                           |
-| `DAILY_API_KEY`    | Only with `--transport daily` |
-| `PROJECT_PATH`     | Optional, defaults to cwd     |
+| Variable            | Required by                    |
+|---------------------|--------------------------------|
+| `ANTHROPIC_API_KEY` | Code Worker (Claude Agent SDK) |
+| `OPENAI_API_KEY`    | Voice Agent (LLM)              |
+| `DEEPGRAM_API_KEY`  | STT                            |
+| `CARTESIA_API_KEY`  | TTS                            |
+| `DAILY_API_KEY`     | Only with `--transport daily`  |
+| `PROJECT_PATH`      | Optional, defaults to cwd      |
 
 ## Example questions
 
