@@ -171,6 +171,7 @@ class BaseAgent(BaseObject, BusSubscriber):
     Overridable lifecycle methods (always call ``super()``):
 
     - ``on_ready()``: Called once when the agent is ready.
+    - ``on_finished()``: Called when the agent's pipeline has finished.
     - ``on_activated(args)``: Called when this agent is activated.
     - ``on_deactivated()``: Called when this agent is deactivated.
     - ``on_agent_ready(agent_info)``: Called when another agent is ready
@@ -201,6 +202,7 @@ class BaseAgent(BaseObject, BusSubscriber):
     Event handlers available:
 
     - on_ready: Agent is ready to operate.
+    - on_finished: Agent's pipeline has finished.
     - on_error: A pipeline error occurred.
     - on_activated: Agent was activated.
     - on_deactivated: Agent was deactivated.
@@ -284,6 +286,7 @@ class BaseAgent(BaseObject, BusSubscriber):
 
         # This agent's lifecycle
         self._register_event_handler("on_ready")
+        self._register_event_handler("on_finished")
         self._register_event_handler("on_error")
         self._register_event_handler("on_activated")
         self._register_event_handler("on_deactivated")
@@ -405,6 +408,10 @@ class BaseAgent(BaseObject, BusSubscriber):
 
     async def on_ready(self) -> None:
         """Called once when the agent is ready."""
+        pass
+
+    async def on_finished(self) -> None:
+        """Called when the agent's pipeline has finished."""
         pass
 
     async def on_error(self, error: str, fatal: bool) -> None:
@@ -659,6 +666,8 @@ class BaseAgent(BaseObject, BusSubscriber):
         @task.event_handler("on_pipeline_finished")
         async def on_pipeline_finished(task, frame):
             logger.debug(f"Agent '{self}': pipeline {task} finished ({frame})")
+            await self.on_finished()
+            await self._call_event_handler("on_finished")
             await self._stop()
 
         return task

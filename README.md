@@ -143,6 +143,7 @@ Hooks about this agent's own state.
 | Hook                     | When it fires                                           |
 |--------------------------|---------------------------------------------------------|
 | `on_ready()`             | Agent is ready to operate.                              |
+| `on_finished()`          | Agent's pipeline has finished.                          |
 | `on_error(error, fatal)` | A pipeline error occurred.                              |
 | `on_activated(args)`     | Agent is activated via `activate_agent()`.              |
 | `on_deactivated()`       | Agent is deactivated via `deactivate_agent()`.          |

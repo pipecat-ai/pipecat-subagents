@@ -260,6 +260,46 @@ class TestBaseAgentLifecycle(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(started.is_set())
 
+    async def test_on_finished_event(self):
+        """on_finished fires after pipeline finishes."""
+        bus = self.bus
+        agent = StubAgent("test", bus=bus)
+
+        finished_fired = asyncio.Event()
+
+        @agent.event_handler("on_finished")
+        async def on_finished(agent):
+            finished_fired.set()
+
+        task = await agent.create_pipeline_task()
+
+        async def end_pipeline():
+            await asyncio.sleep(0.05)
+            await task.queue_frame(EndFrame())
+
+        await bus.start()
+        runner = PipelineRunner()
+        await asyncio.gather(runner.run(task), end_pipeline())
+        await bus.stop()
+
+        self.assertTrue(finished_fired.is_set())
+
+    async def test_on_finished_not_called_on_cleanup(self):
+        """on_finished does not fire when cleanup() is called directly."""
+        bus = self.bus
+        agent = StubAgent("test", bus=bus)
+
+        finished_fired = False
+
+        @agent.event_handler("on_finished")
+        async def on_finished(agent):
+            nonlocal finished_fired
+            finished_fired = True
+
+        await agent.cleanup()
+
+        self.assertFalse(finished_fired)
+
     async def test_handoff_deactivates(self):
         """handoff_to() deactivates the calling agent."""
         bus = self.bus
