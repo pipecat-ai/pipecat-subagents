@@ -56,6 +56,7 @@ from pipecat_subagents.bus import (
     BusTaskCancelMessage,
     BusTaskRequestMessage,
     BusTaskResponseMessage,
+    BusTaskResponseUrgentMessage,
     BusTaskStreamDataMessage,
     BusTaskStreamEndMessage,
     BusTaskStreamStartMessage,
@@ -546,7 +547,7 @@ class BaseAgent(BaseObject, BusSubscriber):
             await self._handle_agent_cancel(message)
         elif isinstance(message, BusTaskRequestMessage):
             await self._handle_task_request(message)
-        elif isinstance(message, BusTaskResponseMessage):
+        elif isinstance(message, (BusTaskResponseMessage, BusTaskResponseUrgentMessage)):
             await self._handle_task_response(message)
         elif isinstance(message, BusTaskUpdateMessage):
             await self._handle_task_update(message)
@@ -928,7 +929,11 @@ class BaseAgent(BaseObject, BusSubscriber):
         )
 
     async def send_task_response(
-        self, response: Optional[dict] = None, *, status: TaskStatus = TaskStatus.COMPLETED
+        self,
+        response: Optional[dict] = None,
+        *,
+        status: TaskStatus = TaskStatus.COMPLETED,
+        urgent: bool = False,
     ) -> None:
         """Send a task response back to the requester.
 
@@ -937,14 +942,17 @@ class BaseAgent(BaseObject, BusSubscriber):
         Args:
             response: Optional result data.
             status: Completion status. Defaults to ``TaskStatus.COMPLETED``.
+            urgent: When True, the response is delivered with system
+                priority, preempting queued data messages.
 
         Raises:
             RuntimeError: If this agent has no active task.
         """
         if not self._task_id or not self._task_requester:
             raise RuntimeError(f"Agent '{self}': no active task to respond to")
+        msg_class = BusTaskResponseUrgentMessage if urgent else BusTaskResponseMessage
         await self.send_message(
-            BusTaskResponseMessage(
+            msg_class(
                 source=self.name,
                 target=self._task_requester,
                 task_id=self._task_id,
@@ -1254,7 +1262,9 @@ class BaseAgent(BaseObject, BusSubscriber):
         await self.on_task_request(message)
         await self._call_event_handler("on_task_request", message)
 
-    async def _handle_task_response(self, message: BusTaskResponseMessage) -> None:
+    async def _handle_task_response(
+        self, message: Union[BusTaskResponseMessage, BusTaskResponseUrgentMessage]
+    ) -> None:
         """Handle a task response and track group completion."""
         await self.on_task_response(message)
         await self._call_event_handler("on_task_response", message)

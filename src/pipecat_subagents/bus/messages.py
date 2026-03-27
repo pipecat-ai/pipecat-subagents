@@ -168,6 +168,24 @@ class BusTaskResponseMessage(BusDataMessage):
 
 
 @dataclass
+class BusTaskResponseUrgentMessage(BusSystemMessage):
+    """High-priority response from a task agent.
+
+    Same semantics as ``BusTaskResponseMessage`` but delivered with
+    system priority, preempting queued data messages.
+
+    Parameters:
+        task_id: The task identifier.
+        response: Optional result data.
+        status: Completion status.
+    """
+
+    task_id: str
+    status: "TaskStatus"
+    response: Optional[dict] = None
+
+
+@dataclass
 class BusTaskUpdateMessage(BusDataMessage):
     """Progress update from a task agent.
 

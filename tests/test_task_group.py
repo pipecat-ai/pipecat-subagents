@@ -43,6 +43,22 @@ class TaskWorkerAgent(BaseAgent):
         await self.send_task_response(self._auto_response, status=self._auto_status)
 
 
+class UrgentTaskWorkerAgent(BaseAgent):
+    """Worker that responds urgently to task requests."""
+
+    def __init__(self, name, *, bus, response=None, status=TaskStatus.COMPLETED):
+        super().__init__(name, bus=bus)
+        self._auto_response = response
+        self._auto_status = status
+
+    async def build_pipeline(self) -> Pipeline:
+        return Pipeline([IdentityFilter()])
+
+    async def on_task_request(self, message):
+        await super().on_task_request(message)
+        await self.send_task_response(self._auto_response, status=self._auto_status, urgent=True)
+
+
 class UpdatingWorkerAgent(BaseAgent):
     """Worker that sends updates before responding."""
 
@@ -409,6 +425,77 @@ class TestTaskGroupContext(unittest.IsolatedAsyncioTestCase):
             pass
 
         self.assertEqual(tg.responses, {"worker": {"ok": True}})
+
+
+    async def test_urgent_task_response_collected(self):
+        """Urgent task responses are collected like normal responses."""
+        parent = StubAgent("parent", bus=self.bus)
+        await setup_agent(self.bus, self.registry, parent)
+
+        worker = UrgentTaskWorkerAgent("worker", bus=self.bus, response={"urgent": True})
+        await setup_agent(self.bus, self.registry, worker)
+
+        async with parent.request_task_group("worker") as tg:
+            pass
+
+        self.assertEqual(tg.responses, {"worker": {"urgent": True}})
+
+    async def test_urgent_task_response_triggers_on_task_error(self):
+        """Urgent error response triggers on_task_error and cancels group."""
+        parent = StubAgent("parent", bus=self.bus)
+        parent.set_task_manager(self.tm)
+        await setup_agent(self.bus, self.registry, parent)
+
+        worker = UrgentTaskWorkerAgent(
+            "worker", bus=self.bus, response={"error": "critical"}, status=TaskStatus.ERROR
+        )
+        await setup_agent(self.bus, self.registry, worker)
+
+        errors = []
+
+        @parent.event_handler("on_task_error")
+        async def on_error(agent, message):
+            errors.append(message)
+
+        with self.assertRaises(TaskGroupError):
+            async with parent.request_task_group("worker") as tg:
+                pass
+
+        self.assertEqual(len(errors), 1)
+        self.assertEqual(errors[0].response, {"error": "critical"})
+
+    async def test_urgent_response_has_system_priority(self):
+        """Urgent task response is delivered before normal data messages."""
+        from pipecat_subagents.bus import BusDataMessage, BusTaskResponseUrgentMessage
+
+        bus = self.bus
+
+        # Queue data messages first, then an urgent response
+        parent = StubAgent("parent", bus=bus)
+        await setup_agent(bus, self.registry, parent)
+
+        received = []
+
+        @parent.event_handler("on_bus_message")
+        async def on_msg(agent, message):
+            received.append(message)
+
+        # Send data messages before starting dispatch
+        for i in range(3):
+            await bus.send(BusDataMessage(source=f"data_{i}"))
+        await bus.send(
+            BusTaskResponseUrgentMessage(
+                source="worker", target="parent", task_id="t1", status=TaskStatus.COMPLETED
+            )
+        )
+
+        # Start dispatch — urgent should arrive first
+        await bus.start()
+        await asyncio.sleep(0.1)
+        await bus.stop()
+
+        # First message should be the urgent response
+        self.assertIsInstance(received[0], BusTaskResponseUrgentMessage)
 
 
 if __name__ == "__main__":
