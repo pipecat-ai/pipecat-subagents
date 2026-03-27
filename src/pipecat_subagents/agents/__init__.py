@@ -21,6 +21,7 @@ from pipecat_subagents.agents.task_group import (
     TaskGroupError,
     TaskGroupEvent,
     TaskGroupResponse,
+    TaskStatus,
 )
 from pipecat_subagents.agents.tool import tool
 
@@ -34,5 +35,6 @@ __all__ = [
     "TaskGroupError",
     "TaskGroupEvent",
     "TaskGroupResponse",
+    "TaskStatus",
     "tool",
 ]
