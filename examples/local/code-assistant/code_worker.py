@@ -7,6 +7,7 @@
 """Code worker that explores a codebase using Claude Agent SDK."""
 
 import asyncio
+from typing import Optional
 
 from loguru import logger
 
@@ -34,8 +35,10 @@ class CodeWorker(BaseAgent):
     def __init__(self, name: str, *, bus: AgentBus, project_path: str):
         super().__init__(name, bus=bus)
         self._project_path = project_path
+
         self._queue: asyncio.Queue[str] = asyncio.Queue()
-        self._worker_task = None
+        self._worker_task: Optional[asyncio.Task] = None
+
         self._claude_options = ClaudeAgentOptions(
             permission_mode="bypassPermissions",
             system_prompt=(
@@ -54,6 +57,12 @@ class CodeWorker(BaseAgent):
     async def on_ready(self):
         await super().on_ready()
         self._worker_task = self.create_asyncio_task(self._worker_loop(), f"{self.name}::worker")
+
+    async def on_finished(self) -> None:
+        await super().on_finished()
+        if self._worker_task:
+            await self.cancel_asyncio_task(self._worker_task)
+            self._worker_task = None
 
     async def on_task_request(self, message):
         await super().on_task_request(message)
