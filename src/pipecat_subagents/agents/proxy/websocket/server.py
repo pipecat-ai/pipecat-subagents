@@ -11,6 +11,13 @@ from typing import Optional
 
 from loguru import logger
 
+from pipecat_subagents.agents.base_agent import BaseAgent
+from pipecat_subagents.bus import AgentBus, BusAgentRegistryMessage, BusMessage
+from pipecat_subagents.bus.messages import BusLocalMessage
+from pipecat_subagents.bus.serializers import JSONMessageSerializer
+from pipecat_subagents.bus.serializers.base import MessageSerializer
+from pipecat_subagents.types import AgentReadyData
+
 try:
     from starlette.websockets import WebSocket, WebSocketDisconnect, WebSocketState
 except ModuleNotFoundError as e:
@@ -19,13 +26,6 @@ except ModuleNotFoundError as e:
         "In order to use WebSocketProxyServerAgent, you need to `pip install pipecat-ai-subagents[websocket]`."
     )
     raise Exception(f"Missing module: {e}")
-
-from pipecat_subagents.agents.base_agent import BaseAgent
-from pipecat_subagents.bus import AgentBus, BusAgentRegistryMessage, BusMessage
-from pipecat_subagents.bus.messages import BusLocalMessage
-from pipecat_subagents.bus.serializers import JSONMessageSerializer
-from pipecat_subagents.bus.serializers.base import MessageSerializer
-from pipecat_subagents.types import AgentReadyData
 
 
 class WebSocketProxyServerAgent(BaseAgent):

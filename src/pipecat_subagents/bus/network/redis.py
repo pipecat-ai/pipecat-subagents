@@ -11,6 +11,11 @@ from typing import Optional
 
 from loguru import logger
 
+from pipecat_subagents.bus.bus import AgentBus
+from pipecat_subagents.bus.messages import BusMessage
+from pipecat_subagents.bus.serializers import JSONMessageSerializer
+from pipecat_subagents.bus.serializers.base import MessageSerializer
+
 try:
     from redis.asyncio import Redis
     from redis.asyncio.client import PubSub
@@ -18,11 +23,6 @@ except ModuleNotFoundError as e:
     logger.error(f"Exception: {e}")
     logger.error("In order to use RedisBus, you need to `pip install pipecat-ai-subagents[redis]`.")
     raise Exception(f"Missing module: {e}")
-
-from pipecat_subagents.bus.bus import AgentBus
-from pipecat_subagents.bus.messages import BusMessage
-from pipecat_subagents.bus.serializers import JSONMessageSerializer
-from pipecat_subagents.bus.serializers.base import MessageSerializer
 
 
 class RedisBus(AgentBus):

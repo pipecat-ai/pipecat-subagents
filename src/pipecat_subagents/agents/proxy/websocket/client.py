@@ -11,6 +11,12 @@ from typing import Optional
 
 from loguru import logger
 
+from pipecat_subagents.agents.base_agent import BaseAgent
+from pipecat_subagents.bus import AgentBus, BusAgentRegistryMessage, BusMessage
+from pipecat_subagents.bus.messages import BusLocalMessage
+from pipecat_subagents.bus.serializers import JSONMessageSerializer
+from pipecat_subagents.bus.serializers.base import MessageSerializer
+
 try:
     import websockets
     from websockets.asyncio.client import connect
@@ -20,12 +26,6 @@ except ModuleNotFoundError as e:
         "In order to use WebSocketProxyClientAgent, you need to `pip install pipecat-ai-subagents[websocket]`."
     )
     raise Exception(f"Missing module: {e}")
-
-from pipecat_subagents.agents.base_agent import BaseAgent
-from pipecat_subagents.bus import AgentBus, BusAgentRegistryMessage, BusMessage
-from pipecat_subagents.bus.messages import BusLocalMessage
-from pipecat_subagents.bus.serializers import JSONMessageSerializer
-from pipecat_subagents.bus.serializers.base import MessageSerializer
 
 
 class WebSocketProxyClientAgent(BaseAgent):
