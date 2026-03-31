@@ -31,16 +31,9 @@ uv add pipecat-ai-subagents
 
 > Requires Python 3.10+ and [Pipecat](https://github.com/pipecat-ai/pipecat?tab=readme-ov-file#-getting-started).
 
-## Getting started
+## Examples
 
-A minimal system has three parts: a **runner** that manages lifecycle, a **bus** for communication, and one or more **agents** that do work. Common patterns:
-
-- **Single agent** — One agent with a complete pipeline (transport, STT, LLM, TTS). See [`single_agent.py`](examples/local/agent-handoff/single_agent.py).
-- **Agent handoff** — A main agent owns the transport and bridges frames to the bus. Child agents each run their own LLM and transfer control between each other via `handoff_to()`. See [`two_llm_agents.py`](examples/local/agent-handoff/two_llm_agents.py).
-- **Parallel tasks** — A parent agent dispatches work to multiple workers and collects results. See [`parallel_debate.py`](examples/local/parallel-debate/parallel_debate.py).
-- **Framework integration** — A voice agent dispatches questions to a Claude Agent SDK worker that explores files and runs commands. See [`code_assistant.py`](examples/local/code-assistant/code_assistant.py).
-
-More examples are available in the [examples](examples/) directory.
+See the [examples](examples/) directory for complete, runnable demos.
 
 ## Architecture
 
