@@ -1,0 +1,73 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --background: 240 10% 98%;
+    --foreground: 222 47% 7%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 7%;
+    --primary: 243 75% 59%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 215 20% 72%;
+    --secondary-foreground: 222 47% 7%;
+    --muted: 0 0% 40%;
+    --muted-foreground: 0 0% 40%;
+    --accent: 243 75% 59%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 65% 50%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 243 75% 59%;
+    --radius: 0.5rem;
+  }
+
+  [data-theme="dark"] {
+    --background: 222 47% 4%;
+    --foreground: 213 31% 91%;
+    --card: 222 47% 7%;
+    --card-foreground: 213 31% 91%;
+    --primary: 243 88% 81%;
+    --primary-foreground: 222 47% 4%;
+    --secondary: 215 25% 18%;
+    --secondary-foreground: 213 31% 91%;
+    --muted: 213 20% 69%;
+    --muted-foreground: 213 20% 69%;
+    --accent: 243 88% 81%;
+    --accent-foreground: 222 47% 4%;
+    --destructive: 0 60% 55%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 217 33% 17%;
+    --input: 217 33% 17%;
+    --ring: 243 88% 81%;
+  }
+
+  * {
+    border-color: hsl(var(--border));
+    box-sizing: border-box;
+  }
+
+  body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    margin: 0;
+    font-family:
+      ui-sans-serif,
+      system-ui,
+      -apple-system,
+      Segoe UI,
+      Roboto,
+      Helvetica,
+      Arial,
+      Noto Sans,
+      "Apple Color Emoji",
+      "Segoe UI Emoji";
+  }
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  overflow: hidden;
+}

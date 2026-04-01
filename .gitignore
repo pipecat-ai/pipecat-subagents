@@ -1,14 +1,16 @@
-.vscode
-env/
-__pycache__/
-*~
-venv
-.venv
+.vscode/*
+!.vscode/extensions.json
 .idea
-.gradle
-local.properties
-*.log
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*~
 #*#
+
+*.log
 
 # Distribution / Packaging
 .Python
@@ -32,19 +34,13 @@ MANIFEST
 .DS_Store
 .env*
 .coverage
+__pycache__/
+venv
+.venv
 
-# Examples
-examples/**/node_modules/
-examples/**/.expo/
-examples/**/dist/
-examples/**/npm-debug.*
-examples/**/*.jks
-examples/**/*.p8
-examples/**/*.p12
-examples/**/*.key
-examples/**/*.mobileprovision
-examples/**/*.orig.*
-examples/**/web-build/
+# Node
+node_modules/
+*.tsbuildinfo
 
 # macOS
 .DS_Store
