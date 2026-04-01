@@ -105,11 +105,11 @@ The runner orchestrates the system: it creates pipeline tasks, manages agent lif
 
 ### Registry and visibility
 
-Only **root agents** (added via `AgentRunner.add_agent()`) are visible across the system. When a root agent becomes ready, the runner announces it to all local agents and to remote runners over the network bus.
+Only **root agents** (added via `AgentRunner.add_agent()`) are visible across the system. When a root agent becomes ready, the runner announces it to remote runners over the network bus.
 
 **Child agents** (added via `BaseAgent.add_agent()`) are private to their parent. Only the parent is notified when a child is ready via `on_agent_ready()`.
 
-Use `watch_agent(name)` to request notification when a specific agent registers.
+Use `watch_agent(name)` to request notification when a specific agent registers. This works the same locally and in distributed setups.
 
 | Class           | Description                                                                             |
 |-----------------|-----------------------------------------------------------------------------------------|

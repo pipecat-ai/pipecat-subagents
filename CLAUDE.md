@@ -51,9 +51,9 @@ BaseAgent(bridged=("voice",)) -- edge processors filtered to named bridges
 
 ### Registry
 
-- Only root agents (added via `AgentRunner.add_agent()`) are broadcast to other local agents and remote runners
+- Only root agents (added via `AgentRunner.add_agent()`) are announced to remote runners via the registry
 - Child agents (added via `BaseAgent.add_agent()`) are only announced to their parent
-- Other agents can opt in to child notifications via `watch_agent(name)`
+- Use `watch_agent(name)` to receive `on_agent_ready` for any agent (works the same locally and distributed)
 - `registry.watch()` is async and fires immediately if the agent is already registered
 - Runner names must be unique across distributed setups (auto-generated with UUID by default)
 
