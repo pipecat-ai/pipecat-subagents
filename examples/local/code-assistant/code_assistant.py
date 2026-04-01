@@ -74,18 +74,17 @@ class CodeAssistant(BaseAgent):
 
     async def on_agent_ready(self, data: AgentReadyData):
         await super().on_agent_ready(data)
-        if data.agent_name == "voice":
-            await self.activate_agent(
-                "voice",
-                args=LLMAgentActivationArgs(
-                    messages=[
-                        {
-                            "role": "user",
-                            "content": "Greet the user and tell them you're a code assistant.",
-                        },
-                    ],
-                ),
-            )
+        await self.activate_agent(
+            "voice",
+            args=LLMAgentActivationArgs(
+                messages=[
+                    {
+                        "role": "user",
+                        "content": "Greet the user and tell them you're a code assistant.",
+                    },
+                ],
+            ),
+        )
 
     def build_pipeline_task(self, pipeline: Pipeline) -> PipelineTask:
         return PipelineTask(pipeline, enable_rtvi=True)
@@ -116,6 +115,7 @@ class CodeAssistant(BaseAgent):
             logger.info("Client connected")
             voice = VoiceAgent("voice", bus=self.bus)
             await self.add_agent(voice)
+            await self.watch_agent("voice")
 
         @self._transport.event_handler("on_client_disconnected")
         async def on_client_disconnected(transport, client):

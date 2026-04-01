@@ -185,21 +185,20 @@ class DebateAgent(BaseAgent):
 
     async def on_agent_ready(self, data: AgentReadyData):
         await super().on_agent_ready(data)
-        if data.agent_name == "moderator":
-            await self.activate_agent(
-                "moderator",
-                args=LLMAgentActivationArgs(
-                    messages=[
-                        {
-                            "role": "user",
-                            "content": (
-                                "Greet the user and tell them you can moderate a debate "
-                                "on any topic. Ask what they'd like to explore."
-                            ),
-                        },
-                    ],
-                ),
-            )
+        await self.activate_agent(
+            "moderator",
+            args=LLMAgentActivationArgs(
+                messages=[
+                    {
+                        "role": "user",
+                        "content": (
+                            "Greet the user and tell them you can moderate a debate "
+                            "on any topic. Ask what they'd like to explore."
+                        ),
+                    },
+                ],
+            ),
+        )
 
     def build_pipeline_task(self, pipeline: Pipeline) -> PipelineTask:
         return PipelineTask(
@@ -237,6 +236,7 @@ class DebateAgent(BaseAgent):
             logger.info("Client connected")
             moderator = ModeratorAgent("moderator", bus=self.bus)
             await self.add_agent(moderator)
+            await self.watch_agent("moderator")
 
         @self._transport.event_handler("on_client_disconnected")
         async def on_client_disconnected(transport, client):

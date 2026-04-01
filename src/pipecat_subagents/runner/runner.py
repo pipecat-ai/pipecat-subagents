@@ -30,7 +30,7 @@ from pipecat_subagents.bus import (
 )
 from pipecat_subagents.bus.subscriber import BusSubscriber
 from pipecat_subagents.registry import AgentRegistry
-from pipecat_subagents.types import AgentReadyData
+from pipecat_subagents.types import AgentReadyData, AgentRegistryEntry
 
 
 @dataclass
@@ -292,18 +292,23 @@ class AgentRunner(BaseObject, BusSubscriber):
             # Child agent: parent handles it via its own watch
             return
 
-        # Root agent: broadcast to other local root agents
-        for other in self._entries.values():
-            if other.agent.name != agent_data.agent_name and other.agent.parent is None:
-                await other.agent._on_watched_agent_ready(agent_data)
-
         await self._send_registry()
 
     async def _send_registry(self) -> None:
-        """Broadcast this runner's root agents to the bus."""
-        agents = [name for name, entry in self._entries.items() if entry.agent.parent is None]
+        """Broadcast this runner's agents to the bus."""
+        agents = [
+            AgentRegistryEntry(
+                name=entry.agent.name,
+                parent=entry.agent.parent,
+                active=entry.agent.active,
+                bridged=entry.agent.bridged,
+                started_at=entry.agent.started_at,
+            )
+            for entry in self._entries.values()
+        ]
         if agents:
-            logger.debug(f"AgentRunner '{self}': broadcasting registry: {agents}")
+            names = [a.name for a in agents]
+            logger.debug(f"AgentRunner '{self}': broadcasting registry: {names}")
             await self._bus.send(
                 BusAgentRegistryMessage(
                     source=self.name,
@@ -319,12 +324,13 @@ class AgentRunner(BaseObject, BusSubscriber):
         hasn't seen this remote runner before, sends its own registry back
         so both sides discover each other.
         """
+        agent_names = [a.name for a in message.agents]
         logger.debug(
-            f"AgentRunner '{self}': received registry from '{message.runner}' with agents: {message.agents}"
+            f"AgentRunner '{self}': received registry from '{message.runner}' with agents: {agent_names}"
         )
-        for agent_name in message.agents:
+        for entry in message.agents:
             await self._registry.register(
-                AgentReadyData(agent_name=agent_name, runner=message.runner)
+                AgentReadyData(agent_name=entry.name, runner=message.runner)
             )
         if message.runner not in self._known_runners:
             self._known_runners.add(message.runner)

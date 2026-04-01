@@ -72,9 +72,10 @@ class AcmeAgent(BaseAgent):
 
     async def on_ready(self) -> None:
         await super().on_ready()
+        # We just want to get on_agent_ready for the "greeter" agent.
         await self.watch_agent("greeter")
 
-    async def on_agent_ready(self, agent_info: AgentReadyData) -> None:
+    async def on_agent_ready(self, data: AgentReadyData) -> None:
         self._greeter_registered = True
         await self._maybe_activate_greeter()
 

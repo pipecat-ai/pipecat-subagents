@@ -270,10 +270,6 @@ class RestaurantAgent(BaseAgent):
 
     async def on_agent_ready(self, data: AgentReadyData) -> None:
         await super().on_agent_ready(data)
-
-        if data.agent_name != "router":
-            return
-
         await self.activate_agent(
             "router",
             args=LLMAgentActivationArgs(
@@ -329,6 +325,8 @@ class RestaurantAgent(BaseAgent):
             )
             for agent in [router, reservation]:
                 await self.add_agent(agent)
+            # We just want to get on_agent_ready for the "router" agent.
+            await self.watch_agent("router")
 
         @self._transport.event_handler("on_client_disconnected")
         async def on_client_disconnected(transport, client):

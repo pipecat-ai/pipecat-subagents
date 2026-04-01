@@ -68,12 +68,11 @@ class AcmeAgent(BaseAgent):
 
     async def on_ready(self) -> None:
         await super().on_ready()
-        # Watch for the remote greeter agent to become ready
+        # We just want to get on_agent_ready for the "assistant" agent.
         await self.watch_agent("assistant")
 
     async def on_agent_ready(self, data: AgentReadyData) -> None:
-        if data.agent_name != "assistant":
-            return
+        await super().on_agent_ready(data)
         logger.info("Remote assistant agent is ready, activating")
         await self.activate_agent(
             "assistant",
