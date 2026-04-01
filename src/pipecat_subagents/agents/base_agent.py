@@ -472,7 +472,7 @@ class BaseAgent(BaseObject, BusSubscriber):
         Args:
             data: Information about the ready agent.
         """
-        logger.debug(f"Agent '{self}': agent '{data.agent_name}' ready")
+        pass
 
     async def on_agent_error(self, data: AgentErrorData) -> None:
         """Called when a child agent reports an error.
@@ -1216,13 +1216,14 @@ class BaseAgent(BaseObject, BusSubscriber):
                 )
             )
 
-    async def _on_watched_agent_ready(self, agent_data: AgentReadyData) -> None:
+    async def _on_watched_agent_ready(self, data: AgentReadyData) -> None:
         """Called when a watched agent is ready.
 
         Proxies to ``on_agent_ready``.
         """
-        await self.on_agent_ready(agent_data)
-        await self._call_event_handler("on_agent_ready", agent_data)
+        logger.debug(f"Agent '{self}': agent '{data.agent_name}' ready")
+        await self.on_agent_ready(data)
+        await self._call_event_handler("on_agent_ready", data)
 
     def _create_task_group(
         self,
