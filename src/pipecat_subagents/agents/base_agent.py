@@ -13,6 +13,7 @@ coordination.
 
 import asyncio
 import dataclasses
+import time
 import uuid
 from dataclasses import dataclass
 from typing import Coroutine, Optional, Union
@@ -49,6 +50,7 @@ from pipecat_subagents.bus import (
     BusAddAgentMessage,
     BusAgentErrorMessage,
     BusAgentLocalErrorMessage,
+    BusAgentReadyMessage,
     BusCancelAgentMessage,
     BusCancelMessage,
     BusDeactivateAgentMessage,
@@ -236,7 +238,7 @@ class BaseAgent(BaseObject, BusSubscriber):
         name: str,
         *,
         bus: AgentBus,
-        active: bool = False,
+        active: bool = True,
         bridged: Optional[tuple[str, ...]] = None,
         exclude_frames: Optional[tuple[type[Frame], ...]] = None,
     ):
@@ -245,7 +247,7 @@ class BaseAgent(BaseObject, BusSubscriber):
         Args:
             name: Unique name for this agent.
             bus: The `AgentBus` for inter-agent communication.
-            active: Whether the agent starts active. Defaults to False.
+            active: Whether the agent starts active. Defaults to True.
             bridged: Bridge configuration. ``None`` means not bridged.
                 An empty tuple ``()`` means bridged, accepting frames
                 from all bridges. A tuple of names like ``("voice",)``
@@ -273,6 +275,7 @@ class BaseAgent(BaseObject, BusSubscriber):
         self._children: list["BaseAgent"] = []
         self._pipeline_task: Optional[PipelineTask] = None
         self._pipeline_started = False
+        self._started_at: Optional[float] = None
         self._finished: asyncio.Event = asyncio.Event()
 
         # Shared infrastructure, set by the runner via set_registry()
@@ -329,6 +332,16 @@ class BaseAgent(BaseObject, BusSubscriber):
     def registry(self) -> Optional[AgentRegistry]:
         """The shared agent registry, if set by a runner."""
         return self._registry
+
+    @property
+    def bridged(self) -> bool:
+        """Whether this agent is bridged (receives pipeline frames from the bus)."""
+        return self._bridged is not None
+
+    @property
+    def started_at(self) -> Optional[float]:
+        """Unix timestamp when this agent became ready, or None if not yet started."""
+        return self._started_at
 
     @property
     def children(self) -> list["BaseAgent"]:
@@ -809,6 +822,7 @@ class BaseAgent(BaseObject, BusSubscriber):
         """
         if self._active:
             self._active = False
+            await self.send_message(BusDeactivateAgentMessage(source=self.name, target=self.name))
         await self.activate_agent(agent_name, args=args)
 
     async def watch_agent(self, agent_name: str) -> None:
@@ -1160,6 +1174,7 @@ class BaseAgent(BaseObject, BusSubscriber):
         Called automatically when the pipeline starts, or directly by
         ``create_pipeline_task()`` for pipeline-less agents.
         """
+        self._started_at = time.time()
         await self.on_ready()
         await self._call_event_handler("on_ready")
         await self._register_ready()
@@ -1188,6 +1203,16 @@ class BaseAgent(BaseObject, BusSubscriber):
                 AgentReadyData(
                     agent_name=self.name,
                     runner=self._registry.runner_name,
+                )
+            )
+            await self.send_message(
+                BusAgentReadyMessage(
+                    source=self.name,
+                    runner=self._registry.runner_name,
+                    parent=self._parent,
+                    active=self._active,
+                    bridged=self._bridged is not None,
+                    started_at=self._started_at,
                 )
             )
 

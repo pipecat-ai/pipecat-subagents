@@ -7,6 +7,26 @@
 """Shared types for the pipecat-subagents framework."""
 
 from dataclasses import dataclass
+from typing import Optional
+
+
+@dataclass
+class AgentRegistryEntry:
+    """Information about an agent in a registry snapshot.
+
+    Parameters:
+        name: The agent's name.
+        parent: Name of the parent agent, or None for root agents.
+        active: Whether the agent is currently active.
+        bridged: Whether the agent is bridged.
+        started_at: Unix timestamp when the agent became ready.
+    """
+
+    name: str
+    parent: Optional[str] = None
+    active: bool = False
+    bridged: bool = False
+    started_at: Optional[float] = None
 
 
 @dataclass

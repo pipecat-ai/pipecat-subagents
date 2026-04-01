@@ -27,6 +27,7 @@ from pipecat_subagents.bus.messages import (
     BusAddAgentMessage,
     BusAgentErrorMessage,
     BusAgentLocalErrorMessage,
+    BusAgentReadyMessage,
     BusAgentRegistryMessage,
     BusCancelAgentMessage,
     BusCancelMessage,
@@ -50,6 +51,7 @@ from pipecat_subagents.bus.messages import (
     BusTaskUpdateUrgentMessage,
 )
 from pipecat_subagents.bus.subscriber import BusSubscriber
+from pipecat_subagents.types import AgentRegistryEntry
 
 __all__ = [
     "AgentBus",
@@ -58,6 +60,8 @@ __all__ = [
     "BusAddAgentMessage",
     "BusAgentErrorMessage",
     "BusAgentLocalErrorMessage",
+    "AgentRegistryEntry",
+    "BusAgentReadyMessage",
     "BusAgentRegistryMessage",
     "BusBridgeProcessor",
     "BusCancelAgentMessage",

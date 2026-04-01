@@ -18,6 +18,8 @@ from typing import TYPE_CHECKING, Optional
 from pipecat.frames.frames import DataFrame, Frame, SystemFrame
 from pipecat.processors.frame_processor import FrameDirection
 
+from pipecat_subagents.types import AgentRegistryEntry
+
 if TYPE_CHECKING:
     from pipecat_subagents.agents.base_agent import BaseAgent
     from pipecat_subagents.agents.task_context import TaskStatus
@@ -192,18 +194,41 @@ class BusAddAgentMessage(BusSystemMessage, BusLocalMessage):
 
 @dataclass
 class BusAgentRegistryMessage(BusSystemMessage):
-    """Snapshot of root agents managed by a runner.
+    """Snapshot of agents managed by a runner.
 
-    Sent by the runner on startup to announce its root agents so that
-    remote runners can discover each other's agents.
+    Sent by the runner on startup and when new runners connect,
+    so that remote runners can discover each other's agents.
 
     Parameters:
         runner: Name of the runner that owns these agents.
-        agents: List of root agent names.
+        agents: List of agent entries with their state.
     """
 
     runner: str
-    agents: list[str]
+    agents: list[AgentRegistryEntry]
+
+
+@dataclass
+class BusAgentReadyMessage(BusDataMessage):
+    """Announces that an agent is ready.
+
+    Sent when any agent (root or child) becomes ready. Carries the
+    agent's parent name so observers can reconstruct the full hierarchy.
+
+    Parameters:
+        runner: Name of the runner managing this agent.
+        parent: Name of the parent agent, or None for root agents.
+        active: Whether the agent started active.
+        bridged: Whether the agent is bridged (receives pipeline frames
+            from the bus).
+        started_at: Unix timestamp when the agent became ready.
+    """
+
+    runner: str
+    parent: Optional[str] = None
+    active: bool = False
+    bridged: bool = False
+    started_at: Optional[float] = None
 
 
 @dataclass

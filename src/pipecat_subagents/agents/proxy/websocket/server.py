@@ -16,7 +16,7 @@ from pipecat_subagents.bus import AgentBus, BusAgentRegistryMessage, BusMessage
 from pipecat_subagents.bus.messages import BusLocalMessage
 from pipecat_subagents.bus.serializers import JSONMessageSerializer
 from pipecat_subagents.bus.serializers.base import MessageSerializer
-from pipecat_subagents.types import AgentReadyData
+from pipecat_subagents.types import AgentReadyData, AgentRegistryEntry
 
 try:
     from starlette.websockets import WebSocket, WebSocketDisconnect, WebSocketState
@@ -145,7 +145,7 @@ class WebSocketProxyServerAgent(BaseAgent):
             msg = BusAgentRegistryMessage(
                 source=self.name,
                 runner=data.runner,
-                agents=[self._agent_name],
+                agents=[AgentRegistryEntry(name=self._agent_name)],
             )
 
             await self._send_ws(msg)
