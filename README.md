@@ -8,7 +8,7 @@ Pipecat Subagents is a distributed multi-agent framework for [Pipecat](https://g
 
 Whether local or distributed, the programming model is the same: create an `AgentRunner`, connect it to the bus, and add agents.
 
-## Features
+## ✨ Features
 
 | Feature                   | Description                                                                                           |
 |---------------------------|-------------------------------------------------------------------------------------------------------|
@@ -21,7 +21,7 @@ Whether local or distributed, the programming model is the same: create an `Agen
 | **Structured flows**      | [Pipecat Flows](https://github.com/pipecat-ai/pipecat-flows) integration for node-based conversations |
 | **Error handling**        | Pipeline errors propagate to parents with configurable recovery                                       |
 
-## Installation
+## 📦 Installation
 
 ```bash
 uv add pipecat-ai-subagents
@@ -31,11 +31,11 @@ uv add pipecat-ai-subagents
 
 > Requires Python 3.10+ and [Pipecat](https://github.com/pipecat-ai/pipecat?tab=readme-ov-file#-getting-started).
 
-## Examples
+## 🚀 Examples
 
 See the [examples](examples/) directory for complete, runnable demos.
 
-## Architecture
+## 🧩 Architecture
 
 Agents communicate through a shared **AgentBus**. The diagram below shows a common voice-first topology:
 
@@ -60,7 +60,7 @@ Agents communicate through a shared **AgentBus**. The diagram below shows a comm
 - **Any agent can own a transport.** A child agent might stream images or video through its own transport while the main agent handles voice.
 - **A voice agent isn't required.** Agents can coordinate purely through tasks and bus messages for non-interactive pipelines.
 
-## Key Concepts
+## 📖 Key Concepts
 
 ### Bus
 
@@ -247,7 +247,7 @@ Each proxy filters messages by agent name. Only the following cross the connecti
 
 By default, only targeted messages and registry messages cross the connection. Frame routing must be explicitly enabled by passing `forward_messages` to the proxy constructor. Everything else is blocked: local-only messages, broadcast lifecycle messages (end/cancel), and messages for other agents. Closing the connection signals shutdown.
 
-## Contributing
+## 🤝 Contributing
 
 We welcome contributions from the community! Whether you're fixing bugs, improving documentation, or adding new features, here's how you can help:
 
@@ -259,7 +259,7 @@ Before submitting a pull request, please check existing issues and PRs to avoid 
 
 We aim to review all contributions promptly and provide constructive feedback to help get your changes merged.
 
-## Getting help
+## 💬 Getting help
 
 ➡️ [Join our Discord](https://discord.gg/pipecat)
 
