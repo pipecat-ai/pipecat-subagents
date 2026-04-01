@@ -31,13 +31,13 @@ cp env.example .env
 # Table of Contents
 
 **[Local](#local)** (single process)
-- [Agent Handoff](local/agent-handoff/)
-- [Parallel Debate](local/parallel-debate/)
-- [Voice Code Assistant with Claude Agent SDK](local/code-assistant/)
+- [Agent Handoff](#agent-handoff)
+- [Parallel Debate](#parallel-debate)
+- [Voice Code Assistant with Claude Agent SDK](#voice-code-assistant)
 
 **[Distributed](#distributed)** (multi-process)
-- [Agent Handoff via Redis](distributed/redis-handoff/)
-- [LLM Agent via WebSocket Proxy](distributed/remote-proxy-assistant/)
+- [Agent Handoff via Redis](#agent-handoff-via-redis)
+- [LLM Agent via WebSocket Proxy](#llm-agent-via-websocket-proxy)
 
 # Local
 
