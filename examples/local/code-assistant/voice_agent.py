@@ -50,36 +50,15 @@ class VoiceAgent(LLMAgent):
         worker = CodeWorker("code_worker", bus=self.bus, project_path=PROJECT_PATH)
         await self.add_agent(worker)
 
-    async def on_task_completed(self, result):
-        """Handle completed task — inject the answer into the conversation."""
-        await super().on_task_completed(result)
-
-        answer = result.responses.get("code_worker", {}).get("answer", "I couldn't find an answer.")
-
-        logger.info(f"Agent '{self.name}': got answer, injecting into conversation")
-
-        await self.queue_frame(
-            LLMMessagesAppendFrame(
-                messages=[
-                    {
-                        "role": "user",
-                        "content": f"Here is the answer from the code explorer: {answer}. Summarize this naturally for the user.",
-                    }
-                ],
-                run_llm=True,
-            )
-        )
-
-    @tool(cancel_on_interruption=False)
+    @tool(cancel_on_interruption=False, timeout=60)
     async def ask_code(self, params: FunctionCallParams, question: str):
-        """Ask a question about the codebase. A Claude Code worker will
-        explore the project by reading files, searching code, and running
-        commands. It remembers previous questions for follow-ups.
-
-        Args:
-            question (str): The question about code, files, structure, dependencies,
-                or anything in the project.
-        """
         logger.info(f"Agent '{self.name}': asking code worker: '{question}'")
-        await self.request_task("code_worker", payload={"question": question})
-        await params.result_callback("I'm looking into that now. Give me a moment...")
+        async with self.task("code_worker", payload={"question": question}) as task:
+            await params.llm.queue_frame(
+                LLMMessagesAppendFrame(
+                    messages=[{"role": "developer", "content": "Give me a moment."}],
+                    run_llm=True,
+                )
+            )
+            # Do other things while the task is running.
+        await params.result_callback(task.response)
