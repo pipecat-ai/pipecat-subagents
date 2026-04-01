@@ -77,8 +77,9 @@ class VoiceAgent(LLMAgent):
         commands. It remembers previous questions for follow-ups.
 
         Args:
-            question (str): The question about code, files, structure, dependencies, or anything in the project.
+            question (str): The question about code, files, structure, dependencies,
+                or anything in the project.
         """
         logger.info(f"Agent '{self.name}': asking code worker: '{question}'")
-        await self.request_task("code_worker", payload={"question": question}, timeout=60)
+        await self.request_task("code_worker", payload={"question": question})
         await params.result_callback("I'm looking into that now. Give me a moment...")

@@ -185,6 +185,10 @@ class DebateAgent(BaseAgent):
 
     async def on_agent_ready(self, data: AgentReadyData):
         await super().on_agent_ready(data)
+
+        if data.agent_name != "moderator":
+            return
+
         await self.activate_agent(
             "moderator",
             args=LLMAgentActivationArgs(
@@ -236,7 +240,6 @@ class DebateAgent(BaseAgent):
             logger.info("Client connected")
             moderator = ModeratorAgent("moderator", bus=self.bus)
             await self.add_agent(moderator)
-            await self.watch_agent("moderator")
 
         @self._transport.event_handler("on_client_disconnected")
         async def on_client_disconnected(transport, client):

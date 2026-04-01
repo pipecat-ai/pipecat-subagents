@@ -74,6 +74,10 @@ class CodeAssistant(BaseAgent):
 
     async def on_agent_ready(self, data: AgentReadyData):
         await super().on_agent_ready(data)
+
+        if data.agent_name != "voice":
+            return
+
         await self.activate_agent(
             "voice",
             args=LLMAgentActivationArgs(
@@ -115,7 +119,6 @@ class CodeAssistant(BaseAgent):
             logger.info("Client connected")
             voice = VoiceAgent("voice", bus=self.bus)
             await self.add_agent(voice)
-            await self.watch_agent("voice")
 
         @self._transport.event_handler("on_client_disconnected")
         async def on_client_disconnected(transport, client):
