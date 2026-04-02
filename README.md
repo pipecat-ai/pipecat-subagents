@@ -8,18 +8,20 @@ Pipecat Subagents is a distributed multi-agent framework for [Pipecat](https://g
 
 Whether local or distributed, the programming model is the same: create an `AgentRunner`, connect it to the bus, and add agents.
 
-## ✨ Features
+## 🧠 Why Pipecat Subagents?
 
-| Feature                   | Description                                                                                           |
-|---------------------------|-------------------------------------------------------------------------------------------------------|
-| **Run anywhere**          | In-process, multi-process, across machines, or externally via proxies                                 |
-| **Bus communication**     | Agents communicate via a shared bus (local or through network)                                        |
-| **Pipecat pipelines**     | Each agent runs its own Pipecat pipeline                                                              |
-| **Tasks and task groups** | Parallel workers with streaming, timeouts, and auto-cancel on error                                   |
-| **Framework integration** | Wrap other agent frameworks as processors or subagents                                                |
-| **Agent handoff**         | Transfer control between agents mid-conversation                                                      |
-| **Structured flows**      | [Pipecat Flows](https://github.com/pipecat-ai/pipecat-flows) integration for node-based conversations |
-| **Error handling**        | Pipeline errors propagate to parents with configurable recovery                                       |
+Pipecat is a powerful real-time framework for building voice and multimodal AI applications. Pipecat Subagents extends it with distributed multi-agent coordination where each agent runs its own Pipecat pipeline.
+
+**Use Pipecat Subagents when you need:**
+
+- **Per-agent pipeline** — every agent runs its own Pipecat pipeline with access to all services, processors, and transports (e.g. different LLMs, local models, image analysis, custom processors).
+- **Agent handoff** — transfer control between agents mid-conversation, seamlessly switching context and capabilities.
+- **Task coordination** — dispatch work to specialized worker agents in parallel, track progress with timeouts and cancellation, and stream results back.
+- **Distributed agents** — run agents across machines, scaling each independently (e.g. specialized hardware, IoT devices). Agents communicate via a shared bus that works the same locally or over the network.
+- **Mixed agent types** — combine free-form LLM agents with structured [Pipecat Flows](https://github.com/pipecat-ai/pipecat-flows) agents or wrap third-party frameworks as subagents.
+- **Agent lifecycle** — activation, deactivation, error propagation, and graceful shutdown across a tree of agents.
+
+If a single Pipecat pipeline covers your use case, you don't need subagents. When you outgrow it, the transition is straightforward: your existing pipeline becomes one agent among many.
 
 ## 📦 Installation
 
