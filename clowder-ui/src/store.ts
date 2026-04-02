@@ -1,9 +1,8 @@
 import { create } from "zustand";
 import type { Agent, BusEvent, Snapshot, Task } from "./types";
 
-const MAX_EVENTS = 500;
 
-type CategoryFilter = "lifecycle" | "task" | "other";
+type CategoryFilter = "lifecycle" | "frame" | "task" | "other";
 
 type Theme = "light" | "dark";
 
@@ -34,6 +33,7 @@ type State = {
   // Filters
   enabledCategories: Set<CategoryFilter>;
   selectedMessageTypes: Set<string>;
+  selectedFrameTypes: Set<string>;
   entityFilters: EntityFilter[];
 
   // Detail panel
@@ -51,6 +51,8 @@ type State = {
   toggleCategory: (category: CategoryFilter) => void;
   toggleMessageType: (type: string) => void;
   clearMessageTypes: () => void;
+  toggleFrameType: (type: string) => void;
+  clearFrameTypes: () => void;
   addEntityFilter: (filter: EntityFilter) => void;
   removeEntityFilter: (filter: EntityFilter) => void;
   clearEntityFilters: () => void;
@@ -80,6 +82,7 @@ export const useStore = create<State>((set) => ({
 
   enabledCategories: new Set<CategoryFilter>(["lifecycle", "task", "other"]),
   selectedMessageTypes: new Set<string>(),
+  selectedFrameTypes: new Set<string>(),
   entityFilters: [],
 
   selection: null,
@@ -101,12 +104,12 @@ export const useStore = create<State>((set) => ({
     set({
       agents: snapshot.agents,
       tasks: snapshot.tasks,
-      events: (snapshot.events || []).reverse().slice(0, MAX_EVENTS),
+      events: (snapshot.events || []).reverse(),
     }),
 
   pushEvent: (event) =>
     set((state) => {
-      const events = [event, ...state.events].slice(0, MAX_EVENTS);
+      const events = [event, ...state.events];
 
       // Update agent state from lifecycle events
       const agents = { ...state.agents };
@@ -270,6 +273,17 @@ export const useStore = create<State>((set) => ({
       return { selectedMessageTypes: next };
     }),
   clearMessageTypes: () => set({ selectedMessageTypes: new Set<string>() }),
+  toggleFrameType: (type) =>
+    set((state) => {
+      const next = new Set(state.selectedFrameTypes);
+      if (next.has(type)) {
+        next.delete(type);
+      } else {
+        next.add(type);
+      }
+      return { selectedFrameTypes: next };
+    }),
+  clearFrameTypes: () => set({ selectedFrameTypes: new Set<string>() }),
   addEntityFilter: (filter) =>
     set((state) => {
       const exists = state.entityFilters.some(
@@ -295,6 +309,7 @@ export const useStore = create<State>((set) => ({
       events: [],
       connected: false,
       selectedMessageTypes: new Set<string>(),
+      selectedFrameTypes: new Set<string>(),
       entityFilters: [],
       selection: null,
       paused: false,

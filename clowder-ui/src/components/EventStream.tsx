@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useStore, type CategoryFilter } from "../store";
 import type { BusEvent } from "../types";
@@ -14,6 +14,7 @@ import {
 
 const CATEGORY_STYLES: Record<string, { bg: string; fg: string }> = {
   lifecycle: { bg: "hsla(220, 80%, 55%, 0.12)", fg: "hsl(220, 80%, 55%)" },
+  frame: { bg: "hsla(280, 60%, 55%, 0.12)", fg: "hsl(280, 60%, 55%)" },
   task: { bg: "hsla(35, 80%, 50%, 0.12)", fg: "hsl(35, 80%, 50%)" },
   other: { bg: "hsla(0, 0%, 50%, 0.1)", fg: "hsl(0, 0%, 50%)" },
 };
@@ -47,25 +48,43 @@ function stripBusPrefix(messageType: string): string {
   return messageType.replace(/^Bus/, "").replace(/Message$/, "");
 }
 
-function MessageTypeFilter() {
-  const { events, selectedMessageTypes, toggleMessageType, clearMessageTypes } =
-    useStore();
+function SearchableFilterDropdown({
+  label,
+  placeholder,
+  availableItems,
+  selectedItems,
+  onToggle,
+  onClear,
+  formatLabel,
+}: {
+  label: string;
+  placeholder: string;
+  availableItems: string[];
+  selectedItems: Set<string>;
+  onToggle: (item: string) => void;
+  onClear: () => void;
+  formatLabel?: (item: string) => string;
+}) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const ref = useRef<HTMLDivElement>(null);
+  const fmt = formatLabel || ((s: string) => s);
 
-  const availableTypes = useMemo(() => {
-    const types = new Set<string>();
-    for (const e of events) {
-      types.add(e.message_type);
-    }
-    return Array.from(types).sort();
-  }, [events]);
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
 
-  const filteredTypes = useMemo(() => {
+  const filtered = useMemo(() => {
     const q = search.toLowerCase();
-    return availableTypes.filter((t) => t.toLowerCase().includes(q));
-  }, [availableTypes, search]);
+    return availableItems.filter((t) => t.toLowerCase().includes(q));
+  }, [availableItems, search]);
 
   const Chevron = open ? ChevronUp : ChevronDown;
 
@@ -80,9 +99,9 @@ function MessageTypeFilter() {
           color: "hsl(var(--foreground))",
         }}
       >
-        {selectedMessageTypes.size > 0
-          ? `${selectedMessageTypes.size} type${selectedMessageTypes.size !== 1 ? "s" : ""} selected`
-          : "All messages"}
+        {selectedItems.size > 0
+          ? `${selectedItems.size} selected`
+          : label}
         <Chevron size={10} />
       </button>
       {open && (
@@ -93,17 +112,14 @@ function MessageTypeFilter() {
             borderColor: "hsl(var(--border))",
           }}
         >
-          {(selectedMessageTypes.size > 0 ||
-            (search && filteredTypes.length > 0)) && (
+          {(selectedItems.size > 0 ||
+            (search && filtered.length > 0)) && (
             <div className="flex gap-2 p-2 border-b" style={{ borderColor: "hsl(var(--border))" }}>
-              {search && filteredTypes.length > 0 && (
+              {search && filtered.length > 0 && (
                 <button
                   onClick={() => {
-                    const next = new Set(selectedMessageTypes);
-                    for (const t of filteredTypes) next.add(t);
-                    // Replace the set via individual toggles
-                    for (const t of filteredTypes) {
-                      if (!selectedMessageTypes.has(t)) toggleMessageType(t);
+                    for (const t of filtered) {
+                      if (!selectedItems.has(t)) onToggle(t);
                     }
                   }}
                   className="flex-1 px-2 py-1 text-xs rounded-md"
@@ -115,9 +131,9 @@ function MessageTypeFilter() {
                   Select all
                 </button>
               )}
-              {selectedMessageTypes.size > 0 && (
+              {selectedItems.size > 0 && (
                 <button
-                  onClick={clearMessageTypes}
+                  onClick={onClear}
                   className="flex-1 px-2 py-1 text-xs rounded-md"
                   style={{
                     backgroundColor: "hsl(var(--background))",
@@ -135,7 +151,7 @@ function MessageTypeFilter() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               onKeyDown={(e) => e.stopPropagation()}
-              placeholder="Search messages..."
+              placeholder={placeholder}
               className="w-full px-2 py-1 text-xs rounded-md border outline-none"
               style={{
                 backgroundColor: "hsl(var(--background))",
@@ -146,39 +162,39 @@ function MessageTypeFilter() {
             />
           </div>
           <div className="max-h-[200px] overflow-auto">
-            {filteredTypes.length === 0 ? (
+            {filtered.length === 0 ? (
               <div
                 className="p-2 text-xs text-center"
                 style={{ color: "hsl(var(--muted-foreground))" }}
               >
-                No messages found
+                No results
               </div>
             ) : (
-              filteredTypes.map((type) => (
+              filtered.map((item) => (
                 <button
-                  key={type}
-                  onClick={() => toggleMessageType(type)}
+                  key={item}
+                  onClick={() => onToggle(item)}
                   className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left hover:opacity-80"
                 >
                   <span
                     className="w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0"
                     style={{
-                      borderColor: selectedMessageTypes.has(type)
+                      borderColor: selectedItems.has(item)
                         ? "hsl(var(--primary))"
                         : "hsl(var(--input))",
-                      backgroundColor: selectedMessageTypes.has(type)
+                      backgroundColor: selectedItems.has(item)
                         ? "hsl(var(--primary))"
                         : "transparent",
                     }}
                   >
-                    {selectedMessageTypes.has(type) && (
+                    {selectedItems.has(item) && (
                       <span className="text-[9px]" style={{ color: "hsl(var(--primary-foreground))" }}>
                         ✓
                       </span>
                     )}
                   </span>
                   <span style={{ color: "hsl(var(--foreground))" }}>
-                    {stripBusPrefix(type)}
+                    {fmt(item)}
                   </span>
                 </button>
               ))
@@ -190,22 +206,32 @@ function MessageTypeFilter() {
   );
 }
 
-function MessageTypeTags() {
-  const { selectedMessageTypes, toggleMessageType } = useStore();
-
+function FilterTags({
+  items,
+  onRemove,
+  prefix,
+  formatLabel,
+}: {
+  items: Set<string>;
+  onRemove: (item: string) => void;
+  prefix?: string;
+  formatLabel?: (item: string) => string;
+}) {
+  const fmt = formatLabel || ((s: string) => s);
   return (
     <>
-      {Array.from(selectedMessageTypes).map((type) => (
+      {Array.from(items).map((item) => (
         <span
-          key={type}
+          key={item}
           className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded-md border cursor-pointer hover:opacity-80"
           style={{
             borderColor: "hsl(var(--border))",
             color: "hsl(var(--foreground))",
           }}
-          onClick={() => toggleMessageType(type)}
+          onClick={() => onRemove(item)}
         >
-          {stripBusPrefix(type)}
+          {prefix && <span style={{ opacity: 0.5 }}>{prefix}:</span>}
+          {fmt(item)}
           <X size={8} style={{ color: "hsl(var(--muted-foreground))" }} />
         </span>
       ))}
@@ -248,21 +274,28 @@ function EventRow({ event }: { event: BusEvent }) {
           {event.category}
         </span>
         <span
-          className="font-medium shrink-0"
-          style={{ color: "hsl(var(--foreground))" }}
-        >
-          {stripBusPrefix(event.message_type)}
-        </span>
-        <span
-          className="truncate"
+          className="shrink-0"
           style={{ color: "hsl(var(--muted-foreground))" }}
         >
           {event.source}
-          {event.target && (
+          {event.target ? (
             <>
               <span style={{ opacity: 0.5 }}> → </span>
               {event.target}
             </>
+          ) : (
+            <span style={{ opacity: 0.4 }}> → *</span>
+          )}
+        </span>
+        <span
+          className="font-medium truncate"
+          style={{ color: "hsl(var(--foreground))" }}
+        >
+          {stripBusPrefix(event.message_type)}
+          {event.data.frame_type && (
+            <span style={{ fontWeight: 400, opacity: 0.6 }}>
+              {" "}({event.data.frame_type as string})
+            </span>
           )}
         </span>
         {hasData && (
@@ -333,19 +366,36 @@ export function EventStream() {
     enabledCategories,
     toggleCategory,
     selectedMessageTypes,
+    toggleMessageType,
+    clearMessageTypes,
+    selectedFrameTypes,
+    toggleFrameType,
+    clearFrameTypes,
     entityFilters,
     agents,
   } = useStore();
   const parentRef = useRef<HTMLDivElement>(null);
 
+  const availableMessageTypes = useMemo(() => {
+    const types = new Set<string>();
+    for (const e of events) types.add(e.message_type);
+    return Array.from(types).sort();
+  }, [events]);
+
+  const availableFrameTypes = useMemo(() => {
+    const types = new Set<string>();
+    for (const e of events) {
+      if (e.data.frame_type) types.add(e.data.frame_type as string);
+    }
+    return Array.from(types).sort();
+  }, [events]);
+
   const filtered = useMemo(() => {
-    // Build sets for quick lookup
     const agentFilters = entityFilters.filter((f) => f.type === "agent").map((f) => f.value);
     const runnerFilters = entityFilters.filter((f) => f.type === "runner").map((f) => f.value);
     const taskFilters = entityFilters.filter((f) => f.type === "task").map((f) => f.value);
     const hasEntityFilters = entityFilters.length > 0;
 
-    // For runner filters, expand to agent names belonging to those runners
     const runnerAgentNames = new Set<string>();
     if (runnerFilters.length > 0) {
       for (const agent of Object.values(agents)) {
@@ -359,6 +409,8 @@ export function EventStream() {
       if (!enabledCategories.has(e.category as CategoryFilter)) return false;
       if (selectedMessageTypes.size > 0 && !selectedMessageTypes.has(e.message_type))
         return false;
+      if (selectedFrameTypes.size > 0 && e.data.frame_type && !selectedFrameTypes.has(e.data.frame_type as string))
+        return false;
       if (hasEntityFilters) {
         const matchesAgent = agentFilters.includes(e.source) || agentFilters.includes(e.target || "");
         const matchesRunner = runnerAgentNames.has(e.source) || runnerAgentNames.has(e.target || "");
@@ -367,7 +419,7 @@ export function EventStream() {
       }
       return true;
     });
-  }, [events, enabledCategories, selectedMessageTypes, entityFilters, agents]);
+  }, [events, enabledCategories, selectedMessageTypes, selectedFrameTypes, entityFilters, agents]);
 
   const virtualizer = useVirtualizer({
     count: filtered.length,
@@ -379,7 +431,7 @@ export function EventStream() {
     <div className="flex flex-col h-full">
       <div className="flex flex-col gap-2 px-3.5 py-2 border-b" style={{ borderColor: "hsl(var(--border))" }}>
         <div className="flex items-center gap-2">
-          {(["lifecycle", "task", "other"] as CategoryFilter[]).map((cat) => (
+          {(["lifecycle", "frame", "task", "other"] as CategoryFilter[]).map((cat) => (
             <CategoryToggle
               key={cat}
               category={cat}
@@ -388,8 +440,23 @@ export function EventStream() {
             />
           ))}
 
-          <MessageTypeFilter />
-          <MessageTypeTags />
+          <SearchableFilterDropdown
+            label="All messages"
+            placeholder="Search messages..."
+            availableItems={availableMessageTypes}
+            selectedItems={selectedMessageTypes}
+            onToggle={toggleMessageType}
+            onClear={clearMessageTypes}
+            formatLabel={stripBusPrefix}
+          />
+          <SearchableFilterDropdown
+            label="All frames"
+            placeholder="Search frames..."
+            availableItems={availableFrameTypes}
+            selectedItems={selectedFrameTypes}
+            onToggle={toggleFrameType}
+            onClear={clearFrameTypes}
+          />
 
           <span
             className="ml-auto text-xs"
@@ -400,9 +467,11 @@ export function EventStream() {
               : `${filtered.length} of ${events.length} messages`}
           </span>
         </div>
-        {entityFilters.length > 0 && (
+        {(entityFilters.length > 0 || selectedMessageTypes.size > 0 || selectedFrameTypes.size > 0) && (
           <div className="flex gap-1.5 flex-wrap items-center">
             <EntityFilterTags />
+            <FilterTags items={selectedMessageTypes} onRemove={toggleMessageType} prefix="message" formatLabel={stripBusPrefix} />
+            <FilterTags items={selectedFrameTypes} onRemove={toggleFrameType} prefix="frame" />
           </div>
         )}
       </div>
