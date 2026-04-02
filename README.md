@@ -35,6 +35,31 @@ uv add pipecat-ai-subagents
 
 See the [examples](examples/) directory for complete, runnable demos.
 
+## 🔍 Observability with Clowder
+
+Clowder (a group of cats) is a real-time observability tool for Pipecat Subagents. It shows your agent hierarchy, task lifecycle, and bus messages in a web UI.
+
+### Adding Clowder to your system
+
+Add a `ClowderAgent` to any runner:
+
+```python
+from pipecat_subagents.clowder import ClowderAgent
+
+clowder = ClowderAgent("clowder", bus=runner.bus, port=7070)
+await runner.add_agent(clowder)
+```
+
+### Running the UI
+
+```bash
+cd clowder-ui
+npm install
+npm run dev
+```
+
+Open http://localhost:5173 and click **Connect**. The UI shows agents grouped by runner, tasks with live duration, and a filterable bus message stream. Connect at any time; all messages are buffered.
+
 ## 🧩 Architecture
 
 Agents communicate through a shared **AgentBus**. The diagram below shows a common voice-first topology:
