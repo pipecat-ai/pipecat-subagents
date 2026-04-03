@@ -62,6 +62,24 @@ clowder = ClowderAgent("clowder", bus=runner.bus, port=7070)
 await runner.add_agent(clowder)
 ```
 
+Or use a setup file to add Clowder without modifying your application code. Create a file (e.g. `clowder_setup.py`):
+
+```python
+from pipecat_subagents.clowder import ClowderAgent
+from pipecat_subagents.runner import AgentRunner
+
+
+async def setup_runner(runner: AgentRunner):
+    clowder = ClowderAgent(bus=runner.bus)
+    await runner.add_agent(clowder)
+```
+
+Then set the environment variable:
+
+```bash
+export PIPECAT_SUBAGENTS_SETUP_FILES=/path/to/clowder_setup.py
+```
+
 ### Running the UI
 
 ```bash
