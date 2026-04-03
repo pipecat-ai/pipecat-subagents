@@ -7,8 +7,11 @@
 """Agent runner for orchestrating multi-agent lifecycle and pipeline tasks."""
 
 import asyncio
+import importlib.util
+import os
 import uuid
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Coroutine, Optional
 
 from loguru import logger
@@ -191,7 +194,6 @@ class AgentRunner(BaseObject, BusSubscriber):
         until `end()` or `cancel()` is called. New agents can be added
         dynamically via `add_agent()` after ``run()`` has started.
         """
-        self._running = True
         self._shutdown_event.clear()
 
         self._task_manager.setup(TaskManagerParams(loop=asyncio.get_running_loop()))
@@ -200,8 +202,12 @@ class AgentRunner(BaseObject, BusSubscriber):
         await self._bus.subscribe(self)
         await self._bus.start()
 
+        await self._load_setup_files()
+
         for entry in self._entries.values():
             await self._start_agent_task(entry)
+
+        self._running = True
 
         await self._call_event_handler("on_ready")
 
@@ -255,6 +261,34 @@ class AgentRunner(BaseObject, BusSubscriber):
                     BusCancelAgentMessage(source=self.name, target=name, reason=reason)
                 )
         await self._pipecat_runner.cancel()
+
+    async def _load_setup_files(self) -> None:
+        """Load setup files from ``PIPECAT_SUBAGENTS_SETUP_FILES``.
+
+        Each file should contain an async ``setup_runner(runner)`` function
+        that receives the `AgentRunner` instance. Use it to add agents,
+        configure the bus, or attach event handlers without modifying
+        application code.
+        """
+        setup_files = [
+            f for f in os.environ.get("PIPECAT_SUBAGENTS_SETUP_FILES", "").split(":") if f
+        ]
+        for f in setup_files:
+            try:
+                path = Path(f).resolve()
+                spec = importlib.util.spec_from_file_location(path.stem, str(path))
+                if spec and spec.loader:
+                    logger.debug(f"AgentRunner '{self}': running setup from {path}")
+                    module = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(module)
+                    if hasattr(module, "setup_runner"):
+                        await module.setup_runner(self)
+                    else:
+                        logger.warning(
+                            f"AgentRunner '{self}': setup file {path} has no setup_runner function"
+                        )
+            except Exception as e:
+                logger.error(f"AgentRunner '{self}': error running setup from {f}: {e}")
 
     async def _start_agent_task(self, entry: AgentEntry) -> None:
         """Create an agent's pipeline task and start it as a background asyncio task."""
