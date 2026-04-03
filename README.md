@@ -39,7 +39,7 @@ uv add pipecat-ai-subagents
 # or: pip install pipecat-ai-subagents
 ```
 
-> Requires Python 3.10+ and [Pipecat](https://github.com/pipecat-ai/pipecat?tab=readme-ov-file#-getting-started).
+> Requires Python 3.11+ and [Pipecat](https://github.com/pipecat-ai/pipecat?tab=readme-ov-file#-getting-started).
 
 ## 🚀 Examples
 
@@ -122,7 +122,7 @@ Agents communicate through a shared **AgentBus**. The diagram below shows a comm
 Agents communicate through a shared bus using pub/sub messaging. Place a `BusBridgeProcessor` in a pipeline to exchange frames with other agents across the bus.
 
 | Class           | Description                                                                                                             |
-|-----------------|-------------------------------------------------------------------------------------------------------------------------|
+| --------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | `AgentBus`      | Abstract base for inter-agent messaging.                                                                                |
 | `AsyncQueueBus` | In-process bus backed by `asyncio.Queue`s. No serialization overhead. This is the default bus created by `AgentRunner`. |
 | `RedisBus`      | Distributed bus backed by Redis pub/sub for cross-process communication.                                                |
@@ -136,7 +136,7 @@ Bus messages are Pipecat frames, which means they carry the same priority semant
 Network buses need to serialize messages to bytes. Types that aren't JSON-native (e.g. `LLMContext`, `ToolsSchema`) require a `TypeAdapter` to convert them to/from JSON. Common adapters are registered by default.
 
 | Class                   | Description                                                                                         |
-|-------------------------|-----------------------------------------------------------------------------------------------------|
+| ----------------------- | --------------------------------------------------------------------------------------------------- |
 | `JSONMessageSerializer` | Default serializer for network buses. Encodes messages as JSON.                                     |
 | `TypeAdapter`           | Abstract base for serializing a specific type. Register via `MessageSerializer.register_adapter()`. |
 
@@ -147,7 +147,7 @@ The `BusBridgeProcessor` is a Pipecat pipeline processor placed in an agent's pi
 Bridges support named routing for flexible topologies. Give each bridge a name (e.g. `BusBridgeProcessor(bridge="voice")`) and child agents specify which bridges they accept frames from via `bridged=("voice",)`. This enables parallel pipelines with independent frame streams, or multiple agents processing frames from the same bridge.
 
 | Class                | Description                                                                |
-|----------------------|----------------------------------------------------------------------------|
+| -------------------- | -------------------------------------------------------------------------- |
 | `BusBridgeProcessor` | Mid-pipeline processor that bridges frames between a pipeline and the bus. |
 
 ### Runner
@@ -155,7 +155,7 @@ Bridges support named routing for flexible topologies. Give each bridge a name (
 The runner orchestrates the system: it creates pipeline tasks, manages agent lifecycle, and coordinates shutdown. Agents can be added dynamically at runtime.
 
 | Class         | Description                                                                                         |
-|---------------|-----------------------------------------------------------------------------------------------------|
+| ------------- | --------------------------------------------------------------------------------------------------- |
 | `AgentRunner` | Entry point for running a multi-agent system. Owns the bus (or accepts one) and the agent registry. |
 
 ### Registry and visibility
@@ -167,18 +167,18 @@ Only **root agents** (added via `AgentRunner.add_agent()`) are visible across th
 Use `watch_agent(name)` to request notification when a specific agent registers. This works the same locally and in distributed setups.
 
 | Class           | Description                                                                             |
-|-----------------|-----------------------------------------------------------------------------------------|
+| --------------- | --------------------------------------------------------------------------------------- |
 | `AgentRegistry` | Tracks ready agents (local and remote). Owned by the runner and shared with its agents. |
 
 ### Agents
 
 Agents are the building blocks of a multi-agent system. Each agent connects to the bus and runs a Pipecat pipeline, exchanging frames and messages with other agents. Agents can launch subagents, activate or deactivate each other, and coordinate work through tasks.
 
-| Class        | Use when                                                                                                                                                                                |
-|--------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Class        | Use when                                                                                                                                                                              |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `BaseAgent`  | You need a pipeline on the bus with no extra wiring. Handles lifecycle, parent-child, and task coordination. Pass `bridged=()` to add edge processors for bus frame routing.          |
 | `LLMAgent`   | Your agent needs an LLM. Adds `build_llm()`, `@tool` registration, and message injection on activation. Pass `bridged=()` for agents that receive frames from a `BusBridgeProcessor`. |
-| `FlowsAgent` | Your agent needs structured conversation flows via [Pipecat Flows](https://github.com/pipecat-ai/pipecat-flows). Always bridged.                                                        |
+| `FlowsAgent` | Your agent needs structured conversation flows via [Pipecat Flows](https://github.com/pipecat-ai/pipecat-flows). Always bridged.                                                      |
 
 #### Naming
 
@@ -188,20 +188,20 @@ Every agent has a unique name passed at construction. Names are used for bus mes
 
 Hooks about this agent's own state.
 
-| Hook                     | When it fires                                           |
-|--------------------------|---------------------------------------------------------|
-| `on_ready()`             | Agent is ready to operate.                              |
-| `on_finished()`          | Agent's pipeline has finished.                          |
-| `on_error(error, fatal)` | A pipeline error occurred.                              |
-| `on_activated(args)`     | Agent is activated via `activate_agent()`.              |
-| `on_deactivated()`       | Agent is deactivated via `deactivate_agent()`.          |
+| Hook                     | When it fires                                  |
+| ------------------------ | ---------------------------------------------- |
+| `on_ready()`             | Agent is ready to operate.                     |
+| `on_finished()`          | Agent's pipeline has finished.                 |
+| `on_error(error, fatal)` | A pipeline error occurred.                     |
+| `on_activated(args)`     | Agent is activated via `activate_agent()`.     |
+| `on_deactivated()`       | Agent is deactivated via `deactivate_agent()`. |
 
 #### Other agent events
 
 Hooks about other agents in the system.
 
 | Hook                         | When it fires                                       |
-|------------------------------|-----------------------------------------------------|
+| ---------------------------- | --------------------------------------------------- |
 | `on_agent_ready(ready_info)` | Another agent is ready to receive messages.         |
 | `on_agent_error(error_info)` | A child agent reported an error via `send_error()`. |
 
@@ -254,7 +254,7 @@ The `@task` decorator provides declarative routing and parallel execution for ta
 #### Task hooks
 
 | Hook                              | When it fires                                                                     |
-|-----------------------------------|-----------------------------------------------------------------------------------|
+| --------------------------------- | --------------------------------------------------------------------------------- |
 | `on_task_request()`               | Worker: received work from a parent.                                              |
 | `on_task_update_requested()`      | Worker: parent requested a progress update. Respond with `send_task_update()`.    |
 | `on_task_cancelled()`             | Worker: parent cancelled this task. A `CANCELLED` response is sent automatically. |
@@ -286,7 +286,7 @@ Proxy agents connect two independent bus instances that can't communicate direct
 The framework includes a WebSocket proxy implementation. Other transports can be added by following the same pattern.
 
 | Class                       | Description                                                                 |
-|-----------------------------|-----------------------------------------------------------------------------|
+| --------------------------- | --------------------------------------------------------------------------- |
 | `WebSocketProxyClientAgent` | Connects to a remote server and forwards bus messages for a specific agent. |
 | `WebSocketProxyServerAgent` | Accepts a WebSocket connection and routes messages to/from a local agent.   |
 
