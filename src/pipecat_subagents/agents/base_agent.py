@@ -552,7 +552,7 @@ class BaseAgent(BaseObject, BusSubscriber):
         Args:
             message: The `BusMessage` to process.
         """
-        # Frame messages are handled by edge processors
+        # Frame messages are not handled by the base agent.
         if isinstance(message, BusFrameMessage):
             return
 
@@ -821,7 +821,6 @@ class BaseAgent(BaseObject, BusSubscriber):
                 ``on_activated`` handler.
         """
         if self._active:
-            self._active = False
             await self.send_message(BusDeactivateAgentMessage(source=self.name, target=self.name))
         await self.activate_agent(agent_name, args=args)
 
@@ -1387,8 +1386,7 @@ class BaseAgent(BaseObject, BusSubscriber):
                 BusEndAgentMessage(source=self.name, target=child.name, reason=message.reason)
             )
         await asyncio.gather(*(child.wait() for child in self._children))
-        if self._pipeline_task:
-            await self._pipeline_task.queue_frame(EndFrame(reason=message.reason))
+        await self.queue_frame(EndFrame(reason=message.reason))
 
     async def _handle_agent_cancel(self, message: BusCancelAgentMessage) -> None:
         """Propagate cancel to children, then cancel own pipeline.
@@ -1402,7 +1400,7 @@ class BaseAgent(BaseObject, BusSubscriber):
                 BusCancelAgentMessage(source=self.name, target=child.name, reason=message.reason)
             )
         if self._pipeline_task:
-            await self._pipeline_task.cancel()
+            await self._pipeline_task.cancel(reason=message.reason)
 
     async def _handle_task_request(self, message: BusTaskRequestMessage) -> None:
         """Handle an incoming task request.
