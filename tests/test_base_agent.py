@@ -22,6 +22,7 @@ from pipecat_subagents.bus import (
     BusAddAgentMessage,
     BusCancelAgentMessage,
     BusCancelMessage,
+    BusDeactivateAgentMessage,
     BusEndAgentMessage,
     BusEndMessage,
     BusFrameMessage,
@@ -170,7 +171,7 @@ class TestBaseAgentLifecycle(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(activated.is_set())
 
     async def test_handoff_to_sends_activate_and_deactivates(self):
-        """handoff_to() sends BusActivateAgentMessage and deactivates self."""
+        """handoff_to() sends BusDeactivateAgentMessage and BusActivateAgentMessage."""
         bus = self.bus
         sent = capture_bus(bus)
 
@@ -178,7 +179,9 @@ class TestBaseAgentLifecycle(unittest.IsolatedAsyncioTestCase):
 
         await agent.handoff_to("agent_b")
 
-        self.assertFalse(agent.active)  # Deactivated
+        deactivate_msgs = [m for m in sent if isinstance(m, BusDeactivateAgentMessage)]
+        self.assertEqual(len(deactivate_msgs), 1)
+        self.assertEqual(deactivate_msgs[0].target, "agent_a")
         activate_msgs = [m for m in sent if isinstance(m, BusActivateAgentMessage)]
         self.assertEqual(len(activate_msgs), 1)
         self.assertEqual(activate_msgs[0].target, "agent_b")
@@ -301,13 +304,16 @@ class TestBaseAgentLifecycle(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(finished_fired)
 
     async def test_handoff_deactivates(self):
-        """handoff_to() deactivates the calling agent."""
+        """handoff_to() sends a deactivate message for the calling agent."""
         bus = self.bus
+        sent = capture_bus(bus)
         agent = BridgedStubAgent("test", bus=bus, active=True)
 
         self.assertTrue(agent.active)
         await agent.handoff_to("other")
-        self.assertFalse(agent.active)
+        deactivate_msgs = [m for m in sent if isinstance(m, BusDeactivateAgentMessage)]
+        self.assertEqual(len(deactivate_msgs), 1)
+        self.assertEqual(deactivate_msgs[0].target, "test")
 
     async def test_bus_end_agent_message_ends_pipeline(self):
         """BusEndAgentMessage causes the pipeline to end gracefully."""
