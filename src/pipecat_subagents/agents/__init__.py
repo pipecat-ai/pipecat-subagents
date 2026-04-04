@@ -27,6 +27,7 @@ from pipecat_subagents.agents.task_context import (
 )
 from pipecat_subagents.agents.task_decorator import task
 from pipecat_subagents.agents.tool_decorator import tool
+from pipecat_subagents.agents.watch_decorator import agent_ready
 
 __all__ = [
     "AgentActivationArgs",
@@ -40,6 +41,7 @@ __all__ = [
     "TaskGroupEvent",
     "TaskGroupResponse",
     "TaskStatus",
+    "agent_ready",
     "task",
     "tool",
 ]

@@ -44,6 +44,7 @@ from pipecat_subagents.agents.task_context import (
     TaskStatus,
 )
 from pipecat_subagents.agents.task_decorator import _collect_task_handlers
+from pipecat_subagents.agents.watch_decorator import _collect_agent_ready_handlers
 from pipecat_subagents.bus import (
     AgentBus,
     BusActivateAgentMessage,
@@ -290,6 +291,9 @@ class BaseAgent(BaseObject, BusSubscriber):
         self._task_requester: Optional[str] = None
         self._task_groups: dict[str, TaskGroup] = {}
         self._task_handlers = _collect_task_handlers(self)
+
+        # Agent-ready handlers collected from @agent_ready decorated methods.
+        self._agent_ready_handlers = _collect_agent_ready_handlers(self)
 
         # This agent's lifecycle
         self._register_event_handler("on_ready")
@@ -1175,6 +1179,7 @@ class BaseAgent(BaseObject, BusSubscriber):
         self._started_at = time.time()
         await self.on_ready()
         await self._call_event_handler("on_ready")
+        await self._watch_decorated_agents()
         await self._register_ready()
         await self._maybe_activate()
 
@@ -1214,12 +1219,21 @@ class BaseAgent(BaseObject, BusSubscriber):
                 )
             )
 
+    async def _watch_decorated_agents(self) -> None:
+        """Register watches for all ``@agent_ready`` decorated handlers."""
+        for agent_name in self._agent_ready_handlers:
+            await self.watch_agent(agent_name)
+
     async def _on_watched_agent_ready(self, data: AgentReadyData) -> None:
         """Called when a watched agent is ready.
 
-        Proxies to ``on_agent_ready``.
+        Dispatches to the ``@agent_ready`` handler if one exists for this
+        agent, otherwise proxies to ``on_agent_ready``.
         """
         logger.debug(f"Agent '{self}': agent '{data.agent_name}' ready")
+        handler = self._agent_ready_handlers.get(data.agent_name)
+        if handler:
+            await handler(data)
         await self.on_agent_ready(data)
         await self._call_event_handler("on_agent_ready", data)
 
