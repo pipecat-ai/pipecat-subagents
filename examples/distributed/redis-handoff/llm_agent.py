@@ -83,6 +83,7 @@ class AcmeLLMAgent(LLMAgent):
 
     def build_llm(self) -> LLMService:
         return OpenAILLMService(
+            name=f"{self.name}::OpenAILLMService",
             api_key=os.getenv("OPENAI_API_KEY"),
             settings=OpenAILLMSettings(system_instruction=self._system_instruction),
         )
