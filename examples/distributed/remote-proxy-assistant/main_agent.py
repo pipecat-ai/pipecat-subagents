@@ -36,7 +36,7 @@ from pipecat.services.deepgram.stt import DeepgramSTTService
 from pipecat.transports.base_transport import BaseTransport, TransportParams
 from pipecat.transports.daily.transport import DailyParams
 
-from pipecat_subagents.agents import BaseAgent, LLMAgentActivationArgs
+from pipecat_subagents.agents import BaseAgent, LLMAgentActivationArgs, agent_ready
 from pipecat_subagents.agents.proxy import WebSocketProxyClientAgent
 from pipecat_subagents.bus import AgentBus, BusBridgeProcessor, BusFrameMessage
 from pipecat_subagents.runner import AgentRunner
@@ -66,13 +66,8 @@ class AcmeAgent(BaseAgent):
         super().__init__(name, bus=bus)
         self._transport = transport
 
-    async def on_ready(self) -> None:
-        await super().on_ready()
-        # We just want to get on_agent_ready for the "assistant" agent.
-        await self.watch_agent("assistant")
-
-    async def on_agent_ready(self, data: AgentReadyData) -> None:
-        await super().on_agent_ready(data)
+    @agent_ready("assistant")
+    async def on_assistant_ready(self, data: AgentReadyData) -> None:
         logger.info("Remote assistant agent is ready, activating")
         await self.activate_agent(
             "assistant",

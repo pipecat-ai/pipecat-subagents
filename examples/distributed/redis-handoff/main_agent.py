@@ -37,7 +37,7 @@ from pipecat.transports.base_transport import BaseTransport, TransportParams
 from pipecat.transports.daily.transport import DailyParams
 from redis.asyncio import Redis
 
-from pipecat_subagents.agents import BaseAgent, LLMAgentActivationArgs
+from pipecat_subagents.agents import BaseAgent, LLMAgentActivationArgs, agent_ready
 from pipecat_subagents.bus import AgentBus, BusBridgeProcessor
 from pipecat_subagents.bus.network.redis import RedisBus
 from pipecat_subagents.runner import AgentRunner
@@ -70,12 +70,8 @@ class AcmeAgent(BaseAgent):
         self._client_connected = False
         self._greeter_registered = False
 
-    async def on_ready(self) -> None:
-        await super().on_ready()
-        # We just want to get on_agent_ready for the "greeter" agent.
-        await self.watch_agent("greeter")
-
-    async def on_agent_ready(self, data: AgentReadyData) -> None:
+    @agent_ready("greeter")
+    async def on_greeter_ready(self, data: AgentReadyData) -> None:
         self._greeter_registered = True
         await self._maybe_activate_greeter()
 

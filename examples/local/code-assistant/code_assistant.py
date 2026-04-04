@@ -46,7 +46,7 @@ from pipecat.transports.base_transport import BaseTransport, TransportParams
 from pipecat.transports.daily.transport import DailyParams
 from voice_agent import VoiceAgent
 
-from pipecat_subagents.agents import BaseAgent, LLMAgentActivationArgs
+from pipecat_subagents.agents import BaseAgent, LLMAgentActivationArgs, agent_ready
 from pipecat_subagents.bus import BusBridgeProcessor
 from pipecat_subagents.runner import AgentRunner
 from pipecat_subagents.types import AgentReadyData
@@ -72,13 +72,8 @@ class CodeAssistant(BaseAgent):
         super().__init__(name, bus=bus)
         self._transport = transport
 
-    async def on_ready(self) -> None:
-        await super().on_ready()
-        # We just want to get on_agent_ready for the "voice" agent.
-        await self.watch_agent("voice")
-
-    async def on_agent_ready(self, data: AgentReadyData):
-        await super().on_agent_ready(data)
+    @agent_ready("voice")
+    async def on_voice_ready(self, data: AgentReadyData):
         await self.activate_agent(
             "voice",
             args=LLMAgentActivationArgs(

@@ -50,7 +50,7 @@ from pipecat.services.openai.llm import OpenAILLMService
 from pipecat.transports.base_transport import BaseTransport, TransportParams
 from pipecat.transports.daily.transport import DailyParams
 
-from pipecat_subagents.agents import BaseAgent, LLMAgent, LLMAgentActivationArgs, tool
+from pipecat_subagents.agents import BaseAgent, LLMAgent, LLMAgentActivationArgs, agent_ready, tool
 from pipecat_subagents.bus import AgentBus, BusBridgeProcessor
 from pipecat_subagents.runner import AgentRunner
 from pipecat_subagents.types import AgentReadyData
@@ -192,13 +192,8 @@ class AcmeAgent(BaseAgent):
         super().__init__(name, bus=bus)
         self._transport = transport
 
-    async def on_ready(self) -> None:
-        await super().on_ready()
-        # We just want to get on_agent_ready for the "greeter" agent.
-        await self.watch_agent("greeter")
-
-    async def on_agent_ready(self, data: AgentReadyData) -> None:
-        await super().on_agent_ready(data)
+    @agent_ready("greeter")
+    async def on_greeter_ready(self, data: AgentReadyData) -> None:
         await self.activate_agent(
             "greeter",
             args=LLMAgentActivationArgs(
