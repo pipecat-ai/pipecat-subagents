@@ -162,9 +162,9 @@ The runner orchestrates the system: it creates pipeline tasks, manages agent lif
 
 Only **root agents** (added via `AgentRunner.add_agent()`) are visible across the system. When a root agent becomes ready, the runner announces it to remote runners over the network bus.
 
-**Child agents** (added via `BaseAgent.add_agent()`) are private to their parent. Only the parent is notified when a child is ready via `on_agent_ready()`.
+**Child agents** (added via `BaseAgent.add_agent()`) are private to their parent. The parent's lifecycle (end, cancel) is propagated to children automatically.
 
-Use `watch_agent(name)` to request notification when a specific agent registers. This works the same locally and in distributed setups.
+Use `watch_agent(name)` to receive `on_agent_ready()` when any agent (child or remote) registers. Call it from `on_ready()` to ensure the parent's own pipeline is running first. This works the same locally and in distributed setups.
 
 | Class           | Description                                                                             |
 |-----------------|-----------------------------------------------------------------------------------------|
