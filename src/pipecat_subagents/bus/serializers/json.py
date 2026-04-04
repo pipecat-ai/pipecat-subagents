@@ -105,9 +105,7 @@ class JSONMessageSerializer(MessageSerializer):
             return {
                 "__type__": f"{type(value).__module__}.{type(value).__name__}",
                 "__data__": {
-                    k: self._serialize_value(v)
-                    for k, v in value.__dict__.items()
-                    if v is not None
+                    k: self._serialize_value(v) for k, v in value.__dict__.items() if v is not None
                 },
             }
         if callable(value):
@@ -162,9 +160,7 @@ class JSONMessageSerializer(MessageSerializer):
         if adapter is not None:
             return adapter.deserialize(data, self._deserialize_value, target_type=cls)
         if isinstance(data, dict) and issubclass(cls, BaseModel):
-            return cls.model_validate(
-                {k: self._deserialize_value(v) for k, v in data.items()}
-            )
+            return cls.model_validate({k: self._deserialize_value(v) for k, v in data.items()})
         if dataclasses.is_dataclass(cls) and isinstance(data, dict):
             init_fields = {f.name: f for f in dataclasses.fields(cls) if f.init}
             init_kwargs = {}

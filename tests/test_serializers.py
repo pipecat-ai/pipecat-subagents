@@ -8,6 +8,7 @@ import unittest
 
 from pipecat.frames.frames import TextFrame
 from pipecat.processors.frame_processor import FrameDirection
+from pydantic import BaseModel
 
 from pipecat_subagents.bus.messages import (
     BusActivateAgentMessage,
@@ -19,8 +20,6 @@ from pipecat_subagents.bus.messages import (
     BusTaskRequestMessage,
     BusTaskResponseMessage,
 )
-from pydantic import BaseModel
-
 from pipecat_subagents.bus.serializers import JSONMessageSerializer
 
 
@@ -212,9 +211,7 @@ class TestJSONMessageSerializer(unittest.TestCase):
 
     def test_round_trip_nested_pydantic_base_model(self):
         """Nested Pydantic BaseModels round-trip preserving types."""
-        user = _UserInfo(
-            name="Alice", age=30, address=_Address(city="NYC", zip_code="10001")
-        )
+        user = _UserInfo(name="Alice", age=30, address=_Address(city="NYC", zip_code="10001"))
         msg = BusTaskResponseMessage(
             source="worker",
             target="parent",
