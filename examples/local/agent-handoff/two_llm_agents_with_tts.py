@@ -192,7 +192,7 @@ class AcmeAgent(BaseAgent):
         super().__init__(name, bus=bus)
         self._transport = transport
 
-    @agent_ready("greeter")
+    @agent_ready(name="greeter")
     async def on_greeter_ready(self, data: AgentReadyData) -> None:
         await self.activate_agent(
             "greeter",

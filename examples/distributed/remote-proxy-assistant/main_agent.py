@@ -66,7 +66,7 @@ class AcmeAgent(BaseAgent):
         super().__init__(name, bus=bus)
         self._transport = transport
 
-    @agent_ready("assistant")
+    @agent_ready(name="assistant")
     async def on_assistant_ready(self, data: AgentReadyData) -> None:
         logger.info("Remote assistant agent is ready, activating")
         await self.activate_agent(

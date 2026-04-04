@@ -183,7 +183,7 @@ class DebateAgent(BaseAgent):
         super().__init__(name, bus=bus)
         self._transport = transport
 
-    @agent_ready("moderator")
+    @agent_ready(name="moderator")
     async def on_moderator_ready(self, data: AgentReadyData):
         await self.activate_agent(
             "moderator",

@@ -72,7 +72,7 @@ class CodeAssistant(BaseAgent):
         super().__init__(name, bus=bus)
         self._transport = transport
 
-    @agent_ready("voice")
+    @agent_ready(name="voice")
     async def on_voice_ready(self, data: AgentReadyData):
         await self.activate_agent(
             "voice",

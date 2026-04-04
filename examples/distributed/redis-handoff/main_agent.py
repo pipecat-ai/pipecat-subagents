@@ -70,7 +70,7 @@ class AcmeAgent(BaseAgent):
         self._client_connected = False
         self._greeter_registered = False
 
-    @agent_ready("greeter")
+    @agent_ready(name="greeter")
     async def on_greeter_ready(self, data: AgentReadyData) -> None:
         self._greeter_registered = True
         await self._maybe_activate_greeter()

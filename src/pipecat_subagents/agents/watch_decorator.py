@@ -7,7 +7,7 @@
 """Decorator for marking agent methods as agent-ready handlers."""
 
 
-def agent_ready(agent_name: str):
+def agent_ready(*, name: str):
     """Mark a method as a handler for a specific agent becoming ready.
 
     Decorated methods are automatically collected by ``BaseAgent`` at
@@ -17,16 +17,16 @@ def agent_ready(agent_name: str):
 
     Example::
 
-        @agent_ready("greeter")
+        @agent_ready(name="greeter")
         async def on_greeter_ready(self, data: AgentReadyData) -> None:
             await self.activate_agent("greeter", args=...)
 
     Args:
-        agent_name: The name of the agent to watch.
+        name: The name of the agent to watch.
     """
 
     def decorator(fn):
-        fn.agent_ready_name = agent_name
+        fn.agent_ready_name = name
         return fn
 
     return decorator

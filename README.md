@@ -164,7 +164,7 @@ Only **root agents** (added via `AgentRunner.add_agent()`) are visible across th
 
 **Child agents** (added via `BaseAgent.add_agent()`) are private to their parent. The parent's lifecycle (end, cancel) is propagated to children automatically.
 
-Use `watch_agent(name)` to receive `on_agent_ready()` when any agent (child or remote) registers. Call it from `on_ready()` to ensure the parent's own pipeline is running first. This works the same locally and in distributed setups.
+Use `watch_agent(name)` or the `@agent_ready(name="name")` decorator to receive `on_agent_ready()` when any agent (child or remote) registers. Both patterns work the same locally and in distributed setups.
 
 | Class           | Description                                                                             |
 |-----------------|-----------------------------------------------------------------------------------------|

@@ -269,7 +269,7 @@ class RestaurantAgent(BaseAgent):
         super().__init__(name, bus=bus)
         self._transport = transport
 
-    @agent_ready("router")
+    @agent_ready(name="router")
     async def on_router_ready(self, data: AgentReadyData) -> None:
         await self.activate_agent(
             "router",
