@@ -597,7 +597,10 @@ class TestEdgeToBus(unittest.IsolatedAsyncioTestCase):
         # EdgeSink, which re-broadcasts with source="agent". That's
         # expected. But it must NOT create a loop — EdgeSource ignores
         # it because source == "agent".
-        bus_frame_msgs = [m for m in sent if isinstance(m, BusFrameMessage)]
+        # Filter to TextFrame only to ignore metrics frames.
+        bus_frame_msgs = [
+            m for m in sent if isinstance(m, BusFrameMessage) and isinstance(m.frame, TextFrame)
+        ]
         from_agent = [m for m in bus_frame_msgs if m.source == "agent"]
         from_other = [m for m in bus_frame_msgs if m.source == "other"]
         # One re-broadcast from agent (EdgeSink), one original from other
