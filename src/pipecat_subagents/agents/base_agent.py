@@ -28,7 +28,7 @@ from pipecat.frames.frames import (
     StopFrame,
 )
 from pipecat.pipeline.pipeline import Pipeline
-from pipecat.pipeline.task import PipelineTask
+from pipecat.pipeline.task import PipelineParams, PipelineTask
 from pipecat.processors.filters.identity_filter import IdentityFilter
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor, FrameProcessorSetup
 from pipecat.utils.asyncio.task_manager import TaskManager
@@ -654,6 +654,10 @@ class BaseAgent(BaseObject, BusSubscriber):
             pipeline,
             enable_rtvi=False,
             idle_timeout_secs=None,
+            params=PipelineParams(
+                enable_metrics=True,
+                enable_usage_metrics=True,
+            ),
         )
 
     async def create_pipeline_task(self) -> PipelineTask:
