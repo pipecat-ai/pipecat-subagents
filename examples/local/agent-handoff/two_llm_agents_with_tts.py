@@ -218,6 +218,7 @@ class AcmeAgent(BaseAgent):
         return PipelineTask(
             pipeline,
             enable_rtvi=True,
+            idle_timeout_secs=None,
             params=PipelineParams(
                 enable_metrics=True,
                 enable_usage_metrics=True,
