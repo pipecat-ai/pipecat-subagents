@@ -252,6 +252,7 @@ class LLMAgent(BaseAgent):
         self,
         *,
         reason: Optional[str] = None,
+        messages: Optional[list] = None,
         result_callback: Optional[FunctionCallResultCallback] = None,
     ) -> None:
         """Request a graceful end of the session.
@@ -261,11 +262,14 @@ class LLMAgent(BaseAgent):
 
         Args:
             reason: Optional human-readable reason for ending.
+            messages: Optional LLM messages to inject and speak before
+                ending. The LLM runs immediately so the output is
+                delivered before the session terminates.
             result_callback: The ``result_callback`` from
                 `FunctionCallParams`.
         """
         self._closing = True
-        await self._finish_function_call(result_callback)
+        await self._finish_function_call(result_callback, messages=messages)
         await super().end(reason=reason)
 
     async def handoff_to(
@@ -273,6 +277,7 @@ class LLMAgent(BaseAgent):
         agent_name: str,
         *,
         args: Optional[AgentActivationArgs] = None,
+        messages: Optional[list] = None,
         result_callback: Optional[FunctionCallResultCallback] = None,
     ) -> None:
         """Hand off to another agent.
@@ -284,9 +289,12 @@ class LLMAgent(BaseAgent):
             agent_name: The name of the agent to hand off to.
             args: Optional arguments forwarded to the target agent's
                 ``on_activated`` handler.
+            messages: Optional LLM messages to inject and speak before
+                handing off. The LLM runs immediately so the output is
+                delivered before the transfer completes.
             result_callback: The ``result_callback`` from `FunctionCallParams`.
         """
-        await self._finish_function_call(result_callback)
+        await self._finish_function_call(result_callback, messages=messages)
         await super().handoff_to(agent_name, args=args)
 
     async def process_deferred_tool_frames(
@@ -334,18 +342,24 @@ class LLMAgent(BaseAgent):
         await self._flush_done.wait()
 
     async def _finish_function_call(
-        self, result_callback: Optional[FunctionCallResultCallback]
+        self,
+        result_callback: Optional[FunctionCallResultCallback],
+        *,
+        messages: Optional[list] = None,
     ) -> None:
         """Finish an in-progress function call before taking action.
 
-        Sends a `PipelineFlushFrame` probe upstream through the pipeline.
-        When it reaches the top it is bounced back downstream. When it
-        arrives at the bottom, all preceding in-order frames have been
-        flushed, and it is safe to transfer or end.
+        Optionally injects LLM messages and flushes the pipeline so the
+        output is fully delivered before handing off or ending.
 
         Args:
             result_callback: The callback from `FunctionCallParams`, or None.
+            messages: Optional LLM messages to inject before completing.
         """
+        if messages:
+            await self._llm.queue_frame(LLMMessagesAppendFrame(messages=messages, run_llm=True))
+            await self._flush_pipeline()
+
         if not result_callback:
             return
 
