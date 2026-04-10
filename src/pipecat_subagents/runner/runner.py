@@ -9,6 +9,7 @@
 import asyncio
 import importlib.util
 import os
+import signal
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -78,6 +79,7 @@ class AgentRunner(BaseObject, BusSubscriber):
         name: Optional[str] = None,
         bus: Optional[AgentBus] = None,
         handle_sigint: bool = True,
+        handle_sigterm: bool = False,
     ):
         """Initialize the `AgentRunner`.
 
@@ -89,12 +91,18 @@ class AgentRunner(BaseObject, BusSubscriber):
                 if not provided.
             handle_sigint: Whether to handle SIGINT for graceful shutdown.
                 Defaults to True.
+            handle_sigterm: Whether to handle SIGTERM for graceful
+                shutdown. Defaults to False.
         """
         super().__init__(name=name or f"runner-{uuid.uuid4().hex[:8]}")
         self._bus = bus or AsyncQueueBus()
         self._registry = AgentRegistry(runner_name=self.name)
         self._task_manager = TaskManager()
-        self._pipecat_runner = PipelineRunner(handle_sigint=handle_sigint)
+        self._pipecat_runner = PipelineRunner(handle_sigint=False, handle_sigterm=False)
+
+        self._handle_sigint = handle_sigint
+        self._handle_sigterm = handle_sigterm
+        self._sig_task: Optional[asyncio.Task] = None
 
         self._running: bool = False
         self._entries: dict[str, AgentEntry] = {}
@@ -194,10 +202,17 @@ class AgentRunner(BaseObject, BusSubscriber):
         until `end()` or `cancel()` is called. New agents can be added
         dynamically via `add_agent()` after ``run()`` has started.
         """
+        logger.debug(f"AgentRunner '{self}': started running")
+
         self._shutdown_event.clear()
 
         self._task_manager.setup(TaskManagerParams(loop=asyncio.get_running_loop()))
         self._bus.set_task_manager(self._task_manager)
+
+        if self._handle_sigint:
+            self._setup_sigint()
+        if self._handle_sigterm:
+            self._setup_sigterm()
 
         await self._bus.subscribe(self)
         await self._bus.start()
@@ -218,8 +233,15 @@ class AgentRunner(BaseObject, BusSubscriber):
         if remaining:
             await asyncio.gather(*remaining, return_exceptions=True)
 
+        # If we are shutting down through a signal, wait for the
+        # signal task so cleanup finishes before returning.
+        if self._sig_task:
+            await self._sig_task
+
         await self._bus.stop()
         self._running = False
+
+        logger.debug(f"AgentRunner '{self}': finished running")
 
     async def end(self, reason: Optional[str] = None) -> None:
         """Gracefully end all agents and shut down.
@@ -372,3 +394,27 @@ class AgentRunner(BaseObject, BusSubscriber):
                 f"AgentRunner '{self}': new runner '{message.runner}', sending our registry back"
             )
             await self._send_registry()
+
+    def _setup_sigint(self) -> None:
+        try:
+            loop = asyncio.get_running_loop()
+            loop.add_signal_handler(signal.SIGINT, lambda *args: self._sig_handler())
+        except NotImplementedError:
+            # Windows fallback
+            signal.signal(signal.SIGINT, lambda s, f: self._sig_handler())
+
+    def _setup_sigterm(self) -> None:
+        try:
+            loop = asyncio.get_running_loop()
+            loop.add_signal_handler(signal.SIGTERM, lambda *args: self._sig_handler())
+        except NotImplementedError:
+            # Windows fallback
+            signal.signal(signal.SIGTERM, lambda s, f: self._sig_handler())
+
+    def _sig_handler(self) -> None:
+        if not self._sig_task:
+            self._sig_task = asyncio.create_task(self._sig_cancel())
+
+    async def _sig_cancel(self) -> None:
+        logger.warning(f"AgentRunner '{self}': interruption detected, cancelling runner.")
+        await self.cancel(reason="interrupt signal")
