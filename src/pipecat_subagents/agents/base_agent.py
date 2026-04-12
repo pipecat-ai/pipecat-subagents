@@ -286,10 +286,13 @@ class BaseAgent(BaseObject, BusSubscriber):
 
         # Task coordination. Worker state tracks active task requests
         # keyed by task_id, supporting multiple tasks in flight
-        # (e.g. parallel @task handlers). Requester state tracks task
-        # groups launched by this agent. Task handlers are collected
-        # from @task decorated methods at init.
+        # (e.g. parallel @task handlers). Each running handler has a
+        # tracked asyncio task so it can be cancelled by system
+        # messages. Requester state tracks task groups launched by
+        # this agent. Task handlers are collected from @task decorated
+        # methods at init.
         self._active_tasks: dict[str, BusTaskRequestMessage] = {}
+        self._task_handler_tasks: dict[str, asyncio.Task] = {}
         self._task_groups: dict[str, TaskGroup] = {}
         self._task_handlers = _collect_task_handlers(self)
 
@@ -381,6 +384,11 @@ class BaseAgent(BaseObject, BusSubscriber):
             registry: The shared registry instance.
         """
         self._registry = registry
+
+    @property
+    def task_manager(self) -> Optional[TaskManager]:
+        """The shared task manager for asyncio task creation."""
+        return self._task_manager
 
     def set_task_manager(self, task_manager: TaskManager) -> None:
         """Set the shared task manager for asyncio task creation.
@@ -1442,7 +1450,8 @@ class BaseAgent(BaseObject, BusSubscriber):
         """Handle an incoming task request.
 
         Dispatches to @task handlers if any match, otherwise falls back
-        to on_task_request.
+        to on_task_request. The handler always runs in a tracked asyncio
+        task so it can be cancelled by system messages (e.g. task cancel).
         """
         self._active_tasks[message.task_id] = message
 
@@ -1453,16 +1462,30 @@ class BaseAgent(BaseObject, BusSubscriber):
 
         if handler_info:
             handler, is_parallel = handler_info
-            if is_parallel:
-                self.create_asyncio_task(
-                    handler(message), f"{self.name}::task_{message.task_name or 'default'}"
-                )
-            else:
-                await handler(message)
         else:
-            await self.on_task_request(message)
+            handler, is_parallel = self.on_task_request, False
+
+        task = self.create_asyncio_task(
+            self._run_task_handler(message.task_id, handler, message),
+            f"{self.name}::task_{message.task_name or 'default'}",
+        )
+        self._task_handler_tasks[message.task_id] = task
+
+        if not is_parallel:
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
 
         await self._call_event_handler("on_task_request", message)
+
+    async def _run_task_handler(self, task_id: str, handler, message) -> None:
+        try:
+            await handler(message)
+        except asyncio.CancelledError:
+            pass
+        finally:
+            self._task_handler_tasks.pop(task_id, None)
 
     async def _handle_task_response(
         self, message: Union[BusTaskResponseMessage, BusTaskResponseUrgentMessage]
@@ -1502,12 +1525,16 @@ class BaseAgent(BaseObject, BusSubscriber):
     async def _handle_task_cancel(self, message: BusTaskCancelMessage) -> None:
         """Handle a task cancellation.
 
-        Calls the ``on_task_cancelled`` hook for cleanup, then
-        automatically sends a cancelled response back to the requester.
-        The requester receives ``on_task_response`` with
+        Cancels the running handler task (if any), calls the
+        ``on_task_cancelled`` hook for cleanup, then automatically
+        sends a cancelled response back to the requester. The
+        requester receives ``on_task_response`` with
         ``status="cancelled"``, same path as completed or failed tasks.
         """
         if message.task_id in self._active_tasks:
+            handler_task = self._task_handler_tasks.get(message.task_id)
+            if handler_task:
+                await self.cancel_asyncio_task(handler_task)
             await self.on_task_cancelled(message)
             await self._call_event_handler("on_task_cancelled", message)
             await self.send_task_response(message.task_id, status=TaskStatus.CANCELLED)
