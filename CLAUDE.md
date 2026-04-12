@@ -47,7 +47,9 @@ BaseAgent(bridged=("voice",)) -- edge processors filtered to named bridges
 - `activate_agent(name)` / `deactivate_agent(name)` send bus messages, handled by `BaseAgent`
 - `on_activated(args)` / `on_deactivated()` hooks fire on the target agent
 - `handoff_to(name)` on `BaseAgent` is a convenience: deactivates self locally, then activates target
-- `activate_agent` and `handoff_to` accept `Optional[AgentActivationArgs]` (dataclass, not Pydantic)
+- `BaseAgent.handoff_to` takes `activation_args=`. `LLMAgent.handoff_to` adds `messages=` (spoken before transfer) and `result_callback=`
+- `LLMAgent.end` takes `messages=` (spoken before ending) and `result_callback=`
+- `activate_agent` accepts `Optional[AgentActivationArgs]` (dataclass, not Pydantic)
 
 ### Registry
 
@@ -66,23 +68,57 @@ BaseAgent(bridged=("voice",)) -- edge processors filtered to named bridges
 - `BusFrameMessage.bridge` field carries the bridge name (None for unnamed)
 - Enables parallel pipelines (voice + video) or multiple agents on the same bridge
 
-### Task lifecycle
+### Task dispatch (requester side)
 
-- `request_task(*agent_names, payload=, timeout=)` sends work (fire-and-forget, callback-based)
-- `task_group(*agent_names, payload=, timeout=)` returns a structured context manager
-- Both wait for agents to be ready (via registry) before sending requests
-- Workers receive `on_task_request(message)`, respond via `send_task_response()` or streaming
-- `on_task_completed(result: TaskGroupResponse)` fires when all workers respond
-- `on_task_error(message)` fires when a worker errors and cancel_on_error cancels the group
-- Task completion does NOT end the agent's pipeline; agents stay alive for reuse
+Two patterns for sending work to agents:
 
-### Task group context
+**Context managers (structured, recommended):**
+- `task(agent_name, payload=, timeout=)` returns `TaskContext` for a single agent
+- `task_group(*agent_names, payload=, timeout=)` returns `TaskGroupContext` for parallel dispatch
+- Both are async context managers that wait for responses on exit
+- Both support `async for event in ctx` to receive intermediate events (updates, streaming)
+- `TaskContext` yields `TaskEvent`, `TaskGroupContext` yields `TaskGroupEvent` (includes `agent_name`)
+- On error inside the `async with` block (including `CancelledError`), the task is automatically cancelled
+- Cleanup is shielded so it completes even during tool interruption
 
-- `task_group()` returns `TaskGroupContext` (async context manager + async iterator)
-- `async for event in tg` yields `TaskGroupEvent` (UPDATE, STREAM_START, STREAM_DATA, STREAM_END)
-- `tg.responses` available after completion
-- Raises `TaskGroupError` on timeout, worker error (with cancel_on_error), or ready-wait timeout
-- Partial responses (including error response) available via `tg.responses` after catching error
+**Fire-and-forget:**
+- `request_task(agent_name, payload=, timeout=)` sends work, returns `task_id`
+- `request_task_group(*agent_names, payload=, timeout=)` sends to multiple agents, returns `task_id`
+- Use callbacks (`on_task_response`, `on_task_completed`) to handle results
+- Caller must cancel manually if needed (e.g. on tool interruption)
+
+Both patterns wait for agents to be ready (via registry) before sending requests.
+Task completion does NOT end the agent's pipeline; agents stay alive for reuse.
+
+### Task handling (worker side)
+
+- Workers receive `on_task_request(message)` or use `@task` decorated handlers
+- All `send_task_*` methods require an explicit `task_id` argument (from `message.task_id`)
+- `send_task_response(task_id, response, status=)` sends result and removes the task from `active_tasks`
+- `send_task_update(task_id, update)` sends progress without completing
+- `send_task_stream_start/data/end(task_id, data)` for streaming results
+- `active_tasks` property returns `dict[str, BusTaskRequestMessage]` of in-flight tasks
+- Multiple tasks can be in flight simultaneously (e.g. `@task(parallel=True)`)
+- When the agent stops, any still-active tasks are automatically reported as `CANCELLED`
+
+### Task cancellation
+
+- `cancel_task(task_id, reason=)` sends `BusTaskCancelMessage` to all agents in the group
+- Worker receives `on_task_cancelled(message)`, then auto-sends a `CANCELLED` response
+- Context managers (`task()`, `task_group()`) cancel automatically on exception or `CancelledError`
+- For fire-and-forget tasks, the user must cancel manually. Pattern for tool interruption:
+
+```python
+task_ids = []
+try:
+    task_ids.append(await self.request_task("w1", payload=data))
+    task_ids.append(await self.request_task("w2", payload=data))
+    # ... do work ...
+except asyncio.CancelledError:
+    for tid in task_ids:
+        await self.cancel_task(tid, reason="tool cancelled")
+    raise
+```
 
 ### Task hooks (bus message pattern)
 
