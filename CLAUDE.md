@@ -55,9 +55,10 @@ BaseAgent(bridged=("voice",)) -- edge processors filtered to named bridges
 
 - Only root agents (added via `AgentRunner.add_agent()`) are announced to remote runners via the registry
 - Child agents (added via `BaseAgent.add_agent()`) are private to the parent; lifecycle (end, cancel) is propagated automatically
-- `on_agent_ready` only fires for agents watched via `watch_agent(name)` or the `@agent_ready` decorator
-- `@agent_ready(name="name")` is declarative sugar: watches are registered after `on_ready`, handler fires before `on_agent_ready`
-- `registry.watch()` is async and fires immediately if the agent is already registered
+- `add_agent()` does NOT auto-watch. To be notified when a child is ready, use `watch_agent(name)` or `@agent_ready(name="name")`
+- `on_agent_ready` only fires for agents explicitly watched via `watch_agent(name)` or the `@agent_ready` decorator
+- `@agent_ready(name="name")` is declarative sugar for `watch_agent`. Watches are usually registered after the agent is ready and activated, so handlers won't fire prematurely
+- `watch_agent()` / `registry.watch()` fires immediately if the agent is already registered
 - Runner names must be unique across distributed setups (auto-generated with UUID by default)
 
 ### Bridge routing
