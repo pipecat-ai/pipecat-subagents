@@ -23,6 +23,7 @@ from pipecat_subagents.bus import (
     AsyncQueueBus,
     BusTaskCancelMessage,
     BusTaskRequestMessage,
+    BusTaskResponseMessage,
 )
 from pipecat_subagents.registry import AgentRegistry
 from pipecat_subagents.types import AgentReadyData
@@ -104,6 +105,24 @@ class StreamingWorkerAgent(BaseAgent):
         for chunk in self._chunks:
             await self.send_task_stream_data(message.task_id, chunk)
         await self.send_task_stream_end(message.task_id, self._auto_response)
+
+
+class SlowWorkerAgent(BaseAgent):
+    """Worker that blocks during task execution until cancelled."""
+
+    def __init__(self, name, *, bus):
+        super().__init__(name, bus=bus)
+        self.started = asyncio.Event()
+        self.was_cancelled = False
+
+    async def on_task_request(self, message):
+        await super().on_task_request(message)
+        self.started.set()
+        try:
+            # Block until cancelled
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            self.was_cancelled = True
 
 
 async def create_test_env():
@@ -726,6 +745,41 @@ class TestTaskContext(unittest.IsolatedAsyncioTestCase):
         for m in cancel_msgs:
             self.assertEqual(m.reason, "tool cancelled")
         self.assertEqual(len(parent.task_groups), 0)
+
+    async def test_cancel_interrupts_running_handler(self):
+        """Cancelling a task interrupts a handler that is currently executing."""
+        sent = capture_bus(self.bus)
+
+        parent = StubAgent("parent", bus=self.bus)
+        parent.set_task_manager(self.tm)
+        await setup_agent(self.bus, self.registry, parent)
+
+        worker = SlowWorkerAgent("worker", bus=self.bus)
+        await setup_agent(self.bus, self.registry, worker)
+
+        task_id = await parent.request_task("worker", payload={"job": 1})
+
+        # Wait for the worker to start executing
+        await asyncio.wait_for(worker.started.wait(), timeout=2.0)
+
+        # Cancel while the handler is blocked
+        await parent.cancel_task(task_id, reason="no longer needed")
+
+        # Give the event loop time to process the cancellation
+        await asyncio.sleep(0.1)
+
+        # The handler should have been cancelled
+        self.assertTrue(worker.was_cancelled)
+
+        # A cancel message should have been sent
+        cancel_msgs = [m for m in sent if isinstance(m, BusTaskCancelMessage)]
+        self.assertEqual(len(cancel_msgs), 1)
+        self.assertEqual(cancel_msgs[0].reason, "no longer needed")
+
+        # A CANCELLED response should have been sent back
+        response_msgs = [m for m in sent if isinstance(m, BusTaskResponseMessage)]
+        self.assertEqual(len(response_msgs), 1)
+        self.assertEqual(response_msgs[0].status, TaskStatus.CANCELLED)
 
 
 if __name__ == "__main__":
