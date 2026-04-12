@@ -917,6 +917,7 @@ class TestTaskLifecycle(unittest.IsolatedAsyncioTestCase):
         """BusTaskRequestMessage triggers on_task_request with the message."""
         bus = self.bus
         agent = StubAgent("worker", bus=bus)
+        agent.set_task_manager(self.tm)
 
         received = []
 
@@ -941,6 +942,7 @@ class TestTaskLifecycle(unittest.IsolatedAsyncioTestCase):
         sent = capture_bus(bus)
 
         agent = StubAgent("worker", bus=bus)
+        agent.set_task_manager(self.tm)
         # Simulate receiving a task request
         await agent.on_bus_message(
             BusTaskRequestMessage(source="parent", target="worker", task_id="t1")
@@ -961,6 +963,7 @@ class TestTaskLifecycle(unittest.IsolatedAsyncioTestCase):
         sent = capture_bus(bus)
 
         agent = StubAgent("worker", bus=bus)
+        agent.set_task_manager(self.tm)
         await agent.on_bus_message(
             BusTaskRequestMessage(source="parent", target="worker", task_id="t1")
         )
@@ -1059,6 +1062,7 @@ class TestTaskLifecycle(unittest.IsolatedAsyncioTestCase):
         """BusTaskCancelMessage auto-sends a cancelled response and clears state."""
         bus = self.bus
         agent = StubAgent("worker", bus=bus)
+        agent.set_task_manager(self.tm)
 
         # Set up task state
         await agent.on_bus_message(
@@ -1076,6 +1080,7 @@ class TestTaskLifecycle(unittest.IsolatedAsyncioTestCase):
         """BusTaskCancelMessage triggers on_task_cancelled with the message."""
         bus = self.bus
         agent = StubAgent("worker", bus=bus)
+        agent.set_task_manager(self.tm)
 
         received = []
 
@@ -1103,6 +1108,7 @@ class TestTaskLifecycle(unittest.IsolatedAsyncioTestCase):
         sent = capture_bus(bus)
 
         agent = StubAgent("worker", bus=bus)
+        agent.set_task_manager(self.tm)
         await agent.on_bus_message(
             BusTaskRequestMessage(source="parent", target="worker", task_id="t1")
         )
@@ -1121,6 +1127,7 @@ class TestTaskLifecycle(unittest.IsolatedAsyncioTestCase):
         sent = capture_bus(bus)
 
         agent = StubAgent("worker", bus=bus)
+        agent.set_task_manager(self.tm)
         await agent.on_bus_message(
             BusTaskRequestMessage(source="parent", target="worker", task_id="t1")
         )
@@ -1139,6 +1146,7 @@ class TestTaskLifecycle(unittest.IsolatedAsyncioTestCase):
         sent = capture_bus(bus)
 
         agent = StubAgent("worker", bus=bus)
+        agent.set_task_manager(self.tm)
         await agent.on_bus_message(
             BusTaskRequestMessage(source="parent", target="worker", task_id="t1")
         )

@@ -118,6 +118,7 @@ async def create_test_env():
 
 async def setup_agent(bus, registry, agent):
     """Subscribe an agent to the bus and register it as ready."""
+    agent.set_task_manager(bus.task_manager)
     await bus.subscribe(agent)
     agent.set_registry(registry)
     await registry.register(AgentReadyData(agent_name=agent.name, runner="test-runner"))
@@ -188,6 +189,8 @@ class TestTaskGroupContext(unittest.IsolatedAsyncioTestCase):
             async with parent.task_group("worker") as tg:
                 asyncio.ensure_future(parent.cancel_task(tg.task_id, reason="manual cancel"))
 
+        # Let the event loop schedule handler tasks spawned by the bus
+        await asyncio.sleep(0)
         self.assertIn("manual cancel", str(ctx.exception))
 
     async def test_task_group_raises_on_timeout(self):

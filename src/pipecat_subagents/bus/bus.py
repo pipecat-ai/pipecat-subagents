@@ -202,6 +202,7 @@ class AgentBus(BaseObject):
             sub.queue.put_nowait(message)
 
     def _start_dispatch_task(self, sub: BusSubscription) -> None:
+        """Start the router and data dispatch tasks for a subscriber."""
         sub.router_task = self.create_asyncio_task(
             self._router_task(sub), f"bus_router_{sub.subscriber}"
         )
@@ -210,8 +211,7 @@ class AgentBus(BaseObject):
         )
 
     async def _router_task(self, sub: BusSubscription):
-        """Read from the priority queue, handle system messages inline,
-        and route data messages to the data queue."""
+        """Route system messages inline, data messages to the data queue."""
         try:
             while True:
                 message = await sub.queue.get()
