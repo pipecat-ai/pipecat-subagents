@@ -39,7 +39,7 @@ uv add pipecat-ai-subagents
 # or: pip install pipecat-ai-subagents
 ```
 
-> Requires Python 3.10+ and [Pipecat](https://github.com/pipecat-ai/pipecat?tab=readme-ov-file#-getting-started).
+> Requires Python 3.11+ and [Pipecat](https://github.com/pipecat-ai/pipecat?tab=readme-ov-file#-getting-started).
 
 ## 🚀 Examples
 
