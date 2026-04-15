@@ -332,6 +332,11 @@ class BaseAgent(BaseObject, BusSubscriber):
         return self._active
 
     @property
+    def activation_args(self) -> Optional[dict]:
+        """The arguments from the most recent activation, or None if inactive."""
+        return self._activation_args
+
+    @property
     def parent(self) -> Optional[str]:
         """The name of the parent agent, or None if this is a root agent."""
         return self._parent
@@ -1415,6 +1420,7 @@ class BaseAgent(BaseObject, BusSubscriber):
         """
         logger.debug(f"Agent '{self}': deactivated")
         self._active = False
+        self._activation_args = None
         await self.on_deactivated()
         await self._call_event_handler("on_deactivated")
 

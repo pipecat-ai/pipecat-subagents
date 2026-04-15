@@ -170,6 +170,52 @@ class TestBaseAgentLifecycle(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(agent.active)
         self.assertTrue(activated.is_set())
 
+    async def test_activation_args_property_set_and_cleared(self):
+        """activation_args returns the latest args while active and is cleared on deactivate."""
+        bus = self.bus
+        agent = BridgedStubAgent("test", bus=bus)
+
+        activated = asyncio.Event()
+        deactivated = asyncio.Event()
+
+        @agent.event_handler("on_activated")
+        async def _on_activated(agent, args):
+            activated.set()
+
+        @agent.event_handler("on_deactivated")
+        async def _on_deactivated(agent):
+            deactivated.set()
+
+        task = await agent.create_pipeline_task()
+
+        args = {"messages": ["hello"]}
+        observed_while_active = {}
+
+        async def drive():
+            await asyncio.sleep(0.05)
+            await bus.send(BusActivateAgentMessage(source="other", target="test", args=args))
+            await asyncio.wait_for(activated.wait(), timeout=2.0)
+            observed_while_active["args"] = agent.activation_args
+            observed_while_active["active"] = agent.active
+            await bus.send(BusDeactivateAgentMessage(source="other", target="test"))
+            await asyncio.wait_for(deactivated.wait(), timeout=2.0)
+            await task.queue_frame(EndFrame())
+
+        await bus.start()
+        runner = PipelineRunner()
+        await asyncio.gather(runner.run(task), drive())
+        await bus.stop()
+
+        self.assertTrue(observed_while_active["active"])
+        self.assertIs(observed_while_active["args"], args)
+        self.assertFalse(agent.active)
+        self.assertIsNone(agent.activation_args)
+
+    async def test_activation_args_none_before_activation(self):
+        """activation_args is None before any activation has occurred."""
+        agent = BridgedStubAgent("test", bus=self.bus)
+        self.assertIsNone(agent.activation_args)
+
     async def test_handoff_to_sends_activate_and_deactivates(self):
         """handoff_to() sends BusDeactivateAgentMessage and BusActivateAgentMessage."""
         bus = self.bus
