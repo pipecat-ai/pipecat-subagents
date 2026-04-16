@@ -21,7 +21,7 @@ classifiers = [
 dependencies = [ "pipecat-ai>=1.0.0" ]
 
 [project.optional-dependencies]
-flows = ["pipecat-ai-flows>=0.0.22"]
+flows = ["pipecat-ai-flows>=1.0.0"]
 redis = ["redis[hiredis]>=5.0.0"]
 websocket = [ "websockets>=13.1,<16.0", "fastapi>=0.115.6,<1" ]
 examples = [
