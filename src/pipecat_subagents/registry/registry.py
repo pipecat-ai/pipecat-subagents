@@ -7,7 +7,7 @@
 """Shared agent registry for tracking discovered agents across runners."""
 
 from collections import defaultdict
-from typing import Callable, Coroutine, Optional
+from collections.abc import Callable, Coroutine
 
 from loguru import logger
 
@@ -58,7 +58,7 @@ class AgentRegistry:
             result.extend(agents.keys())
         return result
 
-    def get(self, agent_name: str) -> Optional[AgentReadyData]:
+    def get(self, agent_name: str) -> AgentReadyData | None:
         """Look up a registered agent by name.
 
         Args:

@@ -12,8 +12,8 @@ Provides the abstract `AgentBus` base class. Concrete implementations
 
 import asyncio
 from abc import abstractmethod
+from collections.abc import Coroutine
 from dataclasses import dataclass, field
-from typing import Coroutine, Optional
 
 from pipecat.frames.frames import SystemFrame
 from pipecat.utils.asyncio.task_manager import TaskManager
@@ -43,8 +43,8 @@ class BusSubscription:
     subscriber: BusSubscriber
     queue: BusMessageQueue = field(default_factory=BusMessageQueue, repr=False)
     data_queue: asyncio.Queue = field(default_factory=asyncio.Queue, repr=False)
-    router_task: Optional[asyncio.Task] = field(default=None, repr=False)
-    data_task: Optional[asyncio.Task] = field(default=None, repr=False)
+    router_task: asyncio.Task | None = field(default=None, repr=False)
+    data_task: asyncio.Task | None = field(default=None, repr=False)
 
 
 class AgentBus(BaseObject):
@@ -70,10 +70,10 @@ class AgentBus(BaseObject):
         super().__init__(**kwargs)
         self._subscriptions: dict[str, BusSubscription] = {}
         self._running = False
-        self._task_manager: Optional[TaskManager] = None
+        self._task_manager: TaskManager | None = None
 
     @property
-    def task_manager(self) -> Optional[TaskManager]:
+    def task_manager(self) -> TaskManager | None:
         """The shared task manager for asyncio task creation."""
         return self._task_manager
 

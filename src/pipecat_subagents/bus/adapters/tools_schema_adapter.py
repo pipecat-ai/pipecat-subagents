@@ -6,7 +6,7 @@
 
 """Type adapter for ToolsSchema serialization."""
 
-from typing import Any, Optional
+from typing import Any
 
 from pipecat.adapters.schemas.function_schema import FunctionSchema
 from pipecat.adapters.schemas.tools_schema import ToolsSchema
@@ -33,7 +33,7 @@ class ToolsSchemaAdapter(TypeAdapter):
         self,
         data: dict[str, Any],
         deserialize_value: DeserializeFunc,
-        target_type: Optional[type] = None,
+        target_type: type | None = None,
     ) -> Any:
         """Reconstruct a ``ToolsSchema`` from a serialized dict.
 

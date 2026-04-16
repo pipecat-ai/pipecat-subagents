@@ -12,7 +12,7 @@ actions).
 """
 
 from abc import abstractmethod
-from typing import Any, List, Optional
+from typing import Any
 
 from loguru import logger
 from pipecat.pipeline.pipeline import Pipeline
@@ -58,10 +58,10 @@ class FlowsAgent(BaseAgent):
         *,
         bus: AgentBus,
         context_aggregator: Any,
-        context_strategy: Optional[ContextStrategyConfig] = None,
-        global_functions: Optional[List[FlowsFunctionSchema | FlowsDirectFunction]] = None,
+        context_strategy: ContextStrategyConfig | None = None,
+        global_functions: list[FlowsFunctionSchema | FlowsDirectFunction] | None = None,
         active: bool = False,
-        bridged: Optional[tuple[str, ...]] = (),
+        bridged: tuple[str, ...] | None = (),
     ):
         """Initialize the FlowsAgent.
 
@@ -86,11 +86,11 @@ class FlowsAgent(BaseAgent):
         self._context_aggregator = context_aggregator
         self._context_strategy = context_strategy
         self._global_functions = global_functions or []
-        self._llm: Optional[LLMService] = None
-        self._flow_manager: Optional[FlowManager] = None
+        self._llm: LLMService | None = None
+        self._flow_manager: FlowManager | None = None
         self._flow_initialized = False
 
-    async def on_activated(self, args: Optional[dict]) -> None:
+    async def on_activated(self, args: dict | None) -> None:
         """Initialize or resume the flow on handoff.
 
         Args:
@@ -105,7 +105,7 @@ class FlowsAgent(BaseAgent):
             await self._flow_manager.set_node_from_config(self.build_resume_node())
 
     @property
-    def flow_manager(self) -> Optional[FlowManager]:
+    def flow_manager(self) -> FlowManager | None:
         """The FlowManager instance, available after the pipeline task is created."""
         return self._flow_manager
 

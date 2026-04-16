@@ -48,7 +48,7 @@ class FakeWebSocket:
     async def __anext__(self):
         try:
             return await asyncio.wait_for(self._receive_queue.get(), timeout=0.5)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             raise StopAsyncIteration
 
     def inject(self, data: bytes):

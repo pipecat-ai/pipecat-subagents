@@ -37,7 +37,7 @@ class CodeWorker(BaseAgent):
         self._project_path = project_path
 
         self._queue: asyncio.Queue = asyncio.Queue()
-        self._worker_task: Optional[asyncio.Task] = None
+        self._worker_task: asyncio.Task | None = None
 
         self._claude_options = ClaudeAgentOptions(
             permission_mode="bypassPermissions",

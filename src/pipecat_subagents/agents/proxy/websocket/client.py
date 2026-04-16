@@ -7,7 +7,6 @@
 """WebSocket client proxy that forwards bus messages to a remote server."""
 
 import asyncio
-from typing import Optional
 
 from loguru import logger
 
@@ -70,8 +69,8 @@ class WebSocketProxyClientAgent(BaseAgent):
         remote_agent_name: str,
         local_agent_name: str,
         forward_messages: tuple[type[BusMessage], ...] = (),
-        headers: Optional[dict[str, str]] = None,
-        serializer: Optional[MessageSerializer] = None,
+        headers: dict[str, str] | None = None,
+        serializer: MessageSerializer | None = None,
     ):
         """Initialize the WebSocketProxyClientAgent.
 
@@ -101,7 +100,7 @@ class WebSocketProxyClientAgent(BaseAgent):
         self._headers = headers or {}
         self._serializer = serializer or JSONMessageSerializer()
         self._ws = None
-        self._receive_task: Optional[asyncio.Task] = None
+        self._receive_task: asyncio.Task | None = None
 
         self._register_event_handler("on_connected")
         self._register_event_handler("on_disconnected")
@@ -113,7 +112,7 @@ class WebSocketProxyClientAgent(BaseAgent):
             await self.cancel_asyncio_task(self._receive_task)
             self._receive_task = None
 
-    async def on_activated(self, args: Optional[dict]) -> None:
+    async def on_activated(self, args: dict | None) -> None:
         """Connect to the remote WebSocket server."""
         await super().on_activated(args)
 

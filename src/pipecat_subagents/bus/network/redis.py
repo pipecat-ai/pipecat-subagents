@@ -7,7 +7,6 @@
 """Redis pub/sub agent bus for distributed agents."""
 
 import asyncio
-from typing import Optional
 
 from loguru import logger
 
@@ -46,7 +45,7 @@ class RedisBus(AgentBus):
         self,
         *,
         redis: Redis,
-        serializer: Optional[MessageSerializer] = None,
+        serializer: MessageSerializer | None = None,
         channel: str = "pipecat:bus",
         **kwargs,
     ):
@@ -63,8 +62,8 @@ class RedisBus(AgentBus):
         self._redis = redis
         self._serializer = serializer or JSONMessageSerializer()
         self._channel = channel
-        self._pubsub: Optional[PubSub] = None
-        self._reader_task: Optional[asyncio.Task] = None
+        self._pubsub: PubSub | None = None
+        self._reader_task: asyncio.Task | None = None
 
     async def start(self):
         """Subscribe to Redis channel and start the reader task."""

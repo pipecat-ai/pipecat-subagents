@@ -6,7 +6,7 @@
 
 """Type adapter for LLMContext serialization."""
 
-from typing import Any, Optional
+from typing import Any
 
 from openai import NOT_GIVEN as OPENAI_NOT_GIVEN
 from pipecat.adapters.schemas.function_schema import FunctionSchema
@@ -51,7 +51,7 @@ class LLMContextAdapter(TypeAdapter):
         self,
         data: dict[str, Any],
         deserialize_value: DeserializeFunc,
-        target_type: Optional[type] = None,
+        target_type: type | None = None,
     ) -> Any:
         """Reconstruct an ``LLMContext`` from a serialized dict.
 

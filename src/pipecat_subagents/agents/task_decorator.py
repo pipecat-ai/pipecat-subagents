@@ -6,10 +6,8 @@
 
 """Decorator for marking agent methods as task handlers."""
 
-from typing import Optional
 
-
-def task(fn=None, *, name: Optional[str] = None, parallel: bool = False):
+def task(fn=None, *, name: str | None = None, parallel: bool = False):
     """Mark an agent method as a task handler.
 
     Decorated methods are automatically collected by ``BaseAgent`` at
@@ -64,7 +62,7 @@ def _collect_task_handlers(obj) -> dict:
         ValueError: If two handlers share the same task name.
     """
     seen: set[str] = set()
-    handlers: dict[Optional[str], tuple] = {}
+    handlers: dict[str | None, tuple] = {}
     for cls in type(obj).__mro__:
         for attr_name, val in cls.__dict__.items():
             if attr_name in seen:

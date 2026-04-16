@@ -11,9 +11,9 @@ import importlib.util
 import os
 import signal
 import uuid
+from collections.abc import Coroutine
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Coroutine, Optional
 
 from loguru import logger
 from pipecat.pipeline.runner import PipelineRunner
@@ -48,7 +48,7 @@ class AgentEntry:
     """
 
     agent: BaseAgent
-    task: Optional[asyncio.Task] = field(default=None, repr=False)
+    task: asyncio.Task | None = field(default=None, repr=False)
 
 
 class AgentRunner(BaseObject, BusSubscriber):
@@ -76,8 +76,8 @@ class AgentRunner(BaseObject, BusSubscriber):
     def __init__(
         self,
         *,
-        name: Optional[str] = None,
-        bus: Optional[AgentBus] = None,
+        name: str | None = None,
+        bus: AgentBus | None = None,
         handle_sigint: bool = True,
         handle_sigterm: bool = False,
     ):
@@ -102,7 +102,7 @@ class AgentRunner(BaseObject, BusSubscriber):
 
         self._handle_sigint = handle_sigint
         self._handle_sigterm = handle_sigterm
-        self._sig_task: Optional[asyncio.Task] = None
+        self._sig_task: asyncio.Task | None = None
 
         self._running: bool = False
         self._entries: dict[str, AgentEntry] = {}
@@ -243,7 +243,7 @@ class AgentRunner(BaseObject, BusSubscriber):
 
         logger.debug(f"AgentRunner '{self}': finished running")
 
-    async def end(self, reason: Optional[str] = None) -> None:
+    async def end(self, reason: str | None = None) -> None:
         """Gracefully end all agents and shut down.
 
         Ends root agents first; parent agents propagate shutdown to
@@ -263,7 +263,7 @@ class AgentRunner(BaseObject, BusSubscriber):
                     BusEndAgentMessage(source=self.name, target=name, reason=reason)
                 )
 
-    async def cancel(self, reason: Optional[str] = None) -> None:
+    async def cancel(self, reason: str | None = None) -> None:
         """Immediately cancel all agents and shut down.
 
         Cancels root agents first; parent agents propagate cancellation

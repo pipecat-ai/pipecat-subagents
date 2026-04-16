@@ -7,7 +7,6 @@
 """Shared types for the pipecat-subagents framework."""
 
 from dataclasses import dataclass
-from typing import Optional
 
 
 @dataclass
@@ -23,10 +22,10 @@ class AgentRegistryEntry:
     """
 
     name: str
-    parent: Optional[str] = None
+    parent: str | None = None
     active: bool = False
     bridged: bool = False
-    started_at: Optional[float] = None
+    started_at: float | None = None
 
 
 @dataclass

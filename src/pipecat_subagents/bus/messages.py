@@ -13,7 +13,7 @@ between agents, the session, and the runner.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from pipecat.frames.frames import DataFrame, Frame, SystemFrame
 from pipecat.processors.frame_processor import FrameDirection
@@ -23,7 +23,6 @@ from pipecat_subagents.types import AgentRegistryEntry
 if TYPE_CHECKING:
     from pipecat_subagents.agents.base_agent import BaseAgent
     from pipecat_subagents.agents.task_context import TaskStatus
-
 
 # ---------------------------------------------------------------------------
 # Base types and mixins
@@ -38,7 +37,7 @@ class BusMessage:
     """
 
     source: str
-    target: Optional[str] = None
+    target: str | None = None
 
     def __str__(self):
         return f"{type(self).__name__} (source={self.source}, target={self.target})"
@@ -60,7 +59,7 @@ class BusDataMessage(BusMessage, DataFrame):
     """
 
     source: str
-    target: Optional[str] = None
+    target: str | None = None
 
 
 @dataclass(kw_only=True)
@@ -73,7 +72,7 @@ class BusSystemMessage(BusMessage, SystemFrame):
     """
 
     source: str
-    target: Optional[str] = None
+    target: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -93,7 +92,7 @@ class BusFrameMessage(BusDataMessage):
 
     frame: Frame
     direction: FrameDirection
-    bridge: Optional[str] = None
+    bridge: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -109,7 +108,7 @@ class BusActivateAgentMessage(BusDataMessage):
         args: Optional activation arguments forwarded to ``on_activated``.
     """
 
-    args: Optional[dict] = None
+    args: dict | None = None
 
 
 @dataclass
@@ -130,7 +129,7 @@ class BusEndMessage(BusDataMessage):
         reason: Optional human-readable reason for ending.
     """
 
-    reason: Optional[str] = None
+    reason: str | None = None
 
 
 @dataclass
@@ -143,7 +142,7 @@ class BusEndAgentMessage(BusDataMessage):
         reason: Optional human-readable reason for ending.
     """
 
-    reason: Optional[str] = None
+    reason: str | None = None
 
 
 @dataclass
@@ -157,7 +156,7 @@ class BusCancelMessage(BusSystemMessage):
         reason: Optional human-readable reason for the cancellation.
     """
 
-    reason: Optional[str] = None
+    reason: str | None = None
 
 
 @dataclass
@@ -170,7 +169,7 @@ class BusCancelAgentMessage(BusSystemMessage):
         reason: Optional human-readable reason for the cancellation.
     """
 
-    reason: Optional[str] = None
+    reason: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -225,10 +224,10 @@ class BusAgentReadyMessage(BusDataMessage):
     """
 
     runner: str
-    parent: Optional[str] = None
+    parent: str | None = None
     active: bool = False
     bridged: bool = False
-    started_at: Optional[float] = None
+    started_at: float | None = None
 
 
 @dataclass
@@ -275,8 +274,8 @@ class BusTaskRequestMessage(BusDataMessage):
     """
 
     task_id: str
-    task_name: Optional[str] = None
-    payload: Optional[dict] = None
+    task_name: str | None = None
+    payload: dict | None = None
 
 
 @dataclass
@@ -290,8 +289,8 @@ class BusTaskResponseMessage(BusDataMessage):
     """
 
     task_id: str
-    status: "TaskStatus"
-    response: Optional[dict] = None
+    status: TaskStatus
+    response: dict | None = None
 
 
 @dataclass
@@ -308,8 +307,8 @@ class BusTaskResponseUrgentMessage(BusSystemMessage):
     """
 
     task_id: str
-    status: "TaskStatus"
-    response: Optional[dict] = None
+    status: TaskStatus
+    response: dict | None = None
 
 
 @dataclass
@@ -322,7 +321,7 @@ class BusTaskUpdateMessage(BusDataMessage):
     """
 
     task_id: str
-    update: Optional[dict] = None
+    update: dict | None = None
 
 
 @dataclass
@@ -338,7 +337,7 @@ class BusTaskUpdateUrgentMessage(BusSystemMessage):
     """
 
     task_id: str
-    update: Optional[dict] = None
+    update: dict | None = None
 
 
 @dataclass
@@ -362,7 +361,7 @@ class BusTaskCancelMessage(BusSystemMessage):
     """
 
     task_id: str
-    reason: Optional[str] = None
+    reason: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -380,7 +379,7 @@ class BusTaskStreamStartMessage(BusDataMessage):
     """
 
     task_id: str
-    data: Optional[dict] = None
+    data: dict | None = None
 
 
 @dataclass
@@ -393,7 +392,7 @@ class BusTaskStreamDataMessage(BusDataMessage):
     """
 
     task_id: str
-    data: Optional[dict] = None
+    data: dict | None = None
 
 
 @dataclass
@@ -406,4 +405,4 @@ class BusTaskStreamEndMessage(BusDataMessage):
     """
 
     task_id: str
-    data: Optional[dict] = None
+    data: dict | None = None

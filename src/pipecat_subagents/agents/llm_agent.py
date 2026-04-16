@@ -14,8 +14,9 @@ import asyncio
 import functools
 from abc import abstractmethod
 from collections import deque
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable, Optional
+from typing import Any
 
 from pipecat.adapters.schemas.tools_schema import ToolsSchema
 from pipecat.frames.frames import (
@@ -55,8 +56,8 @@ class LLMAgentActivationArgs(AgentActivationArgs):
             Defaults to True when ``messages`` is set.
     """
 
-    messages: Optional[list] = None
-    run_llm: Optional[bool] = None
+    messages: list | None = None
+    run_llm: bool | None = None
 
 
 class LLMAgent(BaseAgent):
@@ -86,7 +87,7 @@ class LLMAgent(BaseAgent):
         *,
         bus: AgentBus,
         active: bool = False,
-        bridged: Optional[tuple[str, ...]] = None,
+        bridged: tuple[str, ...] | None = None,
         defer_tool_frames: bool = True,
     ):
         """Initialize the LLMAgent.
@@ -107,7 +108,7 @@ class LLMAgent(BaseAgent):
             exclude_frames=(PipelineFlushFrame,),
         )
         # LLM service, created in build_pipeline via create_llm().
-        self._llm: Optional[LLMService] = None
+        self._llm: LLMService | None = None
 
         # Pipeline flush. Signaled when a PipelineFlushFrame completes
         # its round-trip, used to ensure function call results are
@@ -124,7 +125,7 @@ class LLMAgent(BaseAgent):
         self._deferred_frames: deque[tuple[Frame, FrameDirection]] = deque()
         self._closing: bool = False
 
-    async def on_activated(self, args: Optional[dict]) -> None:
+    async def on_activated(self, args: dict | None) -> None:
         """Configure the LLM with tools and activation messages.
 
         Args:
@@ -251,9 +252,9 @@ class LLMAgent(BaseAgent):
     async def end(
         self,
         *,
-        reason: Optional[str] = None,
-        messages: Optional[list] = None,
-        result_callback: Optional[FunctionCallResultCallback] = None,
+        reason: str | None = None,
+        messages: list | None = None,
+        result_callback: FunctionCallResultCallback | None = None,
     ) -> None:
         """Request a graceful end of the session.
 
@@ -276,9 +277,9 @@ class LLMAgent(BaseAgent):
         self,
         agent_name: str,
         *,
-        activation_args: Optional[AgentActivationArgs] = None,
-        messages: Optional[list] = None,
-        result_callback: Optional[FunctionCallResultCallback] = None,
+        activation_args: AgentActivationArgs | None = None,
+        messages: list | None = None,
+        result_callback: FunctionCallResultCallback | None = None,
     ) -> None:
         """Hand off to another agent.
 
@@ -343,9 +344,9 @@ class LLMAgent(BaseAgent):
 
     async def _finish_function_call(
         self,
-        result_callback: Optional[FunctionCallResultCallback],
+        result_callback: FunctionCallResultCallback | None,
         *,
-        messages: Optional[list] = None,
+        messages: list | None = None,
     ) -> None:
         """Finish an in-progress function call before taking action.
 

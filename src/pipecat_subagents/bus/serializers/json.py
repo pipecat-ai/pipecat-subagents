@@ -11,8 +11,8 @@ import dataclasses
 import importlib
 import json
 from enum import Enum
-from functools import lru_cache
-from typing import Any, Optional
+from functools import cache
+from typing import Any
 
 from loguru import logger
 from pydantic import BaseModel
@@ -74,7 +74,7 @@ class JSONMessageSerializer(MessageSerializer):
         data = self._serialize_value(message)
         return json.dumps(data, separators=(",", ":")).encode("utf-8")
 
-    def deserialize(self, data: bytes) -> Optional[BusMessage]:
+    def deserialize(self, data: bytes) -> BusMessage | None:
         """Reconstruct a bus message from JSON bytes.
 
         Args:
@@ -185,7 +185,7 @@ class JSONMessageSerializer(MessageSerializer):
         logger.warning(f"JSONMessageSerializer: no adapter registered for type {type_name}")
         return None
 
-    def _find_adapter(self, type_: type) -> Optional[TypeAdapter]:
+    def _find_adapter(self, type_: type) -> TypeAdapter | None:
         """Find an adapter for a type, checking parent classes via MRO."""
         for cls in type_.__mro__:
             if cls in self._adapters:
@@ -193,8 +193,8 @@ class JSONMessageSerializer(MessageSerializer):
         return None
 
 
-@lru_cache(maxsize=None)
-def _resolve_type(qualified_name: str) -> Optional[type]:
+@cache
+def _resolve_type(qualified_name: str) -> type | None:
     """Resolve a fully qualified type name to its class.
 
     Args:

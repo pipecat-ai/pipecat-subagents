@@ -10,8 +10,6 @@ Provides the `BusBridgeProcessor`, a mid-pipeline processor that exchanges
 frames with other agents through the bus.
 """
 
-from typing import Optional, Tuple, Type
-
 from pipecat.frames.frames import (
     CancelFrame,
     EndFrame,
@@ -43,9 +41,9 @@ class BusBridgeProcessor(FrameProcessor, BusSubscriber):
         *,
         bus: AgentBus,
         agent_name: str,
-        target_agent: Optional[str] = None,
-        bridge: Optional[str] = None,
-        exclude_frames: Optional[Tuple[Type[Frame], ...]] = None,
+        target_agent: str | None = None,
+        bridge: str | None = None,
+        exclude_frames: tuple[type[Frame], ...] | None = None,
         **kwargs,
     ):
         """Initialize the BusBridgeProcessor.

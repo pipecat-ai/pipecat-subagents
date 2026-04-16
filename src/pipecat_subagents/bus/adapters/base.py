@@ -7,7 +7,8 @@
 """Abstract base class for type adapters used by message serializers."""
 
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Optional
+from collections.abc import Callable
+from typing import Any
 
 SerializeFunc = Callable[[Any], Any]
 DeserializeFunc = Callable[[Any], Any]
@@ -43,7 +44,7 @@ class TypeAdapter(ABC):
         self,
         data: dict[str, Any],
         deserialize_value: DeserializeFunc,
-        target_type: Optional[type] = None,
+        target_type: type | None = None,
     ) -> Any:
         """Reconstruct an object from a dict.
 

@@ -15,7 +15,7 @@ import json
 import time
 from dataclasses import asdict, dataclass, field, is_dataclass
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 
 from loguru import logger
 from pipecat.frames.frames import (
@@ -57,12 +57,12 @@ class AgentInfo:
     """Tracked state for a known agent."""
 
     name: str
-    parent: Optional[str] = None
-    runner: Optional[str] = None
+    parent: str | None = None
+    runner: str | None = None
     active: bool = False
     ready: bool = False
     bridged: bool = False
-    started_at: Optional[float] = None
+    started_at: float | None = None
 
 
 @dataclass
@@ -72,10 +72,10 @@ class TaskInfo:
     task_id: str
     source: str
     targets: list[str] = field(default_factory=list)
-    task_name: Optional[str] = None
+    task_name: str | None = None
     status: str = "running"
     started_at: float = 0.0
-    completed_at: Optional[float] = None
+    completed_at: float | None = None
 
 
 _TASK_MESSAGES = (
@@ -187,7 +187,7 @@ def _serialize_message(message: BusMessage) -> dict:
         if message.reason:
             data["reason"] = message.reason
     elif isinstance(
-        message, (BusTaskStreamStartMessage, BusTaskStreamDataMessage, BusTaskStreamEndMessage)
+        message, BusTaskStreamStartMessage | BusTaskStreamDataMessage | BusTaskStreamEndMessage
     ):
         data["task_id"] = message.task_id
         if message.data:
@@ -232,7 +232,7 @@ class ClowderAgent(BaseAgent):
         bus: AgentBus,
         host: str = "localhost",
         port: int = 7070,
-        exclude_frames: Optional[tuple[type[Frame], ...]] = None,
+        exclude_frames: tuple[type[Frame], ...] | None = None,
     ):
         """Initialize the ClowderAgent.
 

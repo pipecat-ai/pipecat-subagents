@@ -15,8 +15,8 @@ import asyncio
 import dataclasses
 import time
 import uuid
+from collections.abc import Coroutine
 from dataclasses import dataclass
-from typing import Coroutine, Optional, Union
 
 from loguru import logger
 from pipecat.frames.frames import (
@@ -83,7 +83,7 @@ class AgentActivationArgs:
         metadata: Optional structured data passed during activation.
     """
 
-    metadata: Optional[dict] = None
+    metadata: dict | None = None
 
     @classmethod
     def from_dict(cls, data: dict) -> "AgentActivationArgs":
@@ -118,7 +118,7 @@ class _BusEdgeProcessor(FrameProcessor, BusSubscriber):
         agent: "BaseAgent",
         direction: FrameDirection,
         bridges: tuple[str, ...] = (),
-        exclude_frames: Optional[tuple[type[Frame], ...]] = None,
+        exclude_frames: tuple[type[Frame], ...] | None = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -240,8 +240,8 @@ class BaseAgent(BaseObject, BusSubscriber):
         *,
         bus: AgentBus,
         active: bool = True,
-        bridged: Optional[tuple[str, ...]] = None,
-        exclude_frames: Optional[tuple[type[Frame], ...]] = None,
+        bridged: tuple[str, ...] | None = None,
+        exclude_frames: tuple[type[Frame], ...] | None = None,
     ):
         """Initialize the BaseAgent.
 
@@ -268,21 +268,21 @@ class BaseAgent(BaseObject, BusSubscriber):
         # starts, then on_activated fires.
         self._active = active
         self._pending_activation = active
-        self._activation_args: Optional[dict] = None
+        self._activation_args: dict | None = None
 
         # Agent lifecycle. Parent/children form a tree. The pipeline task
         # runs the agent's pipeline. Finished is set when the agent stops.
-        self._parent: Optional[str] = None
-        self._children: list["BaseAgent"] = []
-        self._pipeline_task: Optional[PipelineTask] = None
+        self._parent: str | None = None
+        self._children: list[BaseAgent] = []
+        self._pipeline_task: PipelineTask | None = None
         self._pipeline_started = False
-        self._started_at: Optional[float] = None
+        self._started_at: float | None = None
         self._finished: asyncio.Event = asyncio.Event()
 
         # Shared infrastructure, set by the runner via set_registry()
         # and set_task_manager().
-        self._registry: Optional[AgentRegistry] = None
-        self._task_manager: Optional[TaskManager] = None
+        self._registry: AgentRegistry | None = None
+        self._task_manager: TaskManager | None = None
 
         # Task coordination. Worker state tracks active task requests
         # keyed by task_id, supporting multiple tasks in flight
@@ -332,17 +332,17 @@ class BaseAgent(BaseObject, BusSubscriber):
         return self._active
 
     @property
-    def activation_args(self) -> Optional[dict]:
+    def activation_args(self) -> dict | None:
         """The arguments from the most recent activation, or None if inactive."""
         return self._activation_args
 
     @property
-    def parent(self) -> Optional[str]:
+    def parent(self) -> str | None:
         """The name of the parent agent, or None if this is a root agent."""
         return self._parent
 
     @property
-    def registry(self) -> Optional[AgentRegistry]:
+    def registry(self) -> AgentRegistry | None:
         """The shared agent registry, if set by a runner."""
         return self._registry
 
@@ -357,7 +357,7 @@ class BaseAgent(BaseObject, BusSubscriber):
         return self._pipeline_started
 
     @property
-    def started_at(self) -> Optional[float]:
+    def started_at(self) -> float | None:
         """Unix timestamp when this agent became ready, or None if not yet started."""
         return self._started_at
 
@@ -396,7 +396,7 @@ class BaseAgent(BaseObject, BusSubscriber):
         self._registry = registry
 
     @property
-    def task_manager(self) -> Optional[TaskManager]:
+    def task_manager(self) -> TaskManager | None:
         """The shared task manager for asyncio task creation."""
         return self._task_manager
 
@@ -466,7 +466,7 @@ class BaseAgent(BaseObject, BusSubscriber):
         """
         pass
 
-    async def on_activated(self, args: Optional[dict]) -> None:
+    async def on_activated(self, args: dict | None) -> None:
         """Called when this agent is activated.
 
         Override in subclasses to react to activation.
@@ -716,7 +716,7 @@ class BaseAgent(BaseObject, BusSubscriber):
 
         return task
 
-    async def end(self, *, reason: Optional[str] = None) -> None:
+    async def end(self, *, reason: str | None = None) -> None:
         """Request a graceful end of the session.
 
         Args:
@@ -802,7 +802,7 @@ class BaseAgent(BaseObject, BusSubscriber):
         self,
         agent_name: str,
         *,
-        args: Optional[AgentActivationArgs] = None,
+        args: AgentActivationArgs | None = None,
     ) -> None:
         """Activate an agent by name.
 
@@ -834,7 +834,7 @@ class BaseAgent(BaseObject, BusSubscriber):
         self,
         agent_name: str,
         *,
-        activation_args: Optional[AgentActivationArgs] = None,
+        activation_args: AgentActivationArgs | None = None,
     ) -> None:
         """Hand off to another agent.
 
@@ -868,9 +868,9 @@ class BaseAgent(BaseObject, BusSubscriber):
         self,
         agent_name: str,
         *,
-        name: Optional[str] = None,
-        payload: Optional[dict] = None,
-        timeout: Optional[float] = None,
+        name: str | None = None,
+        payload: dict | None = None,
+        timeout: float | None = None,
     ) -> str:
         """Send a task request to a single agent (fire-and-forget).
 
@@ -903,9 +903,9 @@ class BaseAgent(BaseObject, BusSubscriber):
         self,
         agent_name: str,
         *,
-        name: Optional[str] = None,
-        payload: Optional[dict] = None,
-        timeout: Optional[float] = None,
+        name: str | None = None,
+        payload: dict | None = None,
+        timeout: float | None = None,
     ) -> TaskContext:
         """Create a single-agent task context manager.
 
@@ -944,7 +944,7 @@ class BaseAgent(BaseObject, BusSubscriber):
             timeout=timeout,
         )
 
-    async def cancel_task(self, task_id: str, *, reason: Optional[str] = None) -> None:
+    async def cancel_task(self, task_id: str, *, reason: str | None = None) -> None:
         """Cancel a running task group.
 
         Args:
@@ -966,9 +966,9 @@ class BaseAgent(BaseObject, BusSubscriber):
     async def request_task_group(
         self,
         *agent_names: str,
-        name: Optional[str] = None,
-        payload: Optional[dict] = None,
-        timeout: Optional[float] = None,
+        name: str | None = None,
+        payload: dict | None = None,
+        timeout: float | None = None,
         cancel_on_error: bool = True,
     ) -> str:
         """Send a task request to multiple agents (fire-and-forget).
@@ -1009,9 +1009,9 @@ class BaseAgent(BaseObject, BusSubscriber):
     def task_group(
         self,
         *agent_names: str,
-        name: Optional[str] = None,
-        payload: Optional[dict] = None,
-        timeout: Optional[float] = None,
+        name: str | None = None,
+        payload: dict | None = None,
+        timeout: float | None = None,
         cancel_on_error: bool = True,
     ) -> TaskGroupContext:
         """Create a task group context manager.
@@ -1076,7 +1076,7 @@ class BaseAgent(BaseObject, BusSubscriber):
     async def send_task_response(
         self,
         task_id: str,
-        response: Optional[dict] = None,
+        response: dict | None = None,
         *,
         status: TaskStatus = TaskStatus.COMPLETED,
         urgent: bool = False,
@@ -1111,7 +1111,7 @@ class BaseAgent(BaseObject, BusSubscriber):
         self._active_tasks.pop(task_id, None)
 
     async def send_task_update(
-        self, task_id: str, update: Optional[dict] = None, *, urgent: bool = False
+        self, task_id: str, update: dict | None = None, *, urgent: bool = False
     ) -> None:
         """Send a progress update to the requester.
 
@@ -1137,7 +1137,7 @@ class BaseAgent(BaseObject, BusSubscriber):
             )
         )
 
-    async def send_task_stream_start(self, task_id: str, data: Optional[dict] = None) -> None:
+    async def send_task_stream_start(self, task_id: str, data: dict | None = None) -> None:
         """Begin streaming task results back to the requester.
 
         Args:
@@ -1159,7 +1159,7 @@ class BaseAgent(BaseObject, BusSubscriber):
             )
         )
 
-    async def send_task_stream_data(self, task_id: str, data: Optional[dict] = None) -> None:
+    async def send_task_stream_data(self, task_id: str, data: dict | None = None) -> None:
         """Send a streaming chunk to the requester.
 
         Args:
@@ -1181,7 +1181,7 @@ class BaseAgent(BaseObject, BusSubscriber):
             )
         )
 
-    async def send_task_stream_end(self, task_id: str, data: Optional[dict] = None) -> None:
+    async def send_task_stream_end(self, task_id: str, data: dict | None = None) -> None:
         """End the current stream and mark this agent's task as complete.
 
         Args:
@@ -1282,7 +1282,7 @@ class BaseAgent(BaseObject, BusSubscriber):
         self,
         agent_names: list[str],
         *,
-        timeout: Optional[float] = None,
+        timeout: float | None = None,
         cancel_on_error: bool = True,
     ) -> TaskGroup:
         task_id = str(uuid.uuid4())
@@ -1326,9 +1326,9 @@ class BaseAgent(BaseObject, BusSubscriber):
         self,
         agent_names: list[str],
         *,
-        name: Optional[str] = None,
-        payload: Optional[dict] = None,
-        timeout: Optional[float] = None,
+        name: str | None = None,
+        payload: dict | None = None,
+        timeout: float | None = None,
         cancel_on_error: bool = True,
     ) -> TaskGroup:
         """Wait for agents to be ready, create a task group, and send requests.
@@ -1356,7 +1356,7 @@ class BaseAgent(BaseObject, BusSubscriber):
         all_ready = await self._wait_agents_ready(agent_names)
         try:
             await asyncio.wait_for(all_ready, timeout=timeout)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             raise TaskGroupError("agents not ready within timeout")
 
         group = self._create_task_group(
@@ -1374,8 +1374,8 @@ class BaseAgent(BaseObject, BusSubscriber):
         self,
         agent_name: str,
         task_id: str,
-        task_name: Optional[str] = None,
-        payload: Optional[dict] = None,
+        task_name: str | None = None,
+        payload: dict | None = None,
     ) -> None:
         await self.send_message(
             BusTaskRequestMessage(
@@ -1395,7 +1395,7 @@ class BaseAgent(BaseObject, BusSubscriber):
         await self.cancel_task(task_id, reason="timeout")
 
     async def _handle_agent_error(
-        self, message: Union[BusAgentErrorMessage, BusAgentLocalErrorMessage]
+        self, message: BusAgentErrorMessage | BusAgentLocalErrorMessage
     ) -> None:
         """Handle an error reported by a child or remote agent."""
         child_names = {child.name for child in self._children}
@@ -1499,7 +1499,7 @@ class BaseAgent(BaseObject, BusSubscriber):
             self._task_handler_tasks.pop(task_id, None)
 
     async def _handle_task_response(
-        self, message: Union[BusTaskResponseMessage, BusTaskResponseUrgentMessage]
+        self, message: BusTaskResponseMessage | BusTaskResponseUrgentMessage
     ) -> None:
         """Handle a task response and track group completion."""
         await self.on_task_response(message)
@@ -1518,7 +1518,7 @@ class BaseAgent(BaseObject, BusSubscriber):
         await self._track_task_group_response(message.task_id, message.source, message.response)
 
     async def _handle_task_update(
-        self, message: Union[BusTaskUpdateMessage, BusTaskUpdateUrgentMessage]
+        self, message: BusTaskUpdateMessage | BusTaskUpdateUrgentMessage
     ) -> None:
         """Handle a task progress update."""
         await self.on_task_update(message)
@@ -1583,7 +1583,7 @@ class BaseAgent(BaseObject, BusSubscriber):
             group.event_queue.put_nowait(event)
 
     async def _track_task_group_response(
-        self, task_id: str, source: str, response: Optional[dict]
+        self, task_id: str, source: str, response: dict | None
     ) -> None:
         """Record a task agent's response and fire completion when all have responded."""
         group = self._task_groups.get(task_id)

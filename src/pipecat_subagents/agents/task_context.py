@@ -10,14 +10,14 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import TYPE_CHECKING, ClassVar, Optional
+from enum import StrEnum
+from typing import TYPE_CHECKING, ClassVar
 
 if TYPE_CHECKING:
     from pipecat_subagents.agents.base_agent import BaseAgent
 
 
-class TaskStatus(str, Enum):
+class TaskStatus(StrEnum):
     """Status of a completed task.
 
     Inherits from ``str`` so values compare naturally with plain strings
@@ -76,7 +76,7 @@ class TaskEvent:
     STREAM_END: ClassVar[str] = "stream_end"
 
     type: str
-    data: Optional[dict] = None
+    data: dict | None = None
 
 
 @dataclass
@@ -96,7 +96,7 @@ class TaskGroupEvent:
 
     type: str
     agent_name: str
-    data: Optional[dict] = None
+    data: dict | None = None
 
 
 @dataclass
@@ -116,11 +116,11 @@ class TaskGroup:
     task_id: str
     agent_names: set[str]
     responses: dict[str, dict] = field(default_factory=dict)
-    timeout_task: Optional[asyncio.Task] = None
+    timeout_task: asyncio.Task | None = None
     cancel_on_error: bool = True
-    event_queue: Optional[asyncio.Queue] = field(default=None, repr=False)
+    event_queue: asyncio.Queue | None = field(default=None, repr=False)
     _done: asyncio.Event = field(default_factory=asyncio.Event, repr=False)
-    _error: Optional[str] = field(default=None, repr=False)
+    _error: str | None = field(default=None, repr=False)
 
     @property
     def is_done(self) -> bool:
@@ -143,7 +143,7 @@ class TaskGroup:
         if self.event_queue:
             self.event_queue.put_nowait(None)
 
-    def fail(self, reason: Optional[str] = None) -> None:
+    def fail(self, reason: str | None = None) -> None:
         """Signal that the group was cancelled.
 
         Args:
@@ -182,9 +182,9 @@ class TaskGroupContext:
         agent: BaseAgent,
         agent_names: tuple[str, ...],
         *,
-        name: Optional[str] = None,
-        payload: Optional[dict] = None,
-        timeout: Optional[float] = None,
+        name: str | None = None,
+        payload: dict | None = None,
+        timeout: float | None = None,
         cancel_on_error: bool = True,
     ):
         """Initialize the TaskGroupContext.
@@ -205,7 +205,7 @@ class TaskGroupContext:
         self._payload = payload
         self._timeout = timeout
         self._cancel_on_error = cancel_on_error
-        self._group: Optional[TaskGroup] = None
+        self._group: TaskGroup | None = None
 
     @property
     def task_id(self) -> str:
@@ -283,9 +283,9 @@ class TaskContext:
         agent: BaseAgent,
         agent_name: str,
         *,
-        name: Optional[str] = None,
-        payload: Optional[dict] = None,
-        timeout: Optional[float] = None,
+        name: str | None = None,
+        payload: dict | None = None,
+        timeout: float | None = None,
     ):
         """Initialize the TaskContext.
 
@@ -302,7 +302,7 @@ class TaskContext:
         self._name = name
         self._payload = payload
         self._timeout = timeout
-        self._group: Optional[TaskGroup] = None
+        self._group: TaskGroup | None = None
 
     @property
     def task_id(self) -> str:
