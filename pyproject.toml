@@ -44,7 +44,7 @@ dev = [
     "pytest-asyncio>=1.0.0,<2",
     "pytest-aiohttp>=1.0.0,<2",
     "pytest-cov~=4.1.0",
-    "ruff~=0.12.1",
+    "ruff>=0.12.11,<1",
     "setuptools~=78.1.1",
     "setuptools_scm~=8.3.1",
     "towncrier~=25.8.0",
@@ -64,6 +64,7 @@ line-length = 100
 select = [
     "D", # Docstring rules
     "I", # Import rules
+    "UP", # Modern Python
 ]
 ignore = [
     "D105",  # Missing docstring in magic methods (__str__, __repr__, etc.)
