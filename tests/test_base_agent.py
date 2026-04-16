@@ -285,6 +285,34 @@ class TestBaseAgentLifecycle(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(add_msgs), 1)
         self.assertIs(add_msgs[0].agent, new_agent)
 
+    async def test_ready_false_before_pipeline_starts(self):
+        """ready is False before the pipeline has started."""
+        agent = StubAgent("test", bus=self.bus)
+        self.assertFalse(agent.ready)
+
+    async def test_ready_true_after_pipeline_starts(self):
+        """ready becomes True once the pipeline starts."""
+        bus = self.bus
+        agent = StubAgent("test", bus=bus)
+
+        ready_event = asyncio.Event()
+
+        @agent.event_handler("on_ready")
+        async def _on_ready(agent):
+            ready_event.set()
+
+        task = await agent.create_pipeline_task()
+
+        async def wait_and_end():
+            await asyncio.wait_for(ready_event.wait(), timeout=2.0)
+            self.assertTrue(agent.ready)
+            await task.queue_frame(EndFrame())
+
+        await bus.start()
+        runner = PipelineRunner()
+        await asyncio.gather(runner.run(task), wait_and_end())
+        await bus.stop()
+
     async def test_on_ready_event(self):
         """on_ready fires after pipeline starts."""
         bus = self.bus

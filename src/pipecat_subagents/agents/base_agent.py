@@ -352,6 +352,11 @@ class BaseAgent(BaseObject, BusSubscriber):
         return self._bridged is not None
 
     @property
+    def ready(self) -> bool:
+        """Whether this agent's pipeline has started and is ready to operate."""
+        return self._pipeline_started
+
+    @property
     def started_at(self) -> Optional[float]:
         """Unix timestamp when this agent became ready, or None if not yet started."""
         return self._started_at
