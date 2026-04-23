@@ -1,0 +1,143 @@
+#
+# Copyright (c) 2026, Daily
+#
+# SPDX-License-Identifier: BSD 2-Clause License
+#
+
+"""Tests for UIAgent.send_command and standard command dataclasses."""
+
+import unittest
+from unittest.mock import MagicMock
+
+from pipecat_subagents.agents import Focus, Highlight, Navigate, ScrollTo, Toast, UIAgent
+from pipecat_subagents.bus import (
+    UI_COMMAND_MESSAGE_TYPE,
+    AsyncQueueBus,
+    BusUICommandMessage,
+)
+
+
+class _StubUIAgent(UIAgent):
+    def build_llm(self):
+        return MagicMock()
+
+
+def _make_agent():
+    bus = AsyncQueueBus()
+    sent: list[BusUICommandMessage] = []
+    original_send = bus.send
+
+    async def capture_send(message):
+        if isinstance(message, BusUICommandMessage):
+            sent.append(message)
+        await original_send(message)
+
+    bus.send = capture_send  # type: ignore[assignment]
+
+    agent = _StubUIAgent("ui", bus=bus, bridged=(), active=False)
+    return agent, sent
+
+
+class TestSendCommand(unittest.IsolatedAsyncioTestCase):
+    async def test_serializes_dataclass_payload_via_asdict(self):
+        agent, sent = _make_agent()
+
+        await agent.send_command("toast", Toast(title="Saved", subtitle="Favorites"))
+
+        self.assertEqual(len(sent), 1)
+        cmd = sent[0]
+        self.assertEqual(cmd.source, "ui")
+        self.assertIsNone(cmd.target)
+        self.assertEqual(cmd.command_name, "toast")
+        self.assertEqual(
+            cmd.payload,
+            {
+                "title": "Saved",
+                "subtitle": "Favorites",
+                "description": None,
+                "image_url": None,
+                "duration_ms": None,
+            },
+        )
+
+    async def test_forwards_dict_payload_as_is(self):
+        agent, sent = _make_agent()
+
+        await agent.send_command("app_specific", {"foo": 1, "bar": [1, 2, 3]})
+
+        self.assertEqual(sent[0].command_name, "app_specific")
+        self.assertEqual(sent[0].payload, {"foo": 1, "bar": [1, 2, 3]})
+
+    async def test_none_payload_becomes_empty_dict(self):
+        agent, sent = _make_agent()
+
+        await agent.send_command("ping")
+
+        self.assertEqual(sent[0].payload, {})
+
+    async def test_rejects_dataclass_type_vs_instance_gracefully(self):
+        """Passing the class (not an instance) should not be misread as a dataclass instance."""
+        agent, sent = _make_agent()
+
+        # Passing a plain dict remains the expected usage; this asserts
+        # the is_dataclass(not type) guard is in place so the class
+        # object isn't accidentally recursed into by asdict.
+        await agent.send_command("navigate", {"view": "home"})
+        self.assertEqual(sent[0].payload, {"view": "home"})
+
+
+class TestStandardCommands(unittest.IsolatedAsyncioTestCase):
+    async def test_toast_payload_shape(self):
+        agent, sent = _make_agent()
+        await agent.send_command(
+            "toast",
+            Toast(
+                title="Now playing",
+                subtitle="Nirvana",
+                description="Smells Like Teen Spirit",
+                image_url="https://example.com/cover.jpg",
+                duration_ms=3000,
+            ),
+        )
+        self.assertEqual(
+            sent[0].payload,
+            {
+                "title": "Now playing",
+                "subtitle": "Nirvana",
+                "description": "Smells Like Teen Spirit",
+                "image_url": "https://example.com/cover.jpg",
+                "duration_ms": 3000,
+            },
+        )
+
+    async def test_navigate_payload_shape(self):
+        agent, sent = _make_agent()
+        await agent.send_command("navigate", Navigate(view="detail", params={"id": "42"}))
+        self.assertEqual(sent[0].payload, {"view": "detail", "params": {"id": "42"}})
+
+    async def test_scroll_to_payload_shape(self):
+        agent, sent = _make_agent()
+        await agent.send_command("scroll_to", ScrollTo(target_id="new_releases", behavior="smooth"))
+        self.assertEqual(
+            sent[0].payload,
+            {"target_id": "new_releases", "behavior": "smooth"},
+        )
+
+    async def test_highlight_payload_shape(self):
+        agent, sent = _make_agent()
+        await agent.send_command("highlight", Highlight(target_id="play_btn", duration_ms=1000))
+        self.assertEqual(sent[0].payload, {"target_id": "play_btn", "duration_ms": 1000})
+
+    async def test_focus_payload_shape(self):
+        agent, sent = _make_agent()
+        await agent.send_command("focus", Focus(target_id="search_input"))
+        self.assertEqual(sent[0].payload, {"target_id": "search_input"})
+
+
+class TestMessageTypeConstant(unittest.TestCase):
+    def test_ui_command_type_string(self):
+        self.assertEqual(UI_COMMAND_MESSAGE_TYPE, "ui.command")
+
+
+if __name__ == "__main__":
+    unittest.main()

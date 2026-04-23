@@ -13,7 +13,7 @@ between agents, the session, and the runner.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from pipecat.frames.frames import DataFrame, Frame, SystemFrame
 from pipecat.processors.frame_processor import FrameDirection
@@ -406,3 +406,57 @@ class BusTaskStreamEndMessage(BusDataMessage):
 
     task_id: str
     data: dict | None = None
+
+
+# ---------------------------------------------------------------------------
+# UI protocol
+# ---------------------------------------------------------------------------
+
+#: RTVI client-message type carrying UI events from the client.
+#: Clients that use ``@pipecat-ai/ui-agent-client-js`` send with this
+#: type via ``UIAgentClient.sendEvent``; ``attach_ui_bridge`` filters
+#: on this constant before republishing onto the bus.
+UI_EVENT_MESSAGE_TYPE = "ui.event"
+
+#: Discriminator written into the ``data`` field of the
+#: ``RTVIServerMessageFrame`` that the bridge pushes for UI commands.
+#: Client-side dispatchers (``UIAgentClient.registerCommandHandler``)
+#: filter on this value before invoking the named handler.
+UI_COMMAND_MESSAGE_TYPE = "ui.command"
+
+
+@dataclass
+class BusUIEventMessage(BusDataMessage):
+    """A UI event sent from the client to a server-side agent.
+
+    Emitted by ``attach_ui_bridge`` when the client dispatches an event
+    via ``UIAgentClient.sendEvent(name, payload)``. ``UIAgent`` subclasses
+    dispatch these to ``@on_ui_event(name)`` handlers.
+
+    Parameters:
+        event_name: App-defined event name.
+        payload: App-defined payload. Schemaless by design.
+    """
+
+    event_name: str = ""
+    payload: Any = None
+
+
+@dataclass
+class BusUICommandMessage(BusDataMessage):
+    """A UI command sent from a server-side agent to the client.
+
+    Published by ``UIAgent.send_command(name, payload)``. The bridge
+    installed by ``attach_ui_bridge`` translates this to an
+    ``RTVIServerMessageFrame`` with ``data == {"type": "ui.command",
+    "name": command_name, "payload": payload}`` and pushes it through
+    the root agent's pipeline.
+
+    Parameters:
+        command_name: App-defined command name.
+        payload: App-defined payload (already a plain dict by the time
+            it lands on the bus).
+    """
+
+    command_name: str = ""
+    payload: Any = None
