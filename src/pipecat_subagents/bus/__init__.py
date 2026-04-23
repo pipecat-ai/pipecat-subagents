@@ -23,6 +23,8 @@ from pipecat_subagents.bus.bridge_processor import BusBridgeProcessor
 from pipecat_subagents.bus.bus import AgentBus
 from pipecat_subagents.bus.local import AsyncQueueBus
 from pipecat_subagents.bus.messages import (
+    UI_COMMAND_MESSAGE_TYPE,
+    UI_EVENT_MESSAGE_TYPE,
     BusActivateAgentMessage,
     BusAddAgentMessage,
     BusAgentErrorMessage,
@@ -49,28 +51,30 @@ from pipecat_subagents.bus.messages import (
     BusTaskUpdateMessage,
     BusTaskUpdateRequestMessage,
     BusTaskUpdateUrgentMessage,
+    BusUICommandMessage,
+    BusUIEventMessage,
 )
 from pipecat_subagents.bus.subscriber import BusSubscriber
 from pipecat_subagents.types import AgentRegistryEntry
 
 __all__ = [
     "AgentBus",
+    "AgentRegistryEntry",
     "AsyncQueueBus",
     "BusActivateAgentMessage",
     "BusAddAgentMessage",
     "BusAgentErrorMessage",
     "BusAgentLocalErrorMessage",
-    "AgentRegistryEntry",
     "BusAgentReadyMessage",
     "BusAgentRegistryMessage",
     "BusBridgeProcessor",
     "BusCancelAgentMessage",
     "BusCancelMessage",
+    "BusDataMessage",
     "BusDeactivateAgentMessage",
     "BusEndAgentMessage",
     "BusEndMessage",
     "BusFrameMessage",
-    "BusDataMessage",
     "BusLocalMessage",
     "BusMessage",
     "BusSubscriber",
@@ -85,4 +89,8 @@ __all__ = [
     "BusTaskUpdateMessage",
     "BusTaskUpdateRequestMessage",
     "BusTaskUpdateUrgentMessage",
+    "BusUICommandMessage",
+    "BusUIEventMessage",
+    "UI_COMMAND_MESSAGE_TYPE",
+    "UI_EVENT_MESSAGE_TYPE",
 ]

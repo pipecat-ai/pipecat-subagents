@@ -10,9 +10,9 @@ This package provides the core agent hierarchy:
 
 - `BaseAgent`: Base with bus integration, lifecycle, and optional bridged mode.
 - `LLMAgent`: Agent with an LLM pipeline and tool registration.
-
-`FlowsAgent` is provided in the ``pipecat_subagents.agents.flows`` subpackage
+- `FlowsAgent` is provided in the ``pipecat_subagents.agents.flows`` subpackage
 and requires the ``pipecat-ai-subagents[flows]`` optional dependency.
+- `UIAgent`: ``LLMAgent`` that dispatches UI events from the client.
 """
 
 from pipecat_subagents.agents.base_agent import AgentActivationArgs, BaseAgent
@@ -28,13 +28,27 @@ from pipecat_subagents.agents.task_context import (
     TaskStatus,
 )
 from pipecat_subagents.agents.task_decorator import task
+from pipecat_subagents.agents.ui_agent import UIAgent
+from pipecat_subagents.agents.ui_bridge import attach_ui_bridge
+from pipecat_subagents.agents.ui_commands import (
+    Focus,
+    Highlight,
+    Navigate,
+    ScrollTo,
+    Toast,
+)
+from pipecat_subagents.agents.ui_event_decorator import on_ui_event
 from pipecat_subagents.agents.watch_decorator import agent_ready
 
 __all__ = [
     "AgentActivationArgs",
     "BaseAgent",
-    "LLMAgentActivationArgs",
+    "Focus",
+    "Highlight",
     "LLMAgent",
+    "LLMAgentActivationArgs",
+    "Navigate",
+    "ScrollTo",
     "TaskContext",
     "TaskError",
     "TaskEvent",
@@ -43,7 +57,11 @@ __all__ = [
     "TaskGroupEvent",
     "TaskGroupResponse",
     "TaskStatus",
+    "Toast",
+    "UIAgent",
     "agent_ready",
+    "attach_ui_bridge",
+    "on_ui_event",
     "task",
     "tool",
 ]
