@@ -4,12 +4,12 @@
 # SPDX-License-Identifier: BSD 2-Clause License
 #
 
-"""Tests for opt-in tool mixins (``ScrollToToolMixin``)."""
+"""Tests for opt-in tool mixins (``ScrollToToolMixin``, ``HighlightToolMixin``)."""
 
 import unittest
 from unittest.mock import AsyncMock, MagicMock
 
-from pipecat_subagents.agents import ScrollToToolMixin, UIAgent
+from pipecat_subagents.agents import HighlightToolMixin, ScrollToToolMixin, UIAgent
 from pipecat_subagents.agents.tool_decorator import _collect_tools
 from pipecat_subagents.bus import AsyncQueueBus, BusUICommandMessage
 
@@ -19,13 +19,33 @@ class _AgentWithScrollTool(ScrollToToolMixin, UIAgent):
         return MagicMock()
 
 
-def _make_agent() -> _AgentWithScrollTool:
-    return _AgentWithScrollTool("ui", bus=AsyncQueueBus(), bridged=(), active=False)
+class _AgentWithHighlightTool(HighlightToolMixin, UIAgent):
+    def build_llm(self):
+        return MagicMock()
+
+
+class _AgentWithBothTools(ScrollToToolMixin, HighlightToolMixin, UIAgent):
+    def build_llm(self):
+        return MagicMock()
+
+
+def _new(cls: type) -> UIAgent:
+    return cls("ui", bus=AsyncQueueBus(), bridged=(), active=False)
+
+
+def _capture(agent: UIAgent) -> list[BusUICommandMessage]:
+    sent: list[BusUICommandMessage] = []
+
+    async def _record(message):
+        sent.append(message)
+
+    agent.bus.send = _record  # type: ignore[method-assign]
+    return sent
 
 
 class TestScrollToToolMixin(unittest.IsolatedAsyncioTestCase):
     async def test_mixin_exposes_scroll_to_tool(self):
-        agent = _make_agent()
+        agent = _new(_AgentWithScrollTool)
         tool_names = [t.__name__ for t in _collect_tools(agent)]
         self.assertIn("scroll_to", tool_names)
 
@@ -34,23 +54,18 @@ class TestScrollToToolMixin(unittest.IsolatedAsyncioTestCase):
             def build_llm(self):
                 return MagicMock()
 
-        agent = PlainAgent("ui", bus=AsyncQueueBus(), bridged=(), active=False)
+        agent = _new(PlainAgent)
         tool_names = [t.__name__ for t in _collect_tools(agent)]
         self.assertNotIn("scroll_to", tool_names)
 
     async def test_scroll_to_dispatches_command_with_ref(self):
-        agent = _make_agent()
-        sent: list[BusUICommandMessage] = []
-
-        async def _record(message):
-            sent.append(message)
-
-        agent.bus.send = _record  # type: ignore[method-assign]
+        agent = _new(_AgentWithScrollTool)
+        sent = _capture(agent)
 
         params = MagicMock()
         params.result_callback = AsyncMock()
 
-        await agent.scroll_to(params, ref="e42")
+        await agent.scroll_to(params, ref="e42")  # type: ignore[attr-defined]
 
         self.assertEqual(len(sent), 1)
         msg = sent[0]
@@ -58,6 +73,48 @@ class TestScrollToToolMixin(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(msg.command_name, "scroll_to")
         self.assertEqual(msg.payload, {"ref": "e42", "target_id": None, "behavior": None})
         params.result_callback.assert_awaited_once_with(None)
+
+
+class TestHighlightToolMixin(unittest.IsolatedAsyncioTestCase):
+    async def test_mixin_exposes_highlight_tool(self):
+        agent = _new(_AgentWithHighlightTool)
+        tool_names = [t.__name__ for t in _collect_tools(agent)]
+        self.assertIn("highlight", tool_names)
+
+    async def test_plain_uiagent_has_no_highlight_tool(self):
+        class PlainAgent(UIAgent):
+            def build_llm(self):
+                return MagicMock()
+
+        agent = _new(PlainAgent)
+        tool_names = [t.__name__ for t in _collect_tools(agent)]
+        self.assertNotIn("highlight", tool_names)
+
+    async def test_highlight_dispatches_command_with_ref(self):
+        agent = _new(_AgentWithHighlightTool)
+        sent = _capture(agent)
+
+        params = MagicMock()
+        params.result_callback = AsyncMock()
+
+        await agent.highlight(params, ref="e7")  # type: ignore[attr-defined]
+
+        self.assertEqual(len(sent), 1)
+        msg = sent[0]
+        self.assertEqual(msg.command_name, "highlight")
+        self.assertEqual(
+            msg.payload,
+            {"ref": "e7", "target_id": None, "duration_ms": None},
+        )
+        params.result_callback.assert_awaited_once_with(None)
+
+
+class TestCombinedMixins(unittest.IsolatedAsyncioTestCase):
+    async def test_both_mixins_expose_both_tools(self):
+        agent = _new(_AgentWithBothTools)
+        tool_names = [t.__name__ for t in _collect_tools(agent)]
+        self.assertIn("scroll_to", tool_names)
+        self.assertIn("highlight", tool_names)
 
 
 if __name__ == "__main__":
