@@ -39,7 +39,7 @@ from pipecat_subagents.agents.ui_commands import (
 )
 from pipecat_subagents.agents.ui_event_decorator import on_ui_event
 from pipecat_subagents.agents.ui_prompts import UI_STATE_PROMPT_GUIDE
-from pipecat_subagents.agents.ui_tools import ScrollToToolMixin
+from pipecat_subagents.agents.ui_tools import HighlightToolMixin, ScrollToToolMixin
 from pipecat_subagents.agents.watch_decorator import agent_ready
 
 __all__ = [
@@ -47,6 +47,7 @@ __all__ = [
     "BaseAgent",
     "Focus",
     "Highlight",
+    "HighlightToolMixin",
     "LLMAgent",
     "LLMAgentActivationArgs",
     "Navigate",

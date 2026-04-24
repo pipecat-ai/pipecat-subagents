@@ -23,7 +23,7 @@ from loguru import logger
 from pipecat.services.llm_service import FunctionCallParams
 
 from pipecat_subagents.agents.tool_decorator import tool
-from pipecat_subagents.agents.ui_commands import ScrollTo
+from pipecat_subagents.agents.ui_commands import Highlight, ScrollTo
 
 
 class ScrollToToolMixin:
@@ -60,4 +60,38 @@ class ScrollToToolMixin:
         """
         logger.info(f"{self}: scroll_to(ref={ref!r})")
         await self.send_command("scroll_to", ScrollTo(ref=ref))  # type: ignore[attr-defined]
+        await params.result_callback(None)
+
+
+class HighlightToolMixin:
+    """Expose a ``highlight(ref)`` tool to the LLM.
+
+    Inherit alongside ``UIAgent``. Gives the LLM a way to visually
+    point at a specific element on screen, e.g. answering "which one
+    is Radiohead?" by flashing the tile. The tool issues a standard
+    ``Highlight`` command via the UI command pipe; the client's
+    ``useStandardHighlightHandler`` (or a custom one) does the
+    actual visual effect.
+
+    The host class must provide ``send_command(name, payload)``
+    (``UIAgent`` does) and must be the target of ``@tool`` discovery
+    on the LLM pipeline.
+    """
+
+    @tool
+    async def highlight(self, params: FunctionCallParams, ref: str):
+        """Briefly flash an element on screen by its snapshot ref.
+
+        Use this when the user asks you to point at, identify, or
+        call attention to a specific element they'd recognize
+        visually. After the flash, the element returns to its
+        normal appearance.
+
+        Args:
+            params: Framework-provided tool invocation context.
+            ref: Ref string from the most recent ``<ui_state>``,
+                e.g. ``"e42"``.
+        """
+        logger.info(f"{self}: highlight(ref={ref!r})")
+        await self.send_command("highlight", Highlight(ref=ref))  # type: ignore[attr-defined]
         await params.result_callback(None)
