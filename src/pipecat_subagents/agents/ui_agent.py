@@ -13,6 +13,7 @@ from abc import abstractmethod
 from dataclasses import asdict, is_dataclass
 from typing import Any
 
+from loguru import logger
 from pipecat.frames.frames import LLMMessagesAppendFrame
 from pipecat.services.llm_service import LLMService
 
@@ -71,6 +72,7 @@ class UIAgent(LLMAgent):
         bridged: tuple[str, ...] | None = None,
         inject_events: bool = True,
         auto_inject_ui_state: bool = True,
+        log_snapshots: bool = False,
     ):
         """Initialize the UIAgent.
 
@@ -88,10 +90,17 @@ class UIAgent(LLMAgent):
                 at the start of every task request, so the agent always
                 reasons over the current screen. Set to False if you
                 want to call ``inject_ui_state()`` yourself.
+            log_snapshots: When True, emit a ``logger.debug`` line on
+                every accessibility snapshot received, with node
+                count, rendered size, token estimate, and the full
+                rendered ``<ui_state>`` text. Useful in dev / staging
+                for eyeballing what the LLM will see. Defaults to
+                False.
         """
         super().__init__(name, bus=bus, active=active, bridged=bridged)
         self._inject_events = inject_events
         self._auto_inject_ui_state = auto_inject_ui_state
+        self._log_snapshots = log_snapshots
         self._ui_event_handlers = _collect_ui_event_handlers(self)
         # Latest accessibility snapshot received from the client. Updated
         # in ``on_bus_message`` when a ``__ui_snapshot`` event arrives.
@@ -157,6 +166,8 @@ class UIAgent(LLMAgent):
         if message.event_name == UI_SNAPSHOT_EVENT_NAME:
             if isinstance(message.payload, dict):
                 self._latest_snapshot = message.payload
+                if self._log_snapshots:
+                    self._log_snapshot()
             return
 
         await self._handle_ui_event(message)
@@ -213,6 +224,28 @@ class UIAgent(LLMAgent):
         out: list[dict[str, Any]] = []
         _collect_visible(root, out)
         return out
+
+    def _log_snapshot(self) -> None:
+        """Emit a single debug line summarizing the stored snapshot.
+
+        Called from ``on_bus_message`` when ``log_snapshots=True``.
+        Emits node count, rendered size, rough token estimate, and
+        the full rendered ``<ui_state>`` so developers can eyeball
+        what the LLM will see on the next inject.
+        """
+        snap = self._latest_snapshot
+        if not snap:
+            return
+        root = snap.get("root")
+        node_count = _count_nodes(root if isinstance(root, dict) else None)
+        rendered = self.render_ui_state()
+        char_count = len(rendered)
+        est_tokens = char_count // 4
+        logger.debug(
+            f"UIAgent '{self.name}': a11y snapshot received "
+            f"({node_count} nodes, {char_count} chars, ~{est_tokens} tokens)\n"
+            f"{rendered}"
+        )
 
     async def inject_ui_state(self) -> None:
         """Append the latest ``<ui_state>`` block to the LLM context.
@@ -278,6 +311,18 @@ class UIAgent(LLMAgent):
             handler(message),
             f"{self.name}::ui_event_{message.event_name}",
         )
+
+
+def _count_nodes(node: dict[str, Any] | None) -> int:
+    """Count every node in a snapshot tree, including the root."""
+    if not isinstance(node, dict):
+        return 0
+    count = 1
+    children = node.get("children")
+    if isinstance(children, list):
+        for child in children:
+            count += _count_nodes(child)
+    return count
 
 
 def _collect_visible(node: dict[str, Any], out: list[dict[str, Any]]) -> None:
