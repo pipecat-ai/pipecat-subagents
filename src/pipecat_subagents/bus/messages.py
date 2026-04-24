@@ -424,6 +424,13 @@ UI_EVENT_MESSAGE_TYPE = "ui.event"
 #: filter on this value before invoking the named handler.
 UI_COMMAND_MESSAGE_TYPE = "ui.command"
 
+#: Reserved ``event_name`` on a ``BusUIEventMessage`` that carries an
+#: accessibility snapshot from the client. ``UIAgent`` stores the
+#: payload in ``_latest_snapshot`` without dispatching to
+#: ``@on_ui_event`` handlers or injecting ``<ui_event>`` into LLM
+#: context. The underscore prefix marks the name as SDK-internal.
+UI_SNAPSHOT_EVENT_NAME = "__ui_snapshot"
+
 
 @dataclass
 class BusUIEventMessage(BusDataMessage):

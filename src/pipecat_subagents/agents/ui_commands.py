@@ -57,38 +57,50 @@ class Navigate:
 
 @dataclass
 class ScrollTo:
-    """Scroll a registered element into view.
+    """Scroll a target element into view.
+
+    The client resolves the target by ``ref`` first (a snapshot ref
+    like ``"e42"`` assigned by the a11y walker), then falls back to
+    ``target_id`` (``document.getElementById``). Supply whichever you
+    have; ``ref`` is the normal choice when acting on a node from
+    ``<ui_state>``.
 
     Parameters:
-        target_id: The element id registered on the client.
+        ref: Snapshot ref from ``<ui_state>``.
+        target_id: Element id registered on the client.
         behavior: Optional scroll behavior hint. Typical values:
             ``"smooth"`` or ``"instant"``. Clients may ignore.
     """
 
-    target_id: str
+    ref: str | None = None
+    target_id: str | None = None
     behavior: str | None = None
 
 
 @dataclass
 class Highlight:
-    """Briefly emphasize a registered element (flash, glow, pulse).
+    """Briefly emphasize a target element (flash, glow, pulse).
 
     Parameters:
-        target_id: The element id registered on the client.
+        ref: Snapshot ref from ``<ui_state>``.
+        target_id: Element id registered on the client.
         duration_ms: Optional highlight duration. Client default
             applies when None.
     """
 
-    target_id: str
+    ref: str | None = None
+    target_id: str | None = None
     duration_ms: int | None = None
 
 
 @dataclass
 class Focus:
-    """Move input focus to a registered element.
+    """Move input focus to a target element.
 
     Parameters:
-        target_id: The element id registered on the client.
+        ref: Snapshot ref from ``<ui_state>``.
+        target_id: Element id registered on the client.
     """
 
-    target_id: str
+    ref: str | None = None
+    target_id: str | None = None
