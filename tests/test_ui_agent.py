@@ -20,6 +20,7 @@ from pipecat_subagents.agents.llm_agent import PipelineFlushFrame
 from pipecat_subagents.bus import (
     UI_SNAPSHOT_EVENT_NAME,
     AsyncQueueBus,
+    BusTaskRequestMessage,
     BusUIEventMessage,
 )
 
@@ -526,6 +527,59 @@ class TestUIAgentSnapshot(unittest.IsolatedAsyncioTestCase):
         # too.
         self.assertNotIn("e4", refs)
         self.assertIn("e5", refs)
+
+
+class TestUIAgentAutoInject(unittest.IsolatedAsyncioTestCase):
+    async def test_on_task_request_auto_injects_latest_snapshot(self):
+        agent = await _make_agent()
+        agent._latest_snapshot = _SAMPLE_SNAPSHOT
+
+        await agent.on_task_request(
+            BusTaskRequestMessage(
+                source="voice",
+                target="ui",
+                task_name="handle_request",
+                task_id="t1",
+                payload={"query": "hi"},
+            )
+        )
+
+        frames = _append_frames(agent)
+        self.assertEqual(len(frames), 1)
+        msg = frames[0].messages[0]
+        self.assertEqual(msg["role"], "developer")
+        self.assertTrue(msg["content"].startswith("<ui_state>"))
+        self.assertFalse(frames[0].run_llm)
+
+    async def test_auto_inject_ui_state_false_suppresses_injection(self):
+        agent = await _make_agent(auto_inject_ui_state=False)
+        agent._latest_snapshot = _SAMPLE_SNAPSHOT
+
+        await agent.on_task_request(
+            BusTaskRequestMessage(
+                source="voice",
+                target="ui",
+                task_name="handle_request",
+                task_id="t1",
+                payload={"query": "hi"},
+            )
+        )
+
+        self.assertEqual(_append_frames(agent), [])
+
+    async def test_auto_inject_no_op_without_snapshot(self):
+        agent = await _make_agent()
+        # No _latest_snapshot set.
+        await agent.on_task_request(
+            BusTaskRequestMessage(
+                source="voice",
+                target="ui",
+                task_name="handle_request",
+                task_id="t1",
+                payload={"query": "hi"},
+            )
+        )
+        self.assertEqual(_append_frames(agent), [])
 
 
 if __name__ == "__main__":
