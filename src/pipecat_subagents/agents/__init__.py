@@ -38,6 +38,7 @@ from pipecat_subagents.agents.ui_commands import (
     Toast,
 )
 from pipecat_subagents.agents.ui_event_decorator import on_ui_event
+from pipecat_subagents.agents.ui_prompts import UI_STATE_PROMPT_GUIDE
 from pipecat_subagents.agents.watch_decorator import agent_ready
 
 __all__ = [
@@ -59,6 +60,7 @@ __all__ = [
     "TaskStatus",
     "Toast",
     "UIAgent",
+    "UI_STATE_PROMPT_GUIDE",
     "agent_ready",
     "attach_ui_bridge",
     "on_ui_event",
