@@ -25,6 +25,7 @@ from pipecat_subagents.bus.local import AsyncQueueBus
 from pipecat_subagents.bus.messages import (
     UI_COMMAND_MESSAGE_TYPE,
     UI_EVENT_MESSAGE_TYPE,
+    UI_SNAPSHOT_EVENT_NAME,
     BusActivateAgentMessage,
     BusAddAgentMessage,
     BusAgentErrorMessage,
@@ -93,4 +94,5 @@ __all__ = [
     "BusUIEventMessage",
     "UI_COMMAND_MESSAGE_TYPE",
     "UI_EVENT_MESSAGE_TYPE",
+    "UI_SNAPSHOT_EVENT_NAME",
 ]

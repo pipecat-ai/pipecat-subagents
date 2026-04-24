@@ -115,23 +115,45 @@ class TestStandardCommands(unittest.IsolatedAsyncioTestCase):
         await agent.send_command("navigate", Navigate(view="detail", params={"id": "42"}))
         self.assertEqual(sent[0].payload, {"view": "detail", "params": {"id": "42"}})
 
-    async def test_scroll_to_payload_shape(self):
+    async def test_scroll_to_payload_shape_by_target_id(self):
         agent, sent = _make_agent()
         await agent.send_command("scroll_to", ScrollTo(target_id="new_releases", behavior="smooth"))
         self.assertEqual(
             sent[0].payload,
-            {"target_id": "new_releases", "behavior": "smooth"},
+            {"ref": None, "target_id": "new_releases", "behavior": "smooth"},
+        )
+
+    async def test_scroll_to_payload_shape_by_ref(self):
+        agent, sent = _make_agent()
+        await agent.send_command("scroll_to", ScrollTo(ref="e42", behavior="smooth"))
+        self.assertEqual(
+            sent[0].payload,
+            {"ref": "e42", "target_id": None, "behavior": "smooth"},
         )
 
     async def test_highlight_payload_shape(self):
         agent, sent = _make_agent()
         await agent.send_command("highlight", Highlight(target_id="play_btn", duration_ms=1000))
-        self.assertEqual(sent[0].payload, {"target_id": "play_btn", "duration_ms": 1000})
+        self.assertEqual(
+            sent[0].payload,
+            {"ref": None, "target_id": "play_btn", "duration_ms": 1000},
+        )
 
     async def test_focus_payload_shape(self):
         agent, sent = _make_agent()
         await agent.send_command("focus", Focus(target_id="search_input"))
-        self.assertEqual(sent[0].payload, {"target_id": "search_input"})
+        self.assertEqual(
+            sent[0].payload,
+            {"ref": None, "target_id": "search_input"},
+        )
+
+    async def test_focus_payload_shape_by_ref(self):
+        agent, sent = _make_agent()
+        await agent.send_command("focus", Focus(ref="e7"))
+        self.assertEqual(
+            sent[0].payload,
+            {"ref": "e7", "target_id": None},
+        )
 
 
 class TestMessageTypeConstant(unittest.TestCase):

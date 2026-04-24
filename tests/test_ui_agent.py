@@ -17,7 +17,11 @@ from pipecat.utils.asyncio.task_manager import TaskManager, TaskManagerParams
 
 from pipecat_subagents.agents import UIAgent, on_ui_event
 from pipecat_subagents.agents.llm_agent import PipelineFlushFrame
-from pipecat_subagents.bus import AsyncQueueBus, BusUIEventMessage
+from pipecat_subagents.bus import (
+    UI_SNAPSHOT_EVENT_NAME,
+    AsyncQueueBus,
+    BusUIEventMessage,
+)
 
 
 class _StubUIAgent(UIAgent):
@@ -280,6 +284,248 @@ class TestUIAgentInjection(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertEqual(_append_frames(agent), [])
+
+
+_SAMPLE_SNAPSHOT = {
+    "root": {
+        "ref": "e1",
+        "role": "generic",
+        "children": [
+            {
+                "ref": "e2",
+                "role": "main",
+                "children": [
+                    {
+                        "ref": "e3",
+                        "role": "heading",
+                        "name": "Home",
+                        "level": 1,
+                    },
+                    {
+                        "ref": "e4",
+                        "role": "region",
+                        "name": "Trending artists",
+                        "children": [
+                            {
+                                "ref": "e5",
+                                "role": "button",
+                                "name": "Bad Bunny",
+                            },
+                            {
+                                "ref": "e6",
+                                "role": "button",
+                                "name": "Taylor Swift",
+                                "state": ["focused"],
+                            },
+                        ],
+                    },
+                ],
+            },
+        ],
+    },
+    "captured_at": 1700000000000,
+}
+
+
+class TestUIAgentSnapshot(unittest.IsolatedAsyncioTestCase):
+    async def test_reserved_snapshot_event_stored_without_dispatch(self):
+        agent = await _make_agent()
+
+        await _dispatch(
+            agent,
+            BusUIEventMessage(
+                source="music",
+                target="ui",
+                event_name=UI_SNAPSHOT_EVENT_NAME,
+                payload=_SAMPLE_SNAPSHOT,
+            ),
+        )
+
+        # Snapshot stored.
+        self.assertEqual(agent._latest_snapshot, _SAMPLE_SNAPSHOT)
+        # No handler dispatch for the reserved event.
+        self.assertEqual(agent.captured, [])
+        # No <ui_event> injection either.
+        self.assertEqual(_append_frames(agent), [])
+
+    async def test_non_dict_snapshot_payload_is_ignored(self):
+        agent = await _make_agent()
+
+        await _dispatch(
+            agent,
+            BusUIEventMessage(
+                source="music",
+                target="ui",
+                event_name=UI_SNAPSHOT_EVENT_NAME,
+                payload="not a snapshot",
+            ),
+        )
+
+        self.assertIsNone(agent._latest_snapshot)
+
+    async def test_render_ui_state_empty_without_snapshot(self):
+        agent = await _make_agent()
+        self.assertEqual(agent.render_ui_state(), "")
+
+    async def test_render_ui_state_produces_indented_block(self):
+        agent = await _make_agent()
+        agent._latest_snapshot = _SAMPLE_SNAPSHOT
+
+        rendered = agent.render_ui_state()
+
+        # Wrapped in ui_state tags.
+        self.assertTrue(rendered.startswith("<ui_state>\n"))
+        self.assertTrue(rendered.endswith("\n</ui_state>"))
+
+        # Check specific shape: role, name, level, state, ref, hierarchy.
+        self.assertIn("- generic [ref=e1]:", rendered)
+        self.assertIn("- main [ref=e2]:", rendered)
+        self.assertIn('- heading "Home" [level=1] [ref=e3]', rendered)
+        self.assertIn('- region "Trending artists" [ref=e4]:', rendered)
+        self.assertIn('- button "Bad Bunny" [ref=e5]', rendered)
+        self.assertIn('- button "Taylor Swift" [focused] [ref=e6]', rendered)
+
+        # Indent depth: main is 1 level in (2 spaces), heading is 2 in (4 spaces),
+        # button in region is 3 in (6 spaces).
+        self.assertIn("  - main", rendered)
+        self.assertIn("    - heading", rendered)
+        self.assertIn("      - button", rendered)
+
+    async def test_inject_ui_state_queues_expected_frame(self):
+        agent = await _make_agent()
+        agent._latest_snapshot = _SAMPLE_SNAPSHOT
+
+        await agent.inject_ui_state()
+
+        frames = _append_frames(agent)
+        self.assertEqual(len(frames), 1)
+        frame = frames[0]
+        self.assertFalse(frame.run_llm)
+        self.assertEqual(len(frame.messages), 1)
+        msg = frame.messages[0]
+        self.assertEqual(msg["role"], "developer")
+        self.assertTrue(msg["content"].startswith("<ui_state>"))
+        self.assertTrue(msg["content"].endswith("</ui_state>"))
+
+    async def test_inject_ui_state_no_op_without_snapshot(self):
+        agent = await _make_agent()
+
+        await agent.inject_ui_state()
+
+        self.assertEqual(_append_frames(agent), [])
+
+    async def test_render_emits_grid_dims(self):
+        agent = await _make_agent()
+        agent._latest_snapshot = {
+            "root": {
+                "ref": "e1",
+                "role": "generic",
+                "children": [
+                    {
+                        "ref": "e2",
+                        "role": "grid",
+                        "name": "Trending artists",
+                        "colcount": 8,
+                        "rowcount": 2,
+                        "children": [
+                            {"ref": "e3", "role": "button", "name": "Bad Bunny"},
+                        ],
+                    },
+                ],
+            },
+            "captured_at": 1700000000000,
+        }
+
+        rendered = agent.render_ui_state()
+
+        self.assertIn(
+            '- grid "Trending artists" [cols=8] [rows=2] [ref=e2]',
+            rendered,
+        )
+
+    async def test_render_preserves_offscreen_tag(self):
+        agent = await _make_agent()
+        agent._latest_snapshot = {
+            "root": {
+                "ref": "e1",
+                "role": "generic",
+                "children": [
+                    {
+                        "ref": "e2",
+                        "role": "button",
+                        "name": "Visible",
+                    },
+                    {
+                        "ref": "e3",
+                        "role": "button",
+                        "name": "Below fold",
+                        "state": ["offscreen"],
+                    },
+                ],
+            },
+            "captured_at": 1700000000000,
+        }
+
+        rendered = agent.render_ui_state()
+
+        self.assertIn('- button "Visible" [ref=e2]', rendered)
+        self.assertIn('- button "Below fold" [offscreen] [ref=e3]', rendered)
+
+    async def test_visible_nodes_empty_without_snapshot(self):
+        agent = await _make_agent()
+        self.assertEqual(agent.visible_nodes(), [])
+
+    async def test_visible_nodes_filters_offscreen_entries(self):
+        agent = await _make_agent()
+        agent._latest_snapshot = {
+            "root": {
+                "ref": "e1",
+                "role": "generic",
+                "children": [
+                    {
+                        "ref": "e2",
+                        "role": "button",
+                        "name": "Visible",
+                    },
+                    {
+                        "ref": "e3",
+                        "role": "button",
+                        "name": "Below fold",
+                        "state": ["offscreen"],
+                    },
+                    {
+                        "ref": "e4",
+                        "role": "region",
+                        "name": "Tracks",
+                        "state": ["offscreen"],
+                        "children": [
+                            {
+                                "ref": "e5",
+                                "role": "button",
+                                "name": "Bloom",
+                            },
+                        ],
+                    },
+                ],
+            },
+            "captured_at": 1700000000000,
+        }
+
+        visible = agent.visible_nodes()
+        refs = [n["ref"] for n in visible]
+
+        # Root and the visible button come through.
+        self.assertIn("e1", refs)
+        self.assertIn("e2", refs)
+        # The offscreen sibling is filtered.
+        self.assertNotIn("e3", refs)
+        # A parent tagged offscreen is filtered, but descendants that
+        # are NOT themselves tagged are still surfaced (ordering follows
+        # the snapshot). This matches "offscreen is node-local" — if
+        # the agent wants to hide a subtree it needs to tag children
+        # too.
+        self.assertNotIn("e4", refs)
+        self.assertIn("e5", refs)
 
 
 if __name__ == "__main__":
