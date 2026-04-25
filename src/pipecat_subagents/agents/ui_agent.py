@@ -18,6 +18,7 @@ from pipecat.frames.frames import LLMMessagesAppendFrame
 from pipecat.services.llm_service import LLMService
 
 from pipecat_subagents.agents.llm_agent import LLMAgent
+from pipecat_subagents.agents.task_context import TaskStatus
 from pipecat_subagents.agents.ui_event_decorator import _collect_ui_event_handlers
 from pipecat_subagents.bus import AgentBus
 from pipecat_subagents.bus.messages import (
@@ -106,6 +107,11 @@ class UIAgent(LLMAgent):
         # in ``on_bus_message`` when a ``__ui_snapshot`` event arrives.
         # Rendered into LLM context via ``inject_ui_state``.
         self._latest_snapshot: dict[str, Any] | None = None
+        # Task currently being processed by this agent. Set in
+        # ``on_task_request``, cleared by ``respond_to_task``. Lets
+        # ``@tool`` methods (and the mixin tools) close out the task
+        # without having to thread the task id through every call.
+        self._current_task: BusTaskRequestMessage | None = None
 
     @abstractmethod
     def build_llm(self) -> LLMService:
@@ -172,17 +178,74 @@ class UIAgent(LLMAgent):
 
         await self._handle_ui_event(message)
 
+    @property
+    def current_task(self) -> BusTaskRequestMessage | None:
+        """The task this agent is currently processing, or ``None`` when idle.
+
+        Set when ``on_task_request`` runs and cleared by
+        ``respond_to_task``. Lets ``@tool`` methods inspect the
+        in-flight task without threading the message through every
+        call.
+        """
+        return self._current_task
+
     async def on_task_request(self, message: BusTaskRequestMessage) -> None:
         """Auto-inject the latest ``<ui_state>`` before task dispatch.
 
-        Runs before the LLM sees the task payload, so the agent
-        always reasons over the current screen. Disable via
-        ``auto_inject_ui_state=False`` if the app wants to drive
-        injection manually.
+        Records the in-flight task for ``respond_to_task`` to close
+        out, then injects the current snapshot so the agent always
+        reasons over the current screen. Disable the snapshot
+        injection via ``auto_inject_ui_state=False`` if the app wants
+        to drive injection manually.
         """
         await super().on_task_request(message)
+        self._current_task = message
         if self._auto_inject_ui_state:
             await self.inject_ui_state()
+
+    async def respond_to_task(
+        self,
+        response: dict | None = None,
+        *,
+        speak: str | None = None,
+        status: TaskStatus = TaskStatus.COMPLETED,
+    ) -> None:
+        """Complete the in-flight task this agent is processing.
+
+        Convenience wrapper around ``send_task_response`` that looks up
+        the current task from ``current_task``. Clears
+        ``current_task`` after the response is sent so a second call
+        is a no-op.
+
+        ``speak`` is the convention the SDK demos use for "text the
+        voice agent should hand verbatim to TTS". When provided it's
+        merged into the response dict as ``{"speak": speak}``.
+        Apps that don't follow the convention can pass a fully formed
+        ``response`` dict instead and leave ``speak`` unset.
+
+        No-op when there is no task in flight (e.g. the tool was
+        invoked outside a task dispatch).
+
+        Args:
+            response: Result data dict. Merged with the ``speak`` key
+                when ``speak`` is provided.
+            speak: Optional short text for verbatim TTS. Omit (or pass
+                ``None``) to leave the response without a ``speak``
+                key, signaling to the voice agent that this turn
+                completes silently.
+            status: Completion status. Defaults to
+                ``TaskStatus.COMPLETED``.
+        """
+        message = self._current_task
+        if message is None:
+            return
+        self._current_task = None
+        payload: dict = dict(response) if response else {}
+        if speak is not None:
+            payload["speak"] = speak
+        await self.send_task_response(
+            message.task_id, response=payload, status=status
+        )
 
     def render_ui_state(self) -> str:
         """Render the latest accessibility snapshot as a ``<ui_state>`` block.

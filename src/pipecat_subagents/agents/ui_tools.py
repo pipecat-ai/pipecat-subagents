@@ -15,6 +15,21 @@ inheriting alongside their ``UIAgent`` subclass::
 Keeping these as separate mixins (instead of methods on ``UIAgent``)
 means apps opt in to what the LLM sees: a single-screen app with no
 scrolling shouldn't have a ``scroll_to`` tool cluttering its tool list.
+
+The shipped mixin tools are **silent fire-and-forget side effects**:
+they dispatch a UI command via ``send_command``, complete the
+in-flight task via ``respond_to_task()`` with no ``speak`` field,
+and exit. The visual change on the client (the scroll, the highlight)
+is the user-facing feedback; the voice agent stays quiet for that
+turn. Apps that want spoken narration override the mixin tool and
+pass a ``speak`` argument::
+
+    class MyAgent(ScrollToToolMixin, UIAgent):
+        @tool
+        async def scroll_to(self, params, ref: str):
+            await self.send_command("scroll_to", ScrollTo(ref=ref))
+            await self.respond_to_task(speak="Scrolling.")
+            await params.result_callback(None)
 """
 
 from __future__ import annotations
@@ -36,9 +51,9 @@ class ScrollToToolMixin:
     the client's ``useStandardScrollToHandler`` (or any custom
     handler) does the actual scrolling.
 
-    The host class must provide ``send_command(name, payload)``
-    (``UIAgent`` does) and must be the target of ``@tool`` discovery
-    on the LLM pipeline.
+    The host class must provide ``send_command(name, payload)`` and
+    ``respond_to_task(...)`` (``UIAgent`` does) and must be the
+    target of ``@tool`` discovery on the LLM pipeline.
     """
 
     @tool
@@ -60,6 +75,7 @@ class ScrollToToolMixin:
         """
         logger.info(f"{self}: scroll_to(ref={ref!r})")
         await self.send_command("scroll_to", ScrollTo(ref=ref))  # type: ignore[attr-defined]
+        await self.respond_to_task()  # type: ignore[attr-defined]
         await params.result_callback(None)
 
 
@@ -73,9 +89,9 @@ class HighlightToolMixin:
     ``useStandardHighlightHandler`` (or a custom one) does the
     actual visual effect.
 
-    The host class must provide ``send_command(name, payload)``
-    (``UIAgent`` does) and must be the target of ``@tool`` discovery
-    on the LLM pipeline.
+    The host class must provide ``send_command(name, payload)`` and
+    ``respond_to_task(...)`` (``UIAgent`` does) and must be the
+    target of ``@tool`` discovery on the LLM pipeline.
     """
 
     @tool
@@ -94,4 +110,5 @@ class HighlightToolMixin:
         """
         logger.info(f"{self}: highlight(ref={ref!r})")
         await self.send_command("highlight", Highlight(ref=ref))  # type: ignore[attr-defined]
+        await self.respond_to_task()  # type: ignore[attr-defined]
         await params.result_callback(None)

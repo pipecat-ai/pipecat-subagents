@@ -582,5 +582,72 @@ class TestUIAgentAutoInject(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(_append_frames(agent), [])
 
 
+class TestUIAgentRespondToTask(unittest.IsolatedAsyncioTestCase):
+    async def test_current_task_tracks_in_flight_request(self):
+        agent = await _make_agent()
+        self.assertIsNone(agent.current_task)
+        message = BusTaskRequestMessage(
+            source="voice",
+            target="ui",
+            task_name="handle_request",
+            task_id="t1",
+            payload={"query": "hi"},
+        )
+        await agent.on_task_request(message)
+        self.assertIs(agent.current_task, message)
+
+    async def test_respond_to_task_clears_current_and_sends_response(self):
+        agent = await _make_agent()
+        agent.send_task_response = AsyncMock()
+        message = BusTaskRequestMessage(
+            source="voice",
+            target="ui",
+            task_name="handle_request",
+            task_id="t1",
+        )
+        await agent.on_task_request(message)
+
+        await agent.respond_to_task(speak="hello")
+
+        agent.send_task_response.assert_awaited_once()
+        call = agent.send_task_response.await_args
+        self.assertEqual(call.args[0], "t1")
+        self.assertEqual(call.kwargs["response"], {"speak": "hello"})
+        self.assertIsNone(agent.current_task)
+
+    async def test_respond_to_task_no_op_when_idle(self):
+        agent = await _make_agent()
+        agent.send_task_response = AsyncMock()
+        # No on_task_request first; agent is idle.
+        await agent.respond_to_task(speak="hello")
+        agent.send_task_response.assert_not_awaited()
+
+    async def test_respond_to_task_omits_speak_when_none(self):
+        agent = await _make_agent()
+        agent.send_task_response = AsyncMock()
+        await agent.on_task_request(
+            BusTaskRequestMessage(source="voice", target="ui", task_id="t1")
+        )
+
+        await agent.respond_to_task()
+
+        call = agent.send_task_response.await_args
+        self.assertEqual(call.kwargs["response"], {})
+
+    async def test_respond_to_task_merges_speak_into_response(self):
+        agent = await _make_agent()
+        agent.send_task_response = AsyncMock()
+        await agent.on_task_request(
+            BusTaskRequestMessage(source="voice", target="ui", task_id="t1")
+        )
+
+        await agent.respond_to_task({"description": "scrolled"}, speak="ok")
+
+        call = agent.send_task_response.await_args
+        self.assertEqual(
+            call.kwargs["response"], {"description": "scrolled", "speak": "ok"}
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
