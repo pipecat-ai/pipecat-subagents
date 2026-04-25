@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- towncrier release notes start -->
 
+## [Unreleased]
+
+### Added
+
+- **UI Agent protocol (v1).** First-class support for AI agents that observe
+  and drive a GUI app through a structured wire format.
+  - New `UIAgent` class (`LLMAgent` subclass) that dispatches client UI
+    events to `@on_ui_event(name)` handlers, stores the latest
+    accessibility snapshot received from the client, and auto-injects it
+    as `<ui_state>` into the LLM's context at the start of every task.
+  - New `respond_to_task(response=None, *, speak=None, status=...)`
+    helper on `UIAgent` that completes the in-flight task without the
+    caller having to thread the `task_id` through every call. Pairs with
+    a `current_task` property for tools that need to inspect the
+    request.
+  - New `send_command(name, payload)` for server-to-client UI commands.
+    Standard payload dataclasses (`Toast`, `Navigate`, `ScrollTo`,
+    `Highlight`, `Focus`) match the client's default React handlers; apps
+    can also publish their own command names freely.
+  - New opt-in tool mixins (`ScrollToToolMixin`, `HighlightToolMixin`)
+    that ship `scroll_to(ref)` and `highlight(ref)` LLM tools as silent
+    fire-and-forget side effects (the visual change on the client is
+    the user-facing feedback). Apps override the tool to add narration.
+  - New `attach_ui_bridge(root_agent)` that wires the RTVI client-message
+    channel to the agent bus in both directions: `ui.event` from the
+    client becomes `BusUIEventMessage`, and `BusUICommandMessage` from
+    the agent becomes an `RTVIServerMessageFrame` to the client.
+  - New `UI_STATE_PROMPT_GUIDE` constant: canonical prompt fragment that
+    documents the `<ui_state>` / `<ui_event>` wire format to the LLM.
+    Apps concatenate it into their system prompt.
+  - New bus message types `BusUIEventMessage` and `BusUICommandMessage`,
+    plus the `UI_EVENT_MESSAGE_TYPE`, `UI_COMMAND_MESSAGE_TYPE`, and
+    `UI_SNAPSHOT_EVENT_NAME` constants.
+
 ## [0.4.0] - 2026-04-20
 
 ### Changed
