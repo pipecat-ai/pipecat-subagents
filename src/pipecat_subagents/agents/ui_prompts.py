@@ -23,7 +23,6 @@ The SDK updates the guide alongside the wire format, so apps get
 new tags and semantics automatically on the next release.
 """
 
-
 UI_STATE_PROMPT_GUIDE: str = """\
 ## UI context
 
