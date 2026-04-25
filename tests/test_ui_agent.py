@@ -644,9 +644,7 @@ class TestUIAgentRespondToTask(unittest.IsolatedAsyncioTestCase):
         await agent.respond_to_task({"description": "scrolled"}, speak="ok")
 
         call = agent.send_task_response.await_args
-        self.assertEqual(
-            call.kwargs["response"], {"description": "scrolled", "speak": "ok"}
-        )
+        self.assertEqual(call.kwargs["response"], {"description": "scrolled", "speak": "ok"})
 
 
 if __name__ == "__main__":

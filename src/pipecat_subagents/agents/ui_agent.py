@@ -243,9 +243,7 @@ class UIAgent(LLMAgent):
         payload: dict = dict(response) if response else {}
         if speak is not None:
             payload["speak"] = speak
-        await self.send_task_response(
-            message.task_id, response=payload, status=status
-        )
+        await self.send_task_response(message.task_id, response=payload, status=status)
 
     def render_ui_state(self) -> str:
         """Render the latest accessibility snapshot as a ``<ui_state>`` block.
