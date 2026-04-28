@@ -50,7 +50,7 @@ from pipecat_subagents.agents import (
     agent_ready,
     tool,
 )
-from pipecat_subagents.agents.flows_agent import FlowsAgent
+from pipecat_subagents.agents.flows import FlowsAgent
 from pipecat_subagents.bus import AgentBus, BusBridgeProcessor
 from pipecat_subagents.runner import AgentRunner
 from pipecat_subagents.types import AgentReadyData

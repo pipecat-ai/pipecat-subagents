@@ -10,12 +10,13 @@ This package provides the core agent hierarchy:
 
 - `BaseAgent`: Base with bus integration, lifecycle, and optional bridged mode.
 - `LLMAgent`: Agent with an LLM pipeline and tool registration.
-- `FlowsAgent`: Agent that uses Pipecat Flows for structured conversation.
-  Import from ``pipecat_subagents.agents.flows_agent`` (requires ``pipecat-ai-subagents[flows]``).
+
+`FlowsAgent` is provided in the ``pipecat_subagents.agents.flows`` subpackage
+and requires the ``pipecat-ai-subagents[flows]`` optional dependency.
 """
 
 from pipecat_subagents.agents.base_agent import AgentActivationArgs, BaseAgent
-from pipecat_subagents.agents.llm_agent import LLMAgent, LLMAgentActivationArgs
+from pipecat_subagents.agents.llm import LLMAgent, LLMAgentActivationArgs, tool
 from pipecat_subagents.agents.task_context import (
     TaskContext,
     TaskError,
@@ -27,7 +28,6 @@ from pipecat_subagents.agents.task_context import (
     TaskStatus,
 )
 from pipecat_subagents.agents.task_decorator import task
-from pipecat_subagents.agents.tool_decorator import tool
 from pipecat_subagents.agents.watch_decorator import agent_ready
 
 __all__ = [

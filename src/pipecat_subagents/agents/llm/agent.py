@@ -33,7 +33,7 @@ from pipecat.processors.frame_processor import FrameDirection
 from pipecat.services.llm_service import LLMService
 
 from pipecat_subagents.agents.base_agent import AgentActivationArgs, BaseAgent
-from pipecat_subagents.agents.tool_decorator import _collect_tools
+from pipecat_subagents.agents.llm.tool_decorator import _collect_tools
 from pipecat_subagents.bus import AgentBus
 
 FunctionCallResultCallback = Callable[..., Any]

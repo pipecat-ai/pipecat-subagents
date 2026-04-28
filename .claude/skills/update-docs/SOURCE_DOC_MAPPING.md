@@ -7,10 +7,10 @@ Maps pipecat-subagents source files to their documentation pages. Source paths a
 | Source path | Primary doc page | Also check guides |
 |---|---|---|
 | `agents/base_agent.py` | `api-reference/pipecat-subagents/base-agent.mdx` | `subagents/learn/agents-and-runner.mdx`, `subagents/learn/agent-handoff.mdx`, `subagents/learn/task-coordination.mdx` |
-| `agents/llm_agent.py` | `api-reference/pipecat-subagents/llm-agent.mdx` | `subagents/learn/llm-agent-and-tool-decorator.mdx`, `subagents/learn/agent-handoff.mdx`, `subagents/learn/custom-voices-per-agent.mdx` |
-| `agents/flows_agent.py` | `api-reference/pipecat-subagents/flows-agent.mdx` | `subagents/learn/structured-conversations-with-flows-agent.mdx` |
+| `agents/llm/agent.py` | `api-reference/pipecat-subagents/llm-agent.mdx` | `subagents/learn/llm-agent-and-tool-decorator.mdx`, `subagents/learn/agent-handoff.mdx`, `subagents/learn/custom-voices-per-agent.mdx` |
+| `agents/flows/agent.py` | `api-reference/pipecat-subagents/flows-agent.mdx` | `subagents/learn/structured-conversations-with-flows-agent.mdx` |
 | `agents/task_context.py` | `api-reference/pipecat-subagents/types.mdx` | `subagents/learn/task-coordination.mdx` |
-| `agents/tool_decorator.py` | `api-reference/pipecat-subagents/decorators.mdx` (@tool) | `subagents/learn/llm-agent-and-tool-decorator.mdx` |
+| `agents/llm/tool_decorator.py` | `api-reference/pipecat-subagents/decorators.mdx` (@tool) | `subagents/learn/llm-agent-and-tool-decorator.mdx` |
 | `agents/task_decorator.py` | `api-reference/pipecat-subagents/decorators.mdx` (@task) | `subagents/learn/task-coordination.mdx` |
 | `agents/watch_decorator.py` | `api-reference/pipecat-subagents/decorators.mdx` (@agent_ready) | `subagents/fundamentals/agent-registry-and-discovery.mdx` |
 | `bus/bus.py` | `api-reference/pipecat-subagents/bus.mdx` (AgentBus) | `subagents/fundamentals/agent-bus.mdx` |
