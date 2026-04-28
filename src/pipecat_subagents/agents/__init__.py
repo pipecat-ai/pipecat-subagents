@@ -36,6 +36,7 @@ from pipecat_subagents.agents.ui_commands import (
     Navigate,
     ScrollTo,
     SelectText,
+    SetInputValue,
     Toast,
 )
 from pipecat_subagents.agents.ui_event_decorator import on_ui_event
@@ -44,6 +45,7 @@ from pipecat_subagents.agents.ui_tools import (
     HighlightToolMixin,
     ScrollToToolMixin,
     SelectTextToolMixin,
+    SetInputValueToolMixin,
 )
 from pipecat_subagents.agents.watch_decorator import agent_ready
 
@@ -60,6 +62,8 @@ __all__ = [
     "ScrollToToolMixin",
     "SelectText",
     "SelectTextToolMixin",
+    "SetInputValue",
+    "SetInputValueToolMixin",
     "TaskContext",
     "TaskError",
     "TaskEvent",
