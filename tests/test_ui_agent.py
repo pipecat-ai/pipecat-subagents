@@ -476,6 +476,66 @@ class TestUIAgentSnapshot(unittest.IsolatedAsyncioTestCase):
         agent = await _make_agent()
         self.assertEqual(agent.visible_nodes(), [])
 
+    async def test_render_emits_selection_block_when_present(self):
+        agent = await _make_agent()
+        agent._latest_snapshot = {
+            "root": {
+                "ref": "e1",
+                "role": "generic",
+                "children": [
+                    {"ref": "e2", "role": "main"},
+                ],
+            },
+            "captured_at": 1700000000000,
+            "selection": {
+                "ref": "e2",
+                "text": "the highlighted passage",
+            },
+        }
+
+        rendered = agent.render_ui_state()
+
+        # Block lives inside <ui_state>, after the tree.
+        self.assertIn('<selection ref="e2">', rendered)
+        self.assertIn("the highlighted passage", rendered)
+        self.assertIn("</selection>", rendered)
+        self.assertTrue(rendered.endswith("</ui_state>"))
+        # Sanity: block sits between tree and closing tag.
+        sel_idx = rendered.index('<selection ref="e2">')
+        close_idx = rendered.index("</ui_state>")
+        self.assertLess(sel_idx, close_idx)
+
+    async def test_render_omits_selection_when_missing(self):
+        agent = await _make_agent()
+        agent._latest_snapshot = {
+            "root": {"ref": "e1", "role": "generic"},
+            "captured_at": 1700000000000,
+        }
+
+        rendered = agent.render_ui_state()
+
+        self.assertNotIn("<selection", rendered)
+        self.assertTrue(rendered.startswith("<ui_state>"))
+        self.assertTrue(rendered.endswith("</ui_state>"))
+
+    async def test_render_skips_selection_with_missing_ref_or_text(self):
+        agent = await _make_agent()
+        # Missing text.
+        agent._latest_snapshot = {
+            "root": {"ref": "e1", "role": "generic"},
+            "captured_at": 1,
+            "selection": {"ref": "e2"},
+        }
+        self.assertNotIn("<selection", agent.render_ui_state())
+
+        # Missing ref.
+        agent._latest_snapshot = {
+            "root": {"ref": "e1", "role": "generic"},
+            "captured_at": 1,
+            "selection": {"text": "stuff"},
+        }
+        self.assertNotIn("<selection", agent.render_ui_state())
+
     async def test_visible_nodes_filters_offscreen_entries(self):
         agent = await _make_agent()
         agent._latest_snapshot = {

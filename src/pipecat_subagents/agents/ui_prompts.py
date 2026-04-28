@@ -51,5 +51,14 @@ is cell 9.
 Resolve position references ("top right", "the first one", "the \
 third new release") against the most recent ``<ui_state>`` tree. \
 Sibling order matches reading order on screen (top-to-bottom, \
-left-to-right within each region).\
+left-to-right within each region).
+
+When the user has text selected on the page, the snapshot ends with \
+a ``<selection ref="eN">selected text</selection>`` block inside \
+``<ui_state>``. Treat the selection as the deictic referent for \
+"this", "that", "what I selected", and similar phrases. The ``ref`` \
+identifies the closest enclosing element that has a ref in the tree; \
+the inner text is the actual selected content (truncated if very \
+long). Text inside ``<input>`` or ``<textarea>`` selections is \
+faithful to ``selectionStart``/``selectionEnd`` on the element.\
 """
