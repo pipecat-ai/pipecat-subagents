@@ -9,8 +9,9 @@
 from __future__ import annotations
 
 import json
+import time
 from abc import abstractmethod
-from dataclasses import asdict, is_dataclass
+from dataclasses import asdict, dataclass, is_dataclass
 from typing import Any
 
 from loguru import logger
@@ -20,14 +21,34 @@ from pipecat.services.llm_service import LLMService
 from pipecat_subagents.agents.llm_agent import LLMAgent
 from pipecat_subagents.agents.task_context import TaskStatus
 from pipecat_subagents.agents.ui_event_decorator import _collect_ui_event_handlers
+from pipecat_subagents.agents.ui_task_context import UserTaskGroupContext
 from pipecat_subagents.bus import AgentBus
 from pipecat_subagents.bus.messages import (
+    UI_CANCEL_TASK_EVENT_NAME,
     UI_SNAPSHOT_EVENT_NAME,
     BusMessage,
     BusTaskRequestMessage,
+    BusTaskResponseMessage,
+    BusTaskUpdateMessage,
     BusUICommandMessage,
     BusUIEventMessage,
+    BusUITaskCompletedMessage,
+    BusUITaskUpdateMessage,
 )
+
+
+@dataclass
+class _UserTaskGroupRegistration:
+    """Metadata kept on a UIAgent for each in-flight user task group.
+
+    The registry is the lookup the agent uses to decide which bus
+    task messages to forward to the client and whether a client
+    ``__cancel_task`` event should be honored.
+    """
+
+    agent_names: list[str]
+    label: str | None
+    cancellable: bool
 
 
 class UIAgent(LLMAgent):
@@ -112,6 +133,12 @@ class UIAgent(LLMAgent):
         # ``@tool`` methods (and the mixin tools) close out the task
         # without having to thread the task id through every call.
         self._current_task: BusTaskRequestMessage | None = None
+        # Registry of in-flight user task groups dispatched by this
+        # agent (see ``user_task_group``). Keyed by ``task_id``.
+        # ``on_bus_message`` consults this to decide which task
+        # update / response messages should be forwarded to the
+        # client as ``ui.task`` envelopes.
+        self._user_task_groups: dict[str, _UserTaskGroupRegistration] = {}
 
     @abstractmethod
     def build_llm(self) -> LLMService:
@@ -162,6 +189,17 @@ class UIAgent(LLMAgent):
         """Dispatch UI events alongside base lifecycle handling."""
         await super().on_bus_message(message)
 
+        # Forward task lifecycle for user-facing task groups before
+        # touching anything else. This is independent of UI event
+        # handling and may fire on messages targeted at this agent
+        # (the requester) for groups it dispatched.
+        if isinstance(message, BusTaskUpdateMessage):
+            await self._maybe_forward_task_update(message)
+            return
+        if isinstance(message, BusTaskResponseMessage):
+            await self._maybe_forward_task_completed(message)
+            return
+
         if not isinstance(message, BusUIEventMessage):
             return
         if message.target and message.target != self.name:
@@ -174,6 +212,13 @@ class UIAgent(LLMAgent):
                 self._latest_snapshot = message.payload
                 if self._log_snapshots:
                     self._log_snapshot()
+            return
+
+        # Reserved cancel event: route to ``cancel_task`` for the
+        # registered user task group. Honored only when the group was
+        # registered with ``cancellable=True``.
+        if message.event_name == UI_CANCEL_TASK_EVENT_NAME:
+            await self._handle_cancel_task_event(message)
             return
 
         await self._handle_ui_event(message)
@@ -244,6 +289,179 @@ class UIAgent(LLMAgent):
         if speak is not None:
             payload["speak"] = speak
         await self.send_task_response(message.task_id, response=payload, status=status)
+
+    def user_task_group(
+        self,
+        *agent_names: str,
+        name: str | None = None,
+        payload: dict | None = None,
+        timeout: float | None = None,
+        cancel_on_error: bool = True,
+        label: str | None = None,
+        cancellable: bool = True,
+    ) -> UserTaskGroupContext:
+        """Dispatch a task group whose lifecycle is forwarded to the client.
+
+        Behaves exactly like ``task_group(...)`` but additionally emits
+        ``ui.task`` envelopes that the client's task reducer consumes.
+        Use this for any user-initiated work that fans out to workers
+        and that the user should be able to see (and optionally cancel)
+        on screen.
+
+        Workers don't need to change. Any ``send_task_update`` they
+        emit against the group's ``task_id`` is forwarded automatically
+        as a ``task_update`` envelope, and their final response is
+        forwarded as ``task_completed``.
+
+        Args:
+            *agent_names: Names of the agents to send the task to.
+            name: Optional task name for routing to named ``@task``
+                handlers on the workers.
+            payload: Optional structured data describing the work.
+            timeout: Optional timeout in seconds covering both the
+                ready-wait and task execution.
+            cancel_on_error: Whether to cancel the group if a worker
+                errors. Defaults to True.
+            label: Optional human-readable label surfaced to the
+                client. The client UI uses it to title the in-flight
+                task card.
+            cancellable: Whether the client may request cancellation
+                of this group via the reserved ``__cancel_task``
+                event. Defaults to True.
+
+        Returns:
+            A ``UserTaskGroupContext`` to use with ``async with``.
+
+        Example::
+
+            async with self.user_task_group(
+                "researcher_a", "researcher_b",
+                payload={"query": query},
+                label=f"Research: {query}",
+            ) as tg:
+                async for event in tg:
+                    ...
+        """
+        for agent_name in agent_names:
+            if not isinstance(agent_name, str):
+                raise TypeError(
+                    f"{self} Expected agent name as str, got {type(agent_name).__name__}"
+                )
+        return UserTaskGroupContext(
+            self,
+            agent_names,
+            name=name,
+            payload=payload,
+            timeout=timeout,
+            cancel_on_error=cancel_on_error,
+            label=label,
+            cancellable=cancellable,
+        )
+
+    def _register_user_task_group(
+        self,
+        *,
+        task_id: str,
+        agent_names: list[str],
+        label: str | None,
+        cancellable: bool,
+    ) -> None:
+        """Register an in-flight user task group for lifecycle forwarding.
+
+        Called from ``UserTaskGroupContext.__aenter__``. Subsequent
+        ``BusTaskUpdateMessage`` / ``BusTaskResponseMessage`` whose
+        ``task_id`` matches this entry will be forwarded to the
+        client.
+        """
+        if task_id in self._user_task_groups:
+            logger.warning(
+                f"UIAgent '{self.name}': user task group {task_id} already registered; overwriting"
+            )
+        self._user_task_groups[task_id] = _UserTaskGroupRegistration(
+            agent_names=list(agent_names),
+            label=label,
+            cancellable=cancellable,
+        )
+
+    def _unregister_user_task_group(self, task_id: str) -> None:
+        """Remove a user task group from the forwarding registry.
+
+        Called from ``UserTaskGroupContext.__aexit__``. After this,
+        late-arriving updates or responses for the group are not
+        forwarded.
+        """
+        self._user_task_groups.pop(task_id, None)
+
+    async def _maybe_forward_task_update(self, message: BusTaskUpdateMessage) -> None:
+        """Forward a worker update for a registered user task group.
+
+        No-op if the message's ``task_id`` is not registered.
+        """
+        if message.task_id not in self._user_task_groups:
+            return
+        await self.bus.send(
+            BusUITaskUpdateMessage(
+                source=self.name,
+                target=None,
+                task_id=message.task_id,
+                agent_name=message.source,
+                data=message.update,
+                at=int(time.time() * 1000),
+            )
+        )
+
+    async def _maybe_forward_task_completed(self, message: BusTaskResponseMessage) -> None:
+        """Forward a worker response for a registered user task group.
+
+        No-op if the message's ``task_id`` is not registered.
+        """
+        if message.task_id not in self._user_task_groups:
+            return
+        await self.bus.send(
+            BusUITaskCompletedMessage(
+                source=self.name,
+                target=None,
+                task_id=message.task_id,
+                agent_name=message.source,
+                status=str(message.status),
+                response=message.response,
+                at=int(time.time() * 1000),
+            )
+        )
+
+    async def _handle_cancel_task_event(self, message: BusUIEventMessage) -> None:
+        """Translate a client ``__cancel_task`` event into ``cancel_task``.
+
+        Looks up the registered group and calls
+        ``cancel_task(task_id, reason)``. Ignores the request silently
+        if the group is unknown or was registered with
+        ``cancellable=False``.
+        """
+        payload = message.payload if isinstance(message.payload, dict) else {}
+        task_id = payload.get("task_id")
+        if not isinstance(task_id, str) or not task_id:
+            logger.warning(
+                f"UIAgent '{self.name}': received {UI_CANCEL_TASK_EVENT_NAME} "
+                "with no task_id; ignoring"
+            )
+            return
+        registration = self._user_task_groups.get(task_id)
+        if registration is None:
+            logger.debug(
+                f"UIAgent '{self.name}': {UI_CANCEL_TASK_EVENT_NAME} for "
+                f"unknown task_id {task_id}; ignoring"
+            )
+            return
+        if not registration.cancellable:
+            logger.debug(
+                f"UIAgent '{self.name}': {UI_CANCEL_TASK_EVENT_NAME} for "
+                f"non-cancellable group {task_id}; ignoring"
+            )
+            return
+        reason = payload.get("reason")
+        if reason is not None and not isinstance(reason, str):
+            reason = None
+        await self.cancel_task(task_id, reason=reason or "cancelled by user")
 
     def render_ui_state(self) -> str:
         """Render the latest accessibility snapshot as a ``<ui_state>`` block.
