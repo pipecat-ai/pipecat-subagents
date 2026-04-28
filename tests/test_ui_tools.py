@@ -10,6 +10,7 @@ import unittest
 from unittest.mock import AsyncMock, MagicMock
 
 from pipecat_subagents.agents import (
+    ClickToolMixin,
     HighlightToolMixin,
     ScrollToToolMixin,
     SelectTextToolMixin,
@@ -36,6 +37,11 @@ class _AgentWithSelectTextTool(SelectTextToolMixin, UIAgent):
 
 
 class _AgentWithSetInputValueTool(SetInputValueToolMixin, UIAgent):
+    def build_llm(self):
+        return MagicMock()
+
+
+class _AgentWithClickTool(ClickToolMixin, UIAgent):
     def build_llm(self):
         return MagicMock()
 
@@ -200,6 +206,37 @@ class TestSetInputValueToolMixin(unittest.IsolatedAsyncioTestCase):
                 "replace": True,
             },
         )
+        params.result_callback.assert_awaited_once_with(None)
+
+
+class TestClickToolMixin(unittest.IsolatedAsyncioTestCase):
+    async def test_mixin_exposes_click_tool(self):
+        agent = _new(_AgentWithClickTool)
+        tool_names = [t.__name__ for t in _collect_tools(agent)]
+        self.assertIn("click", tool_names)
+
+    async def test_plain_uiagent_has_no_click_tool(self):
+        class PlainAgent(UIAgent):
+            def build_llm(self):
+                return MagicMock()
+
+        agent = _new(PlainAgent)
+        tool_names = [t.__name__ for t in _collect_tools(agent)]
+        self.assertNotIn("click", tool_names)
+
+    async def test_click_dispatches_command_with_ref(self):
+        agent = _new(_AgentWithClickTool)
+        sent = _capture(agent)
+
+        params = MagicMock()
+        params.result_callback = AsyncMock()
+
+        await agent.click(params, ref="e42")  # type: ignore[attr-defined]
+
+        self.assertEqual(len(sent), 1)
+        msg = sent[0]
+        self.assertEqual(msg.command_name, "click")
+        self.assertEqual(msg.payload, {"ref": "e42", "target_id": None})
         params.result_callback.assert_awaited_once_with(None)
 
 

@@ -31,6 +31,7 @@ from pipecat_subagents.agents.task_decorator import task
 from pipecat_subagents.agents.ui_agent import UIAgent
 from pipecat_subagents.agents.ui_bridge import attach_ui_bridge
 from pipecat_subagents.agents.ui_commands import (
+    Click,
     Focus,
     Highlight,
     Navigate,
@@ -42,6 +43,7 @@ from pipecat_subagents.agents.ui_commands import (
 from pipecat_subagents.agents.ui_event_decorator import on_ui_event
 from pipecat_subagents.agents.ui_prompts import UI_STATE_PROMPT_GUIDE
 from pipecat_subagents.agents.ui_tools import (
+    ClickToolMixin,
     HighlightToolMixin,
     ScrollToToolMixin,
     SelectTextToolMixin,
@@ -52,6 +54,8 @@ from pipecat_subagents.agents.watch_decorator import agent_ready
 __all__ = [
     "AgentActivationArgs",
     "BaseAgent",
+    "Click",
+    "ClickToolMixin",
     "Focus",
     "Highlight",
     "HighlightToolMixin",
