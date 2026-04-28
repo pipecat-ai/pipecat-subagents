@@ -431,6 +431,21 @@ UI_COMMAND_MESSAGE_TYPE = "ui.command"
 #: context. The underscore prefix marks the name as SDK-internal.
 UI_SNAPSHOT_EVENT_NAME = "__ui_snapshot"
 
+#: Discriminator written into the ``data`` field of the
+#: ``RTVIServerMessageFrame`` that the bridge pushes for UI task
+#: lifecycle events (``user_task_group`` start, per-task progress and
+#: completion, group completion). Client-side dispatchers
+#: (``UIAgentClient``) filter on this value before routing the
+#: ``kind`` to the task reducer.
+UI_TASK_MESSAGE_TYPE = "ui.task"
+
+#: Reserved ``event_name`` on a ``BusUIEventMessage`` that requests
+#: cancellation of an in-flight user task group from the client.
+#: Payload shape: ``{"task_id": str, "reason": str | None}``. The
+#: ``UIAgent`` looks up the registered group and routes to
+#: ``cancel_task``. Underscore prefix marks the name as SDK-internal.
+UI_CANCEL_TASK_EVENT_NAME = "__cancel_task"
+
 
 @dataclass
 class BusUIEventMessage(BusDataMessage):
@@ -467,3 +482,95 @@ class BusUICommandMessage(BusDataMessage):
 
     command_name: str = ""
     payload: Any = None
+
+
+# ---------------------------------------------------------------------------
+# UI task lifecycle
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class BusUITaskGroupStartedMessage(BusDataMessage):
+    """A user-facing task group has been dispatched.
+
+    Published by ``UIAgent.user_task_group(...)`` on entry. The bridge
+    forwards it to the client as a ``ui.task`` envelope with
+    ``kind = "group_started"``.
+
+    Parameters:
+        task_id: Shared task identifier for the group.
+        agents: Names of the agents the work was dispatched to.
+        label: Optional human-readable label for the group.
+        cancellable: Whether the client may request cancellation.
+        at: Epoch milliseconds when the group started.
+    """
+
+    task_id: str = ""
+    agents: list[str] | None = None
+    label: str | None = None
+    cancellable: bool = True
+    at: int = 0
+
+
+@dataclass
+class BusUITaskUpdateMessage(BusDataMessage):
+    """Per-task progress for a user-facing task group.
+
+    Forwarded by the ``UIAgent`` whenever a worker emits a
+    ``BusTaskUpdateMessage`` whose ``task_id`` matches a registered
+    user task group. The bridge forwards to the client as a
+    ``ui.task`` envelope with ``kind = "task_update"``.
+
+    Parameters:
+        task_id: The shared task identifier.
+        agent_name: The worker that produced the update.
+        data: The worker's update payload, forwarded verbatim.
+        at: Epoch milliseconds when the update was emitted on the bus.
+    """
+
+    task_id: str = ""
+    agent_name: str = ""
+    data: Any = None
+    at: int = 0
+
+
+@dataclass
+class BusUITaskCompletedMessage(BusDataMessage):
+    """A worker in a user-facing task group has completed.
+
+    Forwarded by the ``UIAgent`` whenever a worker's
+    ``BusTaskResponseMessage`` arrives for a registered user task
+    group. The bridge forwards to the client as a ``ui.task`` envelope
+    with ``kind = "task_completed"``.
+
+    Parameters:
+        task_id: The shared task identifier.
+        agent_name: The worker that produced the response.
+        status: Completion status as a string (``TaskStatus`` value).
+        response: The worker's response payload.
+        at: Epoch milliseconds when the response was received.
+    """
+
+    task_id: str = ""
+    agent_name: str = ""
+    status: str = ""
+    response: Any = None
+    at: int = 0
+
+
+@dataclass
+class BusUITaskGroupCompletedMessage(BusDataMessage):
+    """A user-facing task group has completed.
+
+    Published when ``UIAgent.user_task_group(...)`` exits, after every
+    worker has responded (or the group has been cancelled). The bridge
+    forwards to the client as a ``ui.task`` envelope with
+    ``kind = "group_completed"``.
+
+    Parameters:
+        task_id: The shared task identifier.
+        at: Epoch milliseconds when the group completed.
+    """
+
+    task_id: str = ""
+    at: int = 0

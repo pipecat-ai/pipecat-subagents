@@ -12,10 +12,16 @@ Register with ``attach_ui_bridge(agent)`` from the root agent's
 - Inbound: client-side ``UIAgentClient.sendEvent(name, payload)`` calls
   are republished onto the bus as ``BusUIEventMessage`` for ``UIAgent``
   subscribers to dispatch.
-- Outbound: ``UIAgent.send_command(name, payload)`` emits a
-  ``BusUICommandMessage`` which the bridge translates into an
-  ``RTVIServerMessageFrame`` and pushes through the root agent's
-  pipeline for RTVI to deliver to the client.
+- Outbound: bus messages in the UI Agent SDK protocol are translated
+  into ``RTVIServerMessageFrame`` envelopes and pushed through the
+  root agent's pipeline. Two surfaces share this path:
+
+  - Commands published by ``UIAgent.send_command(name, payload)`` are
+    forwarded as ``ui.command`` envelopes.
+  - Task lifecycle messages published by
+    ``UIAgent.user_task_group(...)`` and the agent's automatic
+    forwarding of task updates / responses are forwarded as
+    ``ui.task`` envelopes with a ``kind`` discriminator.
 """
 
 from __future__ import annotations
@@ -26,8 +32,13 @@ from pipecat_subagents.agents.base_agent import BaseAgent
 from pipecat_subagents.bus.messages import (
     UI_COMMAND_MESSAGE_TYPE,
     UI_EVENT_MESSAGE_TYPE,
+    UI_TASK_MESSAGE_TYPE,
     BusUICommandMessage,
     BusUIEventMessage,
+    BusUITaskCompletedMessage,
+    BusUITaskGroupCompletedMessage,
+    BusUITaskGroupStartedMessage,
+    BusUITaskUpdateMessage,
 )
 
 
@@ -88,13 +99,48 @@ def attach_ui_bridge(agent: BaseAgent, *, target: str | None = None) -> None:
 
     @agent.event_handler("on_bus_message")
     async def _on_bus_message(_agent, message):
-        if not isinstance(message, BusUICommandMessage):
-            return
-        frame = RTVIServerMessageFrame(
-            data={
+        if isinstance(message, BusUICommandMessage):
+            data = {
                 "type": UI_COMMAND_MESSAGE_TYPE,
                 "name": message.command_name,
                 "payload": message.payload,
             }
-        )
-        await agent.queue_frame(frame)
+        elif isinstance(message, BusUITaskGroupStartedMessage):
+            data = {
+                "type": UI_TASK_MESSAGE_TYPE,
+                "kind": "group_started",
+                "task_id": message.task_id,
+                "agents": list(message.agents or []),
+                "label": message.label,
+                "cancellable": message.cancellable,
+                "at": message.at,
+            }
+        elif isinstance(message, BusUITaskUpdateMessage):
+            data = {
+                "type": UI_TASK_MESSAGE_TYPE,
+                "kind": "task_update",
+                "task_id": message.task_id,
+                "agent_name": message.agent_name,
+                "data": message.data,
+                "at": message.at,
+            }
+        elif isinstance(message, BusUITaskCompletedMessage):
+            data = {
+                "type": UI_TASK_MESSAGE_TYPE,
+                "kind": "task_completed",
+                "task_id": message.task_id,
+                "agent_name": message.agent_name,
+                "status": message.status,
+                "response": message.response,
+                "at": message.at,
+            }
+        elif isinstance(message, BusUITaskGroupCompletedMessage):
+            data = {
+                "type": UI_TASK_MESSAGE_TYPE,
+                "kind": "group_completed",
+                "task_id": message.task_id,
+                "at": message.at,
+            }
+        else:
+            return
+        await agent.queue_frame(RTVIServerMessageFrame(data=data))
