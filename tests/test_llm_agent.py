@@ -11,8 +11,8 @@ from unittest.mock import AsyncMock, MagicMock
 from pipecat.frames.frames import LLMMessagesAppendFrame
 from pipecat.processors.frame_processor import FrameDirection
 
-from pipecat_subagents.agents.llm_agent import LLMAgent, PipelineFlushFrame
-from pipecat_subagents.agents.tool_decorator import tool
+from pipecat_subagents.agents.llm import LLMAgent, tool
+from pipecat_subagents.agents.llm.agent import PipelineFlushFrame
 from pipecat_subagents.bus import AsyncQueueBus
 
 

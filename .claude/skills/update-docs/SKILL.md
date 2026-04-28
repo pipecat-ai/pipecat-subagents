@@ -123,7 +123,7 @@ For each doc page that needs updates, edit **only the sections that need changes
 
 **Decorators** (decorators.mdx):
 - `<ParamField>` entries for decorator parameters + usage examples
-- Compare to decorator function signatures in `tool_decorator.py`, `task_decorator.py`, `watch_decorator.py`
+- Compare to decorator function signatures in `agents/llm/tool_decorator.py`, `task_decorator.py`, `watch_decorator.py`
 - Update parameter types, defaults, and descriptions
 
 **Usage** (code examples):
