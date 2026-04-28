@@ -107,6 +107,36 @@ class Focus:
 
 
 @dataclass
+class SetInputValue:
+    """Write a value into a text input or textarea on the client.
+
+    Use this for form-filling: the agent has decided what should go
+    into a field (clarifying answer, tax form entry, etc.) and asks
+    the client to populate it. With ``replace=True`` (the default),
+    the existing value is overwritten; with ``replace=False`` the
+    value is appended.
+
+    The standard handler silently no-ops on ``disabled``, ``readonly``,
+    and ``<input type="hidden">`` targets so the agent can't write
+    into fields the user can't.
+
+    Parameters:
+        ref: Snapshot ref from ``<ui_state>``. Typically the ref of
+            an ``<input>`` or ``<textarea>``.
+        target_id: Element id registered on the client. Used as a
+            fallback when ``ref`` is not set or has gone stale.
+        value: The text to write.
+        replace: When True (the default), overwrite the current
+            value. When False, append to it.
+    """
+
+    value: str = ""
+    ref: str | None = None
+    target_id: str | None = None
+    replace: bool = True
+
+
+@dataclass
 class SelectText:
     """Select text on the page so the user can see what the agent means.
 

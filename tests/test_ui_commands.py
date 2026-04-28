@@ -15,6 +15,7 @@ from pipecat_subagents.agents import (
     Navigate,
     ScrollTo,
     SelectText,
+    SetInputValue,
     Toast,
     UIAgent,
 )
@@ -189,6 +190,38 @@ class TestStandardCommands(unittest.IsolatedAsyncioTestCase):
                 "target_id": None,
                 "start_offset": 5,
                 "end_offset": 12,
+            },
+        )
+
+    async def test_set_input_value_payload_replace_default(self):
+        agent, sent = _make_agent()
+        await agent.send_command(
+            "set_input_value",
+            SetInputValue(ref="e7", value="hello"),
+        )
+        self.assertEqual(
+            sent[0].payload,
+            {
+                "ref": "e7",
+                "target_id": None,
+                "value": "hello",
+                "replace": True,
+            },
+        )
+
+    async def test_set_input_value_payload_append(self):
+        agent, sent = _make_agent()
+        await agent.send_command(
+            "set_input_value",
+            SetInputValue(ref="e7", value=" world", replace=False),
+        )
+        self.assertEqual(
+            sent[0].payload,
+            {
+                "ref": "e7",
+                "target_id": None,
+                "value": " world",
+                "replace": False,
             },
         )
 

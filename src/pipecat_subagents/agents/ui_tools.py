@@ -38,7 +38,12 @@ from loguru import logger
 from pipecat.services.llm_service import FunctionCallParams
 
 from pipecat_subagents.agents.tool_decorator import tool
-from pipecat_subagents.agents.ui_commands import Highlight, ScrollTo, SelectText
+from pipecat_subagents.agents.ui_commands import (
+    Highlight,
+    ScrollTo,
+    SelectText,
+    SetInputValue,
+)
 
 
 class ScrollToToolMixin:
@@ -152,5 +157,52 @@ class SelectTextToolMixin:
         """
         logger.info(f"{self}: select_text(ref={ref!r})")
         await self.send_command("select_text", SelectText(ref=ref))  # type: ignore[attr-defined]
+        await self.respond_to_task()  # type: ignore[attr-defined]
+        await params.result_callback(None)
+
+
+class SetInputValueToolMixin:
+    """Expose a ``set_input_value(ref, value)`` tool to the LLM.
+
+    Inherit alongside ``UIAgent``. Lets the agent fill in form fields
+    on the user's behalf, e.g. populating a clarification answer or a
+    structured form entry derived from the conversation. The tool
+    issues a standard ``SetInputValue`` command via the UI command
+    pipe; the client's ``useStandardSetInputValueHandler`` (or a
+    custom one) writes the value and dispatches input/change events
+    so React-controlled inputs update naturally.
+
+    The default tool overwrites the field. Apps that need an "append"
+    mode (e.g. continuing a long answer in a textarea) should
+    override the tool and pass ``replace=False`` themselves. The
+    client refuses to write into ``disabled`` / ``readonly`` /
+    ``type="hidden"`` targets so the agent can't bypass UI
+    affordances the user is meant to control.
+
+    The host class must provide ``send_command(name, payload)`` and
+    ``respond_to_task(...)`` (``UIAgent`` does) and must be the
+    target of ``@tool`` discovery on the LLM pipeline.
+    """
+
+    @tool
+    async def set_input_value(self, params: FunctionCallParams, ref: str, value: str):
+        """Write ``value`` into the input or textarea identified by ``ref``.
+
+        Overwrites whatever was in the field. Use this when the user
+        has answered a question that should be reflected in a form,
+        or when populating a field from data the agent just looked up.
+        The client refuses on disabled / readonly / hidden inputs.
+
+        Args:
+            params: Framework-provided tool invocation context.
+            ref: Ref string from the most recent ``<ui_state>``,
+                e.g. ``"e42"``. Should be an input or textarea.
+            value: The text to write into the field.
+        """
+        logger.info(f"{self}: set_input_value(ref={ref!r}, len={len(value)})")
+        await self.send_command(  # type: ignore[attr-defined]
+            "set_input_value",
+            SetInputValue(ref=ref, value=value),
+        )
         await self.respond_to_task()  # type: ignore[attr-defined]
         await params.result_callback(None)

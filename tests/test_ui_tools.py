@@ -13,6 +13,7 @@ from pipecat_subagents.agents import (
     HighlightToolMixin,
     ScrollToToolMixin,
     SelectTextToolMixin,
+    SetInputValueToolMixin,
     UIAgent,
 )
 from pipecat_subagents.agents.tool_decorator import _collect_tools
@@ -30,6 +31,11 @@ class _AgentWithHighlightTool(HighlightToolMixin, UIAgent):
 
 
 class _AgentWithSelectTextTool(SelectTextToolMixin, UIAgent):
+    def build_llm(self):
+        return MagicMock()
+
+
+class _AgentWithSetInputValueTool(SetInputValueToolMixin, UIAgent):
     def build_llm(self):
         return MagicMock()
 
@@ -153,6 +159,45 @@ class TestSelectTextToolMixin(unittest.IsolatedAsyncioTestCase):
                 "target_id": None,
                 "start_offset": None,
                 "end_offset": None,
+            },
+        )
+        params.result_callback.assert_awaited_once_with(None)
+
+
+class TestSetInputValueToolMixin(unittest.IsolatedAsyncioTestCase):
+    async def test_mixin_exposes_set_input_value_tool(self):
+        agent = _new(_AgentWithSetInputValueTool)
+        tool_names = [t.__name__ for t in _collect_tools(agent)]
+        self.assertIn("set_input_value", tool_names)
+
+    async def test_plain_uiagent_has_no_set_input_value_tool(self):
+        class PlainAgent(UIAgent):
+            def build_llm(self):
+                return MagicMock()
+
+        agent = _new(PlainAgent)
+        tool_names = [t.__name__ for t in _collect_tools(agent)]
+        self.assertNotIn("set_input_value", tool_names)
+
+    async def test_set_input_value_dispatches_command_with_ref_and_value(self):
+        agent = _new(_AgentWithSetInputValueTool)
+        sent = _capture(agent)
+
+        params = MagicMock()
+        params.result_callback = AsyncMock()
+
+        await agent.set_input_value(params, ref="e42", value="hello world")  # type: ignore[attr-defined]
+
+        self.assertEqual(len(sent), 1)
+        msg = sent[0]
+        self.assertEqual(msg.command_name, "set_input_value")
+        self.assertEqual(
+            msg.payload,
+            {
+                "ref": "e42",
+                "target_id": None,
+                "value": "hello world",
+                "replace": True,
             },
         )
         params.result_callback.assert_awaited_once_with(None)
