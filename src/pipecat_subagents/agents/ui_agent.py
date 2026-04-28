@@ -470,6 +470,11 @@ class UIAgent(LLMAgent):
         refs. Apps inject the output via ``inject_ui_state()`` when they
         want the LLM to see what's on screen.
 
+        When the snapshot carries a current text selection, a nested
+        ``<selection ref="...">...</selection>`` block is appended
+        inside ``<ui_state>`` so the LLM can resolve deictic references
+        ("this paragraph", "what I selected") against on-page content.
+
         Override to customize the rendered form. Returns an empty
         string if no snapshot has been received yet.
         """
@@ -480,6 +485,9 @@ class UIAgent(LLMAgent):
             return ""
         lines = ["<ui_state>"]
         _render_node(root, depth=0, lines=lines)
+        selection = self._latest_snapshot.get("selection")
+        if isinstance(selection, dict):
+            _render_selection(selection, lines)
         lines.append("</ui_state>")
         return "\n".join(lines)
 
@@ -666,3 +674,26 @@ def _render_node(node: dict[str, Any], *, depth: int, lines: list[str]) -> None:
         for child in children:
             if isinstance(child, dict):
                 _render_node(child, depth=depth + 1, lines=lines)
+
+
+def _render_selection(selection: dict[str, Any], lines: list[str]) -> None:
+    """Render an ``A11ySelection`` dict as a ``<selection>`` block.
+
+    Emitted at the root of ``<ui_state>`` (no leading indent) so the
+    LLM can spot it without parsing the tree::
+
+        <selection ref="e42">
+        the actual selected text
+        </selection>
+
+    No-op when the selection lacks a ``ref`` or ``text``.
+    """
+    ref = selection.get("ref")
+    text = selection.get("text")
+    if not isinstance(ref, str) or not ref:
+        return
+    if not isinstance(text, str) or not text:
+        return
+    lines.append(f'<selection ref="{ref}">')
+    lines.append(text)
+    lines.append("</selection>")
