@@ -4,12 +4,17 @@
 # SPDX-License-Identifier: BSD 2-Clause License
 #
 
-"""Tests for opt-in tool mixins (``ScrollToToolMixin``, ``HighlightToolMixin``)."""
+"""Tests for opt-in tool mixins (``ScrollToToolMixin``, ``HighlightToolMixin``, ``SelectTextToolMixin``)."""
 
 import unittest
 from unittest.mock import AsyncMock, MagicMock
 
-from pipecat_subagents.agents import HighlightToolMixin, ScrollToToolMixin, UIAgent
+from pipecat_subagents.agents import (
+    HighlightToolMixin,
+    ScrollToToolMixin,
+    SelectTextToolMixin,
+    UIAgent,
+)
 from pipecat_subagents.agents.tool_decorator import _collect_tools
 from pipecat_subagents.bus import AsyncQueueBus, BusUICommandMessage
 
@@ -20,6 +25,11 @@ class _AgentWithScrollTool(ScrollToToolMixin, UIAgent):
 
 
 class _AgentWithHighlightTool(HighlightToolMixin, UIAgent):
+    def build_llm(self):
+        return MagicMock()
+
+
+class _AgentWithSelectTextTool(SelectTextToolMixin, UIAgent):
     def build_llm(self):
         return MagicMock()
 
@@ -105,6 +115,45 @@ class TestHighlightToolMixin(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             msg.payload,
             {"ref": "e7", "target_id": None, "duration_ms": None},
+        )
+        params.result_callback.assert_awaited_once_with(None)
+
+
+class TestSelectTextToolMixin(unittest.IsolatedAsyncioTestCase):
+    async def test_mixin_exposes_select_text_tool(self):
+        agent = _new(_AgentWithSelectTextTool)
+        tool_names = [t.__name__ for t in _collect_tools(agent)]
+        self.assertIn("select_text", tool_names)
+
+    async def test_plain_uiagent_has_no_select_text_tool(self):
+        class PlainAgent(UIAgent):
+            def build_llm(self):
+                return MagicMock()
+
+        agent = _new(PlainAgent)
+        tool_names = [t.__name__ for t in _collect_tools(agent)]
+        self.assertNotIn("select_text", tool_names)
+
+    async def test_select_text_dispatches_command_with_ref(self):
+        agent = _new(_AgentWithSelectTextTool)
+        sent = _capture(agent)
+
+        params = MagicMock()
+        params.result_callback = AsyncMock()
+
+        await agent.select_text(params, ref="e42")  # type: ignore[attr-defined]
+
+        self.assertEqual(len(sent), 1)
+        msg = sent[0]
+        self.assertEqual(msg.command_name, "select_text")
+        self.assertEqual(
+            msg.payload,
+            {
+                "ref": "e42",
+                "target_id": None,
+                "start_offset": None,
+                "end_offset": None,
+            },
         )
         params.result_callback.assert_awaited_once_with(None)
 

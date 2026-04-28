@@ -104,3 +104,36 @@ class Focus:
 
     ref: str | None = None
     target_id: str | None = None
+
+
+@dataclass
+class SelectText:
+    """Select text on the page so the user can see what the agent means.
+
+    Mirror of the ``selection`` field surfaced in the snapshot. Use
+    this to point the user's attention at a specific paragraph or
+    range after the agent has decided what it's referring to.
+
+    With ``start_offset`` and ``end_offset`` omitted, the entire
+    target's text content is selected (``Range.selectNodeContents``
+    for document elements; ``el.select()`` for ``<input>`` /
+    ``<textarea>``).
+
+    Parameters:
+        ref: Snapshot ref from ``<ui_state>``. Typically the ref of
+            a paragraph or input element.
+        target_id: Element id registered on the client. Used as a
+            fallback when ``ref`` is not set or has gone stale.
+        start_offset: Character offset within the target's text
+            where the selection should start. For ``<input>`` and
+            ``<textarea>`` this is the value offset; for document
+            elements it is computed against the concatenation of
+            descendant text nodes in document order.
+        end_offset: End character offset, exclusive. Same coordinate
+            system as ``start_offset``.
+    """
+
+    ref: str | None = None
+    target_id: str | None = None
+    start_offset: int | None = None
+    end_offset: int | None = None

@@ -9,7 +9,15 @@
 import unittest
 from unittest.mock import MagicMock
 
-from pipecat_subagents.agents import Focus, Highlight, Navigate, ScrollTo, Toast, UIAgent
+from pipecat_subagents.agents import (
+    Focus,
+    Highlight,
+    Navigate,
+    ScrollTo,
+    SelectText,
+    Toast,
+    UIAgent,
+)
 from pipecat_subagents.bus import (
     UI_COMMAND_MESSAGE_TYPE,
     AsyncQueueBus,
@@ -153,6 +161,35 @@ class TestStandardCommands(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             sent[0].payload,
             {"ref": "e7", "target_id": None},
+        )
+
+    async def test_select_text_payload_whole_element(self):
+        agent, sent = _make_agent()
+        await agent.send_command("select_text", SelectText(ref="e42"))
+        self.assertEqual(
+            sent[0].payload,
+            {
+                "ref": "e42",
+                "target_id": None,
+                "start_offset": None,
+                "end_offset": None,
+            },
+        )
+
+    async def test_select_text_payload_with_offsets(self):
+        agent, sent = _make_agent()
+        await agent.send_command(
+            "select_text",
+            SelectText(ref="e42", start_offset=5, end_offset=12),
+        )
+        self.assertEqual(
+            sent[0].payload,
+            {
+                "ref": "e42",
+                "target_id": None,
+                "start_offset": 5,
+                "end_offset": 12,
+            },
         )
 
 
