@@ -107,6 +107,31 @@ class Focus:
 
 
 @dataclass
+class Click:
+    """Click an element on the client.
+
+    Closes the form-fill loop for non-text inputs (checkboxes, radios)
+    and exposes the rest of the action vocabulary (submit buttons,
+    links, app-specific clickable nodes). The standard handler
+    silently no-ops on ``disabled`` targets so the agent can't bypass
+    UI affordances the user is meant to control.
+
+    For native ``<select>``, prefer ``SetInputValue`` (clicking
+    options doesn't reliably change the selection); for custom
+    comboboxes (ARIA listbox + popup), apps wire their own command
+    matching the library's interaction model.
+
+    Parameters:
+        ref: Snapshot ref from ``<ui_state>``.
+        target_id: Element id registered on the client. Used as a
+            fallback when ``ref`` is not set or has gone stale.
+    """
+
+    ref: str | None = None
+    target_id: str | None = None
+
+
+@dataclass
 class SetInputValue:
     """Write a value into a text input or textarea on the client.
 

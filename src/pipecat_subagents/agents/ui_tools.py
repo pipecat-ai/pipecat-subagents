@@ -39,6 +39,7 @@ from pipecat.services.llm_service import FunctionCallParams
 
 from pipecat_subagents.agents.tool_decorator import tool
 from pipecat_subagents.agents.ui_commands import (
+    Click,
     Highlight,
     ScrollTo,
     SelectText,
@@ -204,5 +205,54 @@ class SetInputValueToolMixin:
             "set_input_value",
             SetInputValue(ref=ref, value=value),
         )
+        await self.respond_to_task()  # type: ignore[attr-defined]
+        await params.result_callback(None)
+
+
+class ClickToolMixin:
+    """Expose a ``click(ref)`` tool to the LLM.
+
+    Inherit alongside ``UIAgent``. Closes the form-fill story:
+    text inputs and textareas are covered by ``set_input_value``,
+    but checkboxes, radios, and submit buttons need a click. Also
+    serves as the general "act on this element" verb for links,
+    app-specific clickable nodes, and anything else with a real
+    ``click`` handler.
+
+    The tool issues a standard ``Click`` command via the UI command
+    pipe; the client's ``useStandardClickHandler`` (or a custom one)
+    calls ``el.click()`` after refusing on ``disabled`` targets.
+
+    For native ``<select>``, prefer ``set_input_value`` (clicking
+    options doesn't reliably change the selection); for custom
+    comboboxes, apps wire their own command matching the library's
+    interaction model. Click is the verb for everything else.
+
+    The host class must provide ``send_command(name, payload)`` and
+    ``respond_to_task(...)`` (``UIAgent`` does) and must be the
+    target of ``@tool`` discovery on the LLM pipeline.
+
+    Trust note: a click can submit forms, navigate, or delete
+    things. Apps that ship this mixin accept that the agent can act
+    on any element with a ref. Wire confirmation patterns at the
+    prompt level (have the agent describe what it's about to do
+    before clicking) when the action is destructive.
+    """
+
+    @tool
+    async def click(self, params: FunctionCallParams, ref: str):
+        """Click an element on the page by its snapshot ref.
+
+        Use this for checkboxes, radios, submit buttons, links, and
+        any other clickable element. The client refuses on
+        ``disabled`` targets.
+
+        Args:
+            params: Framework-provided tool invocation context.
+            ref: Ref string from the most recent ``<ui_state>``,
+                e.g. ``"e42"``.
+        """
+        logger.info(f"{self}: click(ref={ref!r})")
+        await self.send_command("click", Click(ref=ref))  # type: ignore[attr-defined]
         await self.respond_to_task()  # type: ignore[attr-defined]
         await params.result_callback(None)

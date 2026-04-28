@@ -10,6 +10,7 @@ import unittest
 from unittest.mock import MagicMock
 
 from pipecat_subagents.agents import (
+    Click,
     Focus,
     Highlight,
     Navigate,
@@ -224,6 +225,16 @@ class TestStandardCommands(unittest.IsolatedAsyncioTestCase):
                 "replace": False,
             },
         )
+
+    async def test_click_payload_by_ref(self):
+        agent, sent = _make_agent()
+        await agent.send_command("click", Click(ref="e42"))
+        self.assertEqual(sent[0].payload, {"ref": "e42", "target_id": None})
+
+    async def test_click_payload_by_target_id(self):
+        agent, sent = _make_agent()
+        await agent.send_command("click", Click(target_id="submit"))
+        self.assertEqual(sent[0].payload, {"ref": None, "target_id": "submit"})
 
 
 class TestMessageTypeConstant(unittest.TestCase):
