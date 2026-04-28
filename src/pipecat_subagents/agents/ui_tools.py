@@ -38,7 +38,7 @@ from loguru import logger
 from pipecat.services.llm_service import FunctionCallParams
 
 from pipecat_subagents.agents.tool_decorator import tool
-from pipecat_subagents.agents.ui_commands import Highlight, ScrollTo
+from pipecat_subagents.agents.ui_commands import Highlight, ScrollTo, SelectText
 
 
 class ScrollToToolMixin:
@@ -110,5 +110,47 @@ class HighlightToolMixin:
         """
         logger.info(f"{self}: highlight(ref={ref!r})")
         await self.send_command("highlight", Highlight(ref=ref))  # type: ignore[attr-defined]
+        await self.respond_to_task()  # type: ignore[attr-defined]
+        await params.result_callback(None)
+
+
+class SelectTextToolMixin:
+    """Expose a ``select_text(ref)`` tool to the LLM.
+
+    Inherit alongside ``UIAgent``. Lets the agent point the user's
+    attention at a specific paragraph or input value by selecting it
+    on the page (mirror of the read-side ``<selection>`` block in
+    ``<ui_state>``). Useful when the agent has just answered a
+    question about "this paragraph" or "what I selected" and wants
+    to visually confirm which content it was referring to.
+
+    The tool issues a standard ``SelectText`` command via the UI
+    command pipe; the client's ``useStandardSelectTextHandler`` (or a
+    custom one) does the actual selection. Whole-element select with
+    no offsets is the common case; apps that want sub-range selection
+    should override the tool and pass ``start_offset`` /
+    ``end_offset`` themselves.
+
+    The host class must provide ``send_command(name, payload)`` and
+    ``respond_to_task(...)`` (``UIAgent`` does) and must be the
+    target of ``@tool`` discovery on the LLM pipeline.
+    """
+
+    @tool
+    async def select_text(self, params: FunctionCallParams, ref: str):
+        """Select an element's text on the page by its snapshot ref.
+
+        Use this to highlight the exact paragraph or input the user
+        is asking about, so they can see what content you're
+        referring to. The selection covers the entire element's
+        text content.
+
+        Args:
+            params: Framework-provided tool invocation context.
+            ref: Ref string from the most recent ``<ui_state>``,
+                e.g. ``"e42"``. Typically a paragraph or input.
+        """
+        logger.info(f"{self}: select_text(ref={ref!r})")
+        await self.send_command("select_text", SelectText(ref=ref))  # type: ignore[attr-defined]
         await self.respond_to_task()  # type: ignore[attr-defined]
         await params.result_callback(None)

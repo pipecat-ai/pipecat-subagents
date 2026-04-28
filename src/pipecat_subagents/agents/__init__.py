@@ -35,11 +35,16 @@ from pipecat_subagents.agents.ui_commands import (
     Highlight,
     Navigate,
     ScrollTo,
+    SelectText,
     Toast,
 )
 from pipecat_subagents.agents.ui_event_decorator import on_ui_event
 from pipecat_subagents.agents.ui_prompts import UI_STATE_PROMPT_GUIDE
-from pipecat_subagents.agents.ui_tools import HighlightToolMixin, ScrollToToolMixin
+from pipecat_subagents.agents.ui_tools import (
+    HighlightToolMixin,
+    ScrollToToolMixin,
+    SelectTextToolMixin,
+)
 from pipecat_subagents.agents.watch_decorator import agent_ready
 
 __all__ = [
@@ -53,6 +58,8 @@ __all__ = [
     "Navigate",
     "ScrollTo",
     "ScrollToToolMixin",
+    "SelectText",
+    "SelectTextToolMixin",
     "TaskContext",
     "TaskError",
     "TaskEvent",
