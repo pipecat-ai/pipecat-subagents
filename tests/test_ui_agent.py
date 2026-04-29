@@ -43,7 +43,7 @@ async def _make_agent(**kwargs) -> _StubUIAgent:
     tm = TaskManager()
     tm.setup(TaskManagerParams(loop=asyncio.get_running_loop()))
     bus.set_task_manager(tm)
-    agent = _StubUIAgent("ui", bus=bus, bridged=(), active=False, **kwargs)
+    agent = _StubUIAgent("ui", bus=bus, active=False, **kwargs)
     agent.set_task_manager(tm)
 
     async def _mock_queue_frame(frame, direction=FrameDirection.DOWNSTREAM):
@@ -135,7 +135,7 @@ class TestUIAgentDispatch(unittest.IsolatedAsyncioTestCase):
         tm = TaskManager()
         tm.setup(TaskManagerParams(loop=asyncio.get_running_loop()))
         bus.set_task_manager(tm)
-        agent = _BlockingAgent("ui", bus=bus, bridged=(), active=False)
+        agent = _BlockingAgent("ui", bus=bus, active=False)
         agent.set_task_manager(tm)
 
         async def _mock_queue_frame(frame, direction=FrameDirection.DOWNSTREAM):
@@ -178,7 +178,44 @@ class TestUIAgentDispatch(unittest.IsolatedAsyncioTestCase):
                 async def b(self, message):
                     pass
 
-            _Bad("ui", bus=AsyncQueueBus(), bridged=())
+            _Bad("ui", bus=AsyncQueueBus())
+
+    async def test_bridged_with_default_auto_inject_raises(self):
+        # The default config (auto_inject_ui_state=True) only fires on
+        # on_task_request, but a bridged UIAgent receives frames through
+        # the bridge instead of task messages. The combination would
+        # silently never inject the snapshot — guard at construction.
+        class _Plain(UIAgent):
+            def build_llm(self):
+                return MagicMock()
+
+        with self.assertRaises(ValueError) as ctx:
+            _Plain("ui", bus=AsyncQueueBus(), bridged=())
+        self.assertIn("bridged", str(ctx.exception))
+        self.assertIn("auto_inject_ui_state", str(ctx.exception))
+
+    async def test_bridged_with_explicit_auto_inject_disabled_is_allowed(self):
+        # Advanced escape hatch: a developer who really wants a bridged
+        # UIAgent (and will manage injection manually) opts out of
+        # auto-injection explicitly.
+        class _Plain(UIAgent):
+            def build_llm(self):
+                return MagicMock()
+
+        agent = _Plain(
+            "ui", bus=AsyncQueueBus(), bridged=(), auto_inject_ui_state=False
+        )
+        self.assertFalse(agent._auto_inject_ui_state)
+
+    async def test_default_construction_unaffected(self):
+        # Sanity: the canonical pattern (non-bridged, default auto-inject)
+        # still constructs cleanly.
+        class _Plain(UIAgent):
+            def build_llm(self):
+                return MagicMock()
+
+        agent = _Plain("ui", bus=AsyncQueueBus())
+        self.assertTrue(agent._auto_inject_ui_state)
 
 
 def _wire_task(agent: _StubUIAgent) -> None:
@@ -249,7 +286,7 @@ class TestUIAgentInjection(unittest.IsolatedAsyncioTestCase):
             def render_ui_event(self, message):
                 return f"[UI] {message.event_name}"
 
-        agent = _CustomRender("ui", bus=AsyncQueueBus(), bridged=())
+        agent = _CustomRender("ui", bus=AsyncQueueBus())
         _wire_task(agent)
 
         await _dispatch(
@@ -271,7 +308,7 @@ class TestUIAgentInjection(unittest.IsolatedAsyncioTestCase):
             def render_ui_event(self, message):
                 return ""
 
-        agent = _NoRender("ui", bus=AsyncQueueBus(), bridged=())
+        agent = _NoRender("ui", bus=AsyncQueueBus())
         _wire_task(agent)
 
         await _dispatch(

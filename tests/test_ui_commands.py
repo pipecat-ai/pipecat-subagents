@@ -44,7 +44,7 @@ def _make_agent():
 
     bus.send = capture_send  # type: ignore[assignment]
 
-    agent = _StubUIAgent("ui", bus=bus, bridged=(), active=False)
+    agent = _StubUIAgent("ui", bus=bus, active=False)
     return agent, sent
 
 

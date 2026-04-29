@@ -60,8 +60,21 @@ class UIAgent(LLMAgent):
     as ``<ui_event name="...">payload</ui_event>`` so the agent can
     reason about what the user just did on the next inference.
 
-    Subclasses provide an LLM via ``build_llm()`` and declare handlers
-    with ``@on_ui_event(name)``:
+    ## Canonical pattern
+
+    A ``UIAgent`` is the delegate side of a voice ↔ UI split: a
+    bridged ``LLMAgent`` (the voice layer) receives the user's
+    transcript and delegates UI-relevant work to this agent via
+    ``self.task("ui_agent_name", payload={"query": text})``. The UI
+    agent's ``on_task_request`` fires, ``<ui_state>`` is auto-injected,
+    the LLM picks a tool, and the task completes with a spoken reply
+    the voice agent hands to TTS.
+
+    A working subclass needs three things: an LLM, a pipeline that
+    wraps the LLM in a context aggregator (so ``LLMMessagesAppendFrame``
+    threads into the running context), and an ``on_task_request``
+    override that feeds the user's query into the LLM. The defaults
+    handle activation, snapshot injection, and tool registration.
 
     Example::
 
@@ -69,20 +82,65 @@ class UIAgent(LLMAgent):
             def build_llm(self) -> LLMService:
                 return OpenAILLMService(api_key="...")
 
+            async def build_pipeline(self) -> Pipeline:
+                # The default ``LLMAgent`` pipeline is just
+                # ``Pipeline([self._llm])`` — fine for bridged agents
+                # whose context lives on the transport pipeline, but
+                # a non-bridged UIAgent receives ``LLMMessagesAppendFrame``
+                # directly and needs its own aggregator pair to thread
+                # those messages into the LLM's running context.
+                self._llm = self.create_llm()
+                context = LLMContext()
+                aggregator = LLMContextAggregatorPair(context)
+                return Pipeline([
+                    aggregator.user(),
+                    self._llm,
+                    aggregator.assistant(),
+                ])
+
+            async def on_task_request(self, message):
+                # super() records the in-flight task and (if
+                # auto_inject_ui_state is on) injects ``<ui_state>``.
+                # Then feed the user's query into the LLM context with
+                # ``run_llm=True`` so the LLM actually generates.
+                await super().on_task_request(message)
+                query = (message.payload or {}).get("query", "")
+                await self.queue_frame(LLMMessagesAppendFrame(
+                    messages=[{"role": "developer", "content": query}],
+                    run_llm=True,
+                ))
+
             @on_ui_event("nav_click")
             async def on_nav(self, message):
                 view = message.payload.get("view")
                 ...
 
-    Visibility convention: when the client captures snapshots with
-    ``trackViewport`` enabled (the default), every node in the
-    accessibility tree whose bounding rect sits fully outside the
-    viewport carries ``"offscreen"`` in its ``state`` list. The
-    rendered ``<ui_state>`` surfaces this as ``[offscreen]``.
-    ``visible_nodes()`` returns the filtered subset the user is
-    actually looking at right now. Agents should treat ``[offscreen]``
-    nodes as on-the-page-but-not-in-view, typically issuing a
-    ``scroll_to`` command before acting on them.
+            @tool
+            async def answer(self, params, text: str):
+                await self.respond_to_task(speak=text)
+                await params.result_callback(None)
+
+    ## Activation default
+
+    Unlike ``LLMAgent`` (which defaults to ``active=False`` because
+    voice handoff patterns require parent-driven activation),
+    ``UIAgent`` defaults to ``active=True``. UIAgents are typically
+    always-on delegates with no equivalent of "the user is now
+    talking to UIAgent" — the agent activates as soon as its
+    pipeline starts, registers its tools, and stays online to
+    receive tasks. Pass ``active=False`` explicitly if you have a
+    handoff use case.
+
+    ## Visibility convention
+
+    When the client captures snapshots with ``trackViewport`` enabled
+    (the default), every node in the accessibility tree whose bounding
+    rect sits fully outside the viewport carries ``"offscreen"`` in its
+    ``state`` list. The rendered ``<ui_state>`` surfaces this as
+    ``[offscreen]``. ``visible_nodes()`` returns the filtered subset
+    the user is actually looking at right now. Agents should treat
+    ``[offscreen]`` nodes as on-the-page-but-not-in-view, typically
+    issuing a ``scroll_to`` command before acting on them.
     """
 
     def __init__(
@@ -90,7 +148,7 @@ class UIAgent(LLMAgent):
         name: str,
         *,
         bus: AgentBus,
-        active: bool = False,
+        active: bool = True,
         bridged: tuple[str, ...] | None = None,
         inject_events: bool = True,
         auto_inject_ui_state: bool = True,
@@ -101,7 +159,12 @@ class UIAgent(LLMAgent):
         Args:
             name: Unique name for this agent.
             bus: The `AgentBus` for inter-agent communication.
-            active: Whether the agent starts active. Defaults to False.
+            active: Whether the agent starts active. Defaults to
+                ``True`` for ``UIAgent`` (vs. ``False`` on
+                ``LLMAgent``) because the canonical UIAgent role is
+                an always-on delegate that should self-activate as
+                soon as its pipeline starts. Pass ``active=False``
+                only if you have a handoff use case.
             bridged: Bridge configuration. See ``BaseAgent`` for details.
             inject_events: Whether to auto-append each UI event to the
                 LLM context as a ``<ui_event>`` developer message.
@@ -118,7 +181,32 @@ class UIAgent(LLMAgent):
                 rendered ``<ui_state>`` text. Useful in dev / staging
                 for eyeballing what the LLM will see. Defaults to
                 False.
+
+        Raises:
+            ValueError: If ``bridged`` is set together with the default
+                ``auto_inject_ui_state=True``. The two are
+                incompatible: auto-injection fires on
+                ``on_task_request``, but a bridged ``UIAgent`` receives
+                user voice frames through the bridge instead of task
+                messages, so the snapshot would never reach the LLM
+                context. The canonical pattern is a non-bridged
+                ``UIAgent`` that receives delegated tasks from a
+                separate voice ``LLMAgent``. If you really want a
+                bridged ``UIAgent`` (advanced cases), pass
+                ``auto_inject_ui_state=False`` explicitly and call
+                ``inject_ui_state()`` yourself.
         """
+        if bridged is not None and auto_inject_ui_state:
+            raise ValueError(
+                f"UIAgent '{name}': bridged + auto_inject_ui_state=True is "
+                "incompatible. Auto-injection fires on on_task_request, but a "
+                "bridged UIAgent receives frames through the bridge — the "
+                "snapshot would never land in the LLM context and the agent "
+                "would silently hallucinate. Use the canonical pattern "
+                "(non-bridged UIAgent receiving tasks from a separate "
+                "LLMAgent) or pass auto_inject_ui_state=False if you really "
+                "want a bridged UIAgent and will manage injection manually."
+            )
         super().__init__(name, bus=bus, active=active, bridged=bridged)
         self._inject_events = inject_events
         self._auto_inject_ui_state = auto_inject_ui_state
