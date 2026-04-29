@@ -52,7 +52,7 @@ class _AgentWithBothTools(ScrollToToolMixin, HighlightToolMixin, UIAgent):
 
 
 def _new(cls: type) -> UIAgent:
-    return cls("ui", bus=AsyncQueueBus(), bridged=(), active=False)
+    return cls("ui", bus=AsyncQueueBus(), active=False)
 
 
 def _capture(agent: UIAgent) -> list[BusUICommandMessage]:

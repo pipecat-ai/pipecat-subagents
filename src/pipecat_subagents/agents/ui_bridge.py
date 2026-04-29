@@ -69,6 +69,14 @@ def attach_ui_bridge(agent: BaseAgent, *, target: str | None = None) -> None:
 
     Raises:
         RuntimeError: If the agent's pipeline task has no RTVI processor.
+
+    Note:
+        RTVI's ``on_client_ready`` event fires the moment the client's
+        handshake message arrives — that can land before
+        ``on_ready`` runs. Register ``on_client_ready`` handlers in
+        ``build_pipeline_task`` (after creating the task) rather than
+        ``on_ready`` to avoid a registration-vs-event race that drops
+        the event silently.
     """
     rtvi = getattr(agent.pipeline_task, "rtvi", None)
     if rtvi is None:

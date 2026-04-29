@@ -82,7 +82,7 @@ async def _make_solo_agent(**kwargs) -> _StubUIAgent:
     tm = TaskManager()
     tm.setup(TaskManagerParams(loop=asyncio.get_running_loop()))
     bus.set_task_manager(tm)
-    agent = _StubUIAgent("ui", bus=bus, bridged=(), active=False, **kwargs)
+    agent = _StubUIAgent("ui", bus=bus, active=False, **kwargs)
     agent.set_task_manager(tm)
     _wire_pipeline(agent)
     return agent
@@ -372,7 +372,7 @@ class TestUserTaskGroup(unittest.IsolatedAsyncioTestCase):
         await self.bus.stop()
 
     async def _make_ui_agent(self, name="ui") -> _StubUIAgent:
-        agent = _StubUIAgent(name, bus=self.bus, bridged=(), active=False)
+        agent = _StubUIAgent(name, bus=self.bus, active=False)
         await _add_to_bus(self.bus, self.registry, agent)
         _wire_pipeline(agent)
         return agent
