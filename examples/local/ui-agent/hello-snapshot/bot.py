@@ -135,9 +135,7 @@ When the question is about something on the page, ground claims in \
 the ``<ui_state>`` content. When it's general knowledge with no \
 on-page referent (history, geography, definitions), answer from your \
 own knowledge. Don't tell the user what you can't see — just answer \
-or admit you don't know.
-
-"""
+or admit you don't know."""
     + UI_STATE_PROMPT_GUIDE
 )
 
@@ -152,7 +150,7 @@ class VoiceAgent(LLMAgent):
         return OpenAILLMService(
             api_key=os.environ["OPENAI_API_KEY"],
             settings=OpenAILLMSettings(
-                model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+                model=os.getenv("OPENAI_MODEL"),
                 system_instruction=VOICE_PROMPT,
             ),
         )
@@ -203,28 +201,9 @@ class HelloAgent(UIAgent):
         return OpenAILLMService(
             api_key=os.environ["OPENAI_API_KEY"],
             settings=OpenAILLMSettings(
-                model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+                model=os.getenv("OPENAI_MODEL"),
                 system_instruction=HELLO_PROMPT,
             ),
-        )
-
-    async def build_pipeline(self) -> Pipeline:
-        # Override LLMAgent's default ``Pipeline([self._llm])`` to wrap
-        # the LLM in a context aggregator. The default works for
-        # bridged agents (frames already flow through the transport's
-        # context aggregator) but a non-bridged LLMAgent that receives
-        # ``LLMMessagesAppendFrame`` directly needs its own aggregator
-        # to thread messages into the LLM's running context — without
-        # this the LLM gets the frame but never produces a completion.
-        self._llm = self.create_llm()
-        context = LLMContext()
-        aggregator = LLMContextAggregatorPair(context)
-        return Pipeline(
-            [
-                aggregator.user(),
-                self._llm,
-                aggregator.assistant(),
-            ]
         )
 
     async def on_task_request(self, message: BusTaskRequestMessage) -> None:
