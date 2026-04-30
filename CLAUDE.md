@@ -26,6 +26,7 @@ BaseAgent                    -- pipeline lifecycle, parent-child, tasks, activat
 BaseAgent(bridged=())        -- adds edge processors for bus frame routing (all bridges)
 BaseAgent(bridged=("voice",)) -- edge processors filtered to named bridges
   LLMAgent                   -- build_llm(), @tool registration, message injection on activation
+    LLMContextAgent          -- LLMAgent with built-in LLMContext + LLMContextAggregatorPair
   FlowsAgent                 -- Pipecat Flows integration (node-based conversation, always bridged)
 ```
 
@@ -33,6 +34,7 @@ BaseAgent(bridged=("voice",)) -- edge processors filtered to named bridges
 
 - `src/pipecat_subagents/agents/base_agent.py` -- BaseAgent, _BusEdgeProcessor, AgentActivationArgs, AgentReadyData, AgentErrorData
 - `src/pipecat_subagents/agents/llm/llm_agent.py` -- LLMAgent, LLMAgentActivationArgs
+- `src/pipecat_subagents/agents/llm/llm_context_agent.py` -- LLMContextAgent
 - `src/pipecat_subagents/agents/llm/tool_decorator.py` -- @tool decorator
 - `src/pipecat_subagents/agents/flows/flows_agent.py` -- FlowsAgent
 - `src/pipecat_subagents/agents/task_context.py` -- TaskContext, TaskGroup, TaskGroupContext, TaskGroupEvent, TaskGroupResponse, TaskGroupError, TaskStatus

@@ -16,7 +16,7 @@ and requires the ``pipecat-ai-subagents[flows]`` optional dependency.
 """
 
 from pipecat_subagents.agents.base_agent import AgentActivationArgs, BaseAgent
-from pipecat_subagents.agents.llm import LLMAgent, LLMAgentActivationArgs, tool
+from pipecat_subagents.agents.llm import LLMAgent, LLMAgentActivationArgs, LLMContextAgent, tool
 from pipecat_subagents.agents.task_context import (
     TaskContext,
     TaskError,
