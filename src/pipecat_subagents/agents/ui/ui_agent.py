@@ -14,7 +14,7 @@ from dataclasses import asdict, dataclass, is_dataclass
 from typing import Any
 
 from loguru import logger
-from pipecat.frames.frames import LLMMessagesAppendFrame
+from pipecat.frames.frames import LLMMessagesAppendFrame, LLMMessagesUpdateFrame
 from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.aggregators.llm_response_universal import (
     LLMAssistantAggregatorParams,
@@ -144,6 +144,7 @@ class UIAgent(LLMContextAgent):
         assistant_params: LLMAssistantAggregatorParams | None = None,
         inject_events: bool = True,
         auto_inject_ui_state: bool = True,
+        keep_history: bool = False,
     ):
         """Initialize the UIAgent.
 
@@ -177,6 +178,24 @@ class UIAgent(LLMContextAgent):
                 at the start of every task request, so the agent always
                 reasons over the current screen. Set to False if you
                 want to call ``inject_ui_state()`` yourself.
+            keep_history: When False (the default), the LLM context is
+                cleared at the start of every task. Each task starts
+                from an empty messages list, the current ``<ui_state>``
+                is injected, and the user's query follows. Best for
+                the canonical stateless-delegate role where the voice
+                agent owns dialog state and the UI agent's job is
+                "given the current screen, do something." When True,
+                the conversation history accumulates across tasks
+                (queries, prior ``<ui_state>`` blocks, tool calls,
+                responses) so the LLM can reason over multi-turn
+                references like "show me the next one" or "tell me
+                about the Pro version of that." History accumulation
+                grows token usage and can confuse smaller models when
+                multiple ``<ui_state>`` snapshots are present at once;
+                opt in only when the dialog continuity is worth the
+                cost. Apps in ``keep_history=True`` mode that
+                occasionally want to clear can call
+                ``await self.reset_context()``.
 
         Raises:
             ValueError: If ``bridged`` is set together with the default
@@ -215,6 +234,7 @@ class UIAgent(LLMContextAgent):
         )
         self._inject_events = inject_events
         self._auto_inject_ui_state = auto_inject_ui_state
+        self._keep_history = keep_history
         self._ui_event_handlers = _collect_ui_event_handlers(self)
         # Latest accessibility snapshot received from the client. Updated
         # in ``on_bus_message`` when a ``__ui_snapshot`` event arrives.
@@ -350,18 +370,40 @@ class UIAgent(LLMContextAgent):
         return self._current_task
 
     async def on_task_request(self, message: BusTaskRequestMessage) -> None:
-        """Auto-inject the latest ``<ui_state>`` before task dispatch.
+        """Reset (when configured) and inject ``<ui_state>`` before dispatch.
 
         Records the in-flight task for ``respond_to_task`` to close
-        out, then injects the current snapshot so the agent always
-        reasons over the current screen. Disable the snapshot
-        injection via ``auto_inject_ui_state=False`` if the app wants
-        to drive injection manually.
+        out. When ``keep_history=False`` (the default), clears the LLM
+        context so each task starts fresh. When
+        ``auto_inject_ui_state=True`` (the default), injects the
+        current snapshot. The pipeline processes these frames in
+        order, so by the time the subclass appends the user's query
+        with ``run_llm=True`` the context contains exactly: current
+        ``<ui_state>`` + query.
         """
         await super().on_task_request(message)
         self._current_task = message
+        if not self._keep_history:
+            await self.reset_context()
         if self._auto_inject_ui_state:
             await self.inject_ui_state()
+
+    async def reset_context(self) -> None:
+        """Clear the LLM conversation history.
+
+        Replaces all messages in the running context with an empty
+        list. The system prompt (set on the LLM service via
+        ``system_instruction``) is unaffected.
+
+        Implemented via ``LLMMessagesUpdateFrame``, which the context
+        aggregator processes in pipeline order alongside other
+        context-modifying frames. Apps in ``keep_history=True`` mode
+        call this when they want to deliberately start over (e.g.,
+        the user said "start fresh"). Apps in the default
+        ``keep_history=False`` mode don't need to call this; the
+        per-task reset runs automatically.
+        """
+        await self.queue_frame(LLMMessagesUpdateFrame(messages=[], run_llm=False))
 
     async def respond_to_task(
         self,
