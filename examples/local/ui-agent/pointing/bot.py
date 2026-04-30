@@ -230,20 +230,6 @@ class PointingAgent(
             ),
         )
 
-    async def build_pipeline(self) -> Pipeline:
-        # Aggregator-wrapped pipeline so LLMMessagesAppendFrame threads
-        # into the LLM context. See UIAgent docstring.
-        self._llm = self.create_llm()
-        context = LLMContext()
-        aggregator = LLMContextAggregatorPair(context)
-        return Pipeline(
-            [
-                aggregator.user(),
-                self._llm,
-                aggregator.assistant(),
-            ]
-        )
-
     async def on_task_request(self, message: BusTaskRequestMessage) -> None:
         # super() records the in-flight task and auto-injects
         # <ui_state>; we feed the user's query in afterward.
