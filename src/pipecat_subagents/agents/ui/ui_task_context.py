@@ -24,7 +24,7 @@ from pipecat_subagents.bus.messages import (
 )
 
 if TYPE_CHECKING:
-    from pipecat_subagents.agents.ui_agent import UIAgent
+    from pipecat_subagents.agents.ui.ui_agent import UIAgent
 
 
 class UserTaskGroupContext(TaskGroupContext):

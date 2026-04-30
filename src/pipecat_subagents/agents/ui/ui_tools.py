@@ -88,8 +88,8 @@ from __future__ import annotations
 from loguru import logger
 from pipecat.services.llm_service import FunctionCallParams
 
-from pipecat_subagents.agents.tool_decorator import tool
-from pipecat_subagents.agents.ui_commands import (
+from pipecat_subagents.agents.llm.tool_decorator import tool
+from pipecat_subagents.agents.ui.ui_commands import (
     Click,
     Highlight,
     ScrollTo,
