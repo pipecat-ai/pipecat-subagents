@@ -27,7 +27,7 @@ from pipecat_subagents.agents import (
     SetInputValueToolMixin,
     UIAgent,
 )
-from pipecat_subagents.agents.tool_decorator import _collect_tools
+from pipecat_subagents.agents.llm.tool_decorator import _collect_tools
 from pipecat_subagents.bus import AsyncQueueBus, BusUICommandMessage
 
 

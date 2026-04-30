@@ -18,10 +18,10 @@ from loguru import logger
 from pipecat.frames.frames import LLMMessagesAppendFrame
 from pipecat.services.llm_service import LLMService
 
-from pipecat_subagents.agents.llm_agent import LLMAgent
+from pipecat_subagents.agents.llm.llm_agent import LLMAgent
 from pipecat_subagents.agents.task_context import TaskStatus
-from pipecat_subagents.agents.ui_event_decorator import _collect_ui_event_handlers
-from pipecat_subagents.agents.ui_task_context import UserTaskGroupContext
+from pipecat_subagents.agents.ui.ui_event_decorator import _collect_ui_event_handlers
+from pipecat_subagents.agents.ui.ui_task_context import UserTaskGroupContext
 from pipecat_subagents.bus import AgentBus
 from pipecat_subagents.bus.messages import (
     UI_CANCEL_TASK_EVENT_NAME,
@@ -252,7 +252,7 @@ class UIAgent(LLMAgent):
             payload: One of:
 
                 - A dataclass instance (including the built-ins in
-                  ``pipecat_subagents.agents.ui_commands``). Converted
+                  ``pipecat_subagents.agents.ui``). Converted
                   to a plain dict with ``dataclasses.asdict``.
                 - A ``dict`` forwarded as-is.
                 - ``None``, forwarded as an empty dict.

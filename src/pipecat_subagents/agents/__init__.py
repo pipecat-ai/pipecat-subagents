@@ -28,27 +28,25 @@ from pipecat_subagents.agents.task_context import (
     TaskStatus,
 )
 from pipecat_subagents.agents.task_decorator import task
-from pipecat_subagents.agents.ui_agent import UIAgent
-from pipecat_subagents.agents.ui_bridge import attach_ui_bridge
-from pipecat_subagents.agents.ui_commands import (
+from pipecat_subagents.agents.ui import (
+    UI_STATE_PROMPT_GUIDE,
+    AnswerToolMixin,
     Click,
+    ClickToolMixin,
     Focus,
     Highlight,
+    HighlightToolMixin,
     Navigate,
     ScrollTo,
-    SelectText,
-    SetInputValue,
-    Toast,
-)
-from pipecat_subagents.agents.ui_event_decorator import on_ui_event
-from pipecat_subagents.agents.ui_prompts import UI_STATE_PROMPT_GUIDE
-from pipecat_subagents.agents.ui_tools import (
-    AnswerToolMixin,
-    ClickToolMixin,
-    HighlightToolMixin,
     ScrollToToolMixin,
+    SelectText,
     SelectTextToolMixin,
+    SetInputValue,
     SetInputValueToolMixin,
+    Toast,
+    UIAgent,
+    attach_ui_bridge,
+    on_ui_event,
 )
 from pipecat_subagents.agents.watch_decorator import agent_ready
 
