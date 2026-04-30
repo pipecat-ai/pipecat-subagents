@@ -23,6 +23,7 @@ from pipecat.processors.aggregators.llm_response_universal import (
 
 from pipecat_subagents.agents.llm.llm_context_agent import LLMContextAgent
 from pipecat_subagents.agents.task_context import TaskStatus
+from pipecat_subagents.agents.ui.ui_commands import Highlight, ScrollTo
 from pipecat_subagents.agents.ui.ui_event_decorator import _collect_ui_event_handlers
 from pipecat_subagents.agents.ui.ui_task_context import UserTaskGroupContext
 from pipecat_subagents.bus import AgentBus
@@ -266,6 +267,40 @@ class UIAgent(LLMContextAgent):
                 payload=serialized,
             )
         )
+
+    async def scroll_to(self, ref: str) -> None:
+        """Dispatch a standard ``scroll_to`` UI command for the given ref.
+
+        Convenience wrapper around ``send_command("scroll_to",
+        ScrollTo(ref=ref))``. Useful when composing custom ``@tool``
+        methods that bundle visual actions with a spoken reply (see
+        ``ReplyToolMixin`` for the canonical shape).
+
+        Note this is a regular instance method, not an LLM tool.
+        Subclasses that want to expose it to the LLM should write
+        their own ``@tool`` method that calls
+        ``await super().scroll_to(ref)``.
+
+        Args:
+            ref: Snapshot ref like ``"e42"`` from the most recent
+                ``<ui_state>``.
+        """
+        await self.send_command("scroll_to", ScrollTo(ref=ref))
+
+    async def highlight(self, ref: str) -> None:
+        """Dispatch a standard ``highlight`` UI command for the given ref.
+
+        Convenience wrapper around ``send_command("highlight",
+        Highlight(ref=ref))``. Same pattern as ``scroll_to``: a plain
+        instance method, not an LLM tool. Compose into a custom
+        ``@tool`` body, or use ``ReplyToolMixin`` for the standard
+        shape.
+
+        Args:
+            ref: Snapshot ref like ``"e42"`` from the most recent
+                ``<ui_state>``.
+        """
+        await self.send_command("highlight", Highlight(ref=ref))
 
     async def on_bus_message(self, message: BusMessage) -> None:
         """Dispatch UI events alongside base lifecycle handling."""

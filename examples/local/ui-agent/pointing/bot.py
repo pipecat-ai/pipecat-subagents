@@ -6,15 +6,16 @@
 
 """Pointing — the agent acts on the page to direct user attention.
 
-Same canonical UIAgent setup as ``hello-snapshot``, but the UI agent
-composes three SDK mixins: ``ScrollToToolMixin``,
-``HighlightToolMixin``, and ``AnswerToolMixin``. The LLM gets three
-tools: ``scroll_to(ref)`` and ``highlight(ref)`` (pure side effects)
-plus ``answer(text)`` (the terminator that completes the task and
-hands the spoken reply to TTS). When the user asks "where's the
-iPhone 17?", the LLM finds the matching ref in the snapshot, scrolls
-it into view if it's tagged ``[offscreen]``, flashes it, and speaks a
-brief confirmation, all in one turn via tool chaining.
+Composes ``ReplyToolMixin`` from the SDK, which exposes one bundled
+LLM tool: ``reply(answer, scroll_to=None, highlight=None)``. One tool
+call per turn; the required ``answer`` argument is enforced by the
+API schema so the model cannot forget the spoken reply.
+
+When the user asks "where's the iPhone 17?", the LLM finds the
+matching ref in the snapshot and emits one ``reply`` call with
+``answer="Here's the iPhone 17."`` plus ``scroll_to`` and
+``highlight`` set to that ref. The mixin dispatches the UI commands
+and completes the in-flight task.
 
 Architecture::
 
@@ -22,9 +23,8 @@ Architecture::
       ├── VoiceAgent (LLMAgent, bridged)        -- conversational layer
       │     └── @tool answer_about_screen(query)
       │           └── self.task("ui", payload={"query": query})
-      └── PointingAgent
-            (ScrollToToolMixin + HighlightToolMixin + AnswerToolMixin + UIAgent)
-            └── inherited: scroll_to(ref), highlight(ref), answer(text)
+      └── PointingAgent (ReplyToolMixin + UIAgent)
+            └── inherited: reply(answer, scroll_to=None, highlight=None)
 
 Run::
 
@@ -62,12 +62,10 @@ from pipecat.transports.base_transport import BaseTransport, TransportParams
 
 from pipecat_subagents.agents import (
     UI_STATE_PROMPT_GUIDE,
-    AnswerToolMixin,
     BaseAgent,
-    HighlightToolMixin,
     LLMAgent,
     LLMAgentActivationArgs,
-    ScrollToToolMixin,
+    ReplyToolMixin,
     TaskError,
     UIAgent,
     agent_ready,
@@ -106,49 +104,41 @@ UI_PROMPT = (
 You help the user find and look at items on a long page of phone \
 listings. The current ``<ui_state>`` block is in your context.
 
-## Tools
+## Tool: reply
 
-- ``scroll_to(ref)``: scrolls the named item into view. Side effect \
-only; doesn't speak.
-- ``highlight(ref)``: pulses the named item visually. Side effect \
-only; doesn't speak.
-- ``answer(text)``: speaks ``text`` to the user and ends the turn. \
-Always called exactly once per turn, last.
+Every turn calls ``reply`` exactly once. One tool call per turn, no \
+chaining.
 
-You can chain multiple tools in one turn. The pattern: do whatever \
-visual action the request needs, then ``answer`` with a short \
-spoken confirmation.
+``reply(answer, scroll_to=None, highlight=None)``:
 
-## When pointing at a specific item
+- ``answer`` (REQUIRED): the spoken reply, plain language, one \
+short sentence. No markdown, no symbols, no specs read aloud.
+- ``scroll_to`` (OPTIONAL): a snapshot ref like ``"e5"``. Set this \
+when the item the user wants is tagged ``[offscreen]`` in \
+``<ui_state>``.
+- ``highlight`` (OPTIONAL): a snapshot ref like ``"e5"``. Set this \
+when pointing at a specific item the user named.
 
-Decide based on the snapshot's ``[offscreen]`` state:
+## Decision rules
 
-- Item is **visible** (no ``[offscreen]`` tag) → ``highlight(ref)`` \
-+ ``answer("text")``. Two tool calls.
-- Item is **offscreen** (``[offscreen]`` tag) → ``scroll_to(ref)`` \
-+ ``highlight(ref)`` + ``answer("text")``. Three tool calls.
+- Pointing at a **visible** item → set ``highlight=ref``; leave \
+``scroll_to`` unset.
+- Pointing at an **offscreen** item → set both ``scroll_to=ref`` and \
+``highlight=ref`` (same ref).
+- **Descriptive / conversational** question → leave both unset.
 
-Examples:
+## Examples
 
-- "Where's the iPhone 17?" → check snapshot for the iPhone 17's \
-ref and offscreen state, then call the right combination ending in \
-``answer("Here's the iPhone 17.")``.
-- "Which one is the Nothing phone?" → almost always already \
-visible (the user is asking about something they can see), so \
-``highlight`` + ``answer("This one — the Nothing Phone 3.")``.
-
-## When not pointing at anything
-
-For descriptive questions ("which phones are from Google?", "what's \
-the cheapest one?"), just call ``answer(text)`` with the spoken \
-reply. No scroll, no highlight.
-
-## Voice rules
-
-Plain language. One short spoken sentence. No markdown, no lists, \
-no symbols. Don't read out specs.
-
-"""
+- "Where's the iPhone 17?" (offscreen) → \
+``reply(answer="Here's the iPhone 17.", scroll_to="e5", highlight="e5")``
+- "Where's the iPhone 17 Pro?" (offscreen) → \
+``reply(answer="Here's the iPhone 17 Pro.", scroll_to="e8", highlight="e8")``
+- "Which one is the Nothing phone?" (visible) → \
+``reply(answer="This one, the Nothing Phone 3.", highlight="e29")``
+- "Which phones are from Google?" → \
+``reply(answer="The Pixel 9, Pixel 9 Pro, and Pixel 9a are from Google.")``
+- "Tell me about the iPhone 17 Pro" → \
+``reply(answer="It's Apple's 2025 flagship with a 120Hz ProMotion display and periscope zoom.")``"""
     + UI_STATE_PROMPT_GUIDE
 )
 
@@ -163,7 +153,7 @@ class VoiceAgent(LLMAgent):
         return OpenAILLMService(
             api_key=os.environ["OPENAI_API_KEY"],
             settings=OpenAILLMSettings(
-                model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+                model=os.getenv("OPENAI_MODEL"),
                 system_instruction=VOICE_PROMPT,
             ),
         )
@@ -177,7 +167,7 @@ class VoiceAgent(LLMAgent):
         """
         logger.info(f"{self}: answer_about_screen('{query}')")
         try:
-            async with self.task("ui", payload={"query": query}, timeout=30) as t:
+            async with self.task("ui", payload={"query": query}, timeout=10) as t:
                 pass
         except TaskError as e:
             logger.warning(f"{self}: ui task failed: {e}")
@@ -199,33 +189,21 @@ class VoiceAgent(LLMAgent):
         await params.result_callback(None)
 
 
-class PointingAgent(
-    ScrollToToolMixin,
-    HighlightToolMixin,
-    AnswerToolMixin,
-    UIAgent,
-):
-    """UIAgent that points at items by chaining SDK action mixins.
+class PointingAgent(ReplyToolMixin, UIAgent):
+    """UIAgent that points at items using the canonical ``reply`` tool.
 
-    Composes the three shipped mixins as-is. The action mixins
-    (``ScrollToToolMixin``, ``HighlightToolMixin``) are pure side
-    effects: each dispatches one UI command and returns without
-    completing the in-flight task. ``AnswerToolMixin`` provides the
-    terminator: ``answer(text)`` calls ``respond_to_task(speak=text)``
-    which closes the task and hands the spoken reply to TTS.
-
-    With this composition the LLM can chain ``scroll_to`` (if
-    offscreen) → ``highlight`` → ``answer(text)`` in a single turn,
-    or skip straight to ``highlight + answer`` when the target is
-    already visible. The prompt below teaches the model which combo
-    to pick based on the snapshot's ``[offscreen]`` state tag.
+    Composes the SDK's ``ReplyToolMixin``, which exposes a single
+    ``reply(answer, scroll_to=None, highlight=None)`` LLM tool. One
+    tool call per turn; the required ``answer`` argument is enforced
+    by the API schema so the model cannot forget the spoken reply
+    (the failure mode chainable tools have with smaller models).
     """
 
     def build_llm(self) -> LLMService:
         return OpenAILLMService(
             api_key=os.environ["OPENAI_API_KEY"],
             settings=OpenAILLMSettings(
-                model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+                model=os.getenv("OPENAI_MODEL"),
                 system_instruction=UI_PROMPT,
             ),
         )

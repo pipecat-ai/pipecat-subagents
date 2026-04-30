@@ -4,69 +4,30 @@
 # SPDX-License-Identifier: BSD 2-Clause License
 #
 
-"""Tests for opt-in tool mixins.
+"""Tests for ``ReplyToolMixin`` and the action helper methods on ``UIAgent``.
 
-Action mixins (``ScrollToToolMixin``, ``HighlightToolMixin``,
-``SelectTextToolMixin``, ``SetInputValueToolMixin``,
-``ClickToolMixin``) are pure side effects: they dispatch a UI command
-and return without completing the in-flight task. ``AnswerToolMixin``
-is the canonical terminator: it calls ``respond_to_task`` to close
-the task. The combination lets the LLM chain action(s) plus a final
-answer in a single turn.
+The mixin exposes a single bundled ``reply(answer, scroll_to,
+highlight)`` LLM tool whose ``answer`` argument is required. The
+helper methods (``scroll_to``, ``highlight``) are plain instance
+methods on ``UIAgent`` that wrap ``send_command`` with the standard
+payload dataclasses; apps call them inside custom ``@tool`` bodies
+when the canonical ``reply`` shape doesn't fit.
 """
 
 import unittest
 from unittest.mock import AsyncMock, MagicMock
 
-from pipecat_subagents.agents import (
-    AnswerToolMixin,
-    ClickToolMixin,
-    HighlightToolMixin,
-    ScrollToToolMixin,
-    SelectTextToolMixin,
-    SetInputValueToolMixin,
-    UIAgent,
-)
+from pipecat_subagents.agents import ReplyToolMixin, UIAgent
 from pipecat_subagents.agents.llm.tool_decorator import _collect_tools
 from pipecat_subagents.bus import AsyncQueueBus, BusUICommandMessage
 
 
-class _AgentWithScrollTool(ScrollToToolMixin, UIAgent):
+class _AgentWithReply(ReplyToolMixin, UIAgent):
     def build_llm(self):
         return MagicMock()
 
 
-class _AgentWithHighlightTool(HighlightToolMixin, UIAgent):
-    def build_llm(self):
-        return MagicMock()
-
-
-class _AgentWithSelectTextTool(SelectTextToolMixin, UIAgent):
-    def build_llm(self):
-        return MagicMock()
-
-
-class _AgentWithSetInputValueTool(SetInputValueToolMixin, UIAgent):
-    def build_llm(self):
-        return MagicMock()
-
-
-class _AgentWithClickTool(ClickToolMixin, UIAgent):
-    def build_llm(self):
-        return MagicMock()
-
-
-class _AgentWithAnswerTool(AnswerToolMixin, UIAgent):
-    def build_llm(self):
-        return MagicMock()
-
-
-class _AgentWithBothTools(ScrollToToolMixin, HighlightToolMixin, UIAgent):
-    def build_llm(self):
-        return MagicMock()
-
-
-class _AgentWithChainable(ScrollToToolMixin, HighlightToolMixin, AnswerToolMixin, UIAgent):
+class _PlainAgent(UIAgent):
     def build_llm(self):
         return MagicMock()
 
@@ -85,318 +46,135 @@ def _capture(agent: UIAgent) -> list[BusUICommandMessage]:
     return sent
 
 
-class TestScrollToToolMixin(unittest.IsolatedAsyncioTestCase):
-    async def test_mixin_exposes_scroll_to_tool(self):
-        agent = _new(_AgentWithScrollTool)
-        tool_names = [t.__name__ for t in _collect_tools(agent)]
-        self.assertIn("scroll_to", tool_names)
+class TestUIAgentActionHelpers(unittest.IsolatedAsyncioTestCase):
+    """The helper methods are plain methods, not LLM tools."""
 
-    async def test_plain_uiagent_has_no_scroll_to_tool(self):
-        class PlainAgent(UIAgent):
-            def build_llm(self):
-                return MagicMock()
-
-        agent = _new(PlainAgent)
-        tool_names = [t.__name__ for t in _collect_tools(agent)]
-        self.assertNotIn("scroll_to", tool_names)
-
-    async def test_scroll_to_dispatches_command_with_ref(self):
-        agent = _new(_AgentWithScrollTool)
+    async def test_scroll_to_helper_dispatches_command(self):
+        agent = _new(_PlainAgent)
         sent = _capture(agent)
 
-        params = MagicMock()
-        params.result_callback = AsyncMock()
-
-        await agent.scroll_to(params, ref="e42")  # type: ignore[attr-defined]
+        await agent.scroll_to("e42")
 
         self.assertEqual(len(sent), 1)
-        msg = sent[0]
-        self.assertIsInstance(msg, BusUICommandMessage)
-        self.assertEqual(msg.command_name, "scroll_to")
-        self.assertEqual(msg.payload, {"ref": "e42", "target_id": None, "behavior": None})
-        params.result_callback.assert_awaited_once_with(None)
-
-    async def test_scroll_to_does_not_terminate_task(self):
-        # The action mixins are pure side effects: they must not call
-        # ``respond_to_task``, otherwise the LLM can't chain another
-        # tool (e.g. ``highlight``, ``answer``) in the same turn.
-        agent = _new(_AgentWithScrollTool)
-        _capture(agent)
-        agent.respond_to_task = AsyncMock()  # type: ignore[method-assign]
-
-        params = MagicMock()
-        params.result_callback = AsyncMock()
-
-        await agent.scroll_to(params, ref="e42")  # type: ignore[attr-defined]
-
-        agent.respond_to_task.assert_not_awaited()
-
-
-class TestHighlightToolMixin(unittest.IsolatedAsyncioTestCase):
-    async def test_mixin_exposes_highlight_tool(self):
-        agent = _new(_AgentWithHighlightTool)
-        tool_names = [t.__name__ for t in _collect_tools(agent)]
-        self.assertIn("highlight", tool_names)
-
-    async def test_plain_uiagent_has_no_highlight_tool(self):
-        class PlainAgent(UIAgent):
-            def build_llm(self):
-                return MagicMock()
-
-        agent = _new(PlainAgent)
-        tool_names = [t.__name__ for t in _collect_tools(agent)]
-        self.assertNotIn("highlight", tool_names)
-
-    async def test_highlight_dispatches_command_with_ref(self):
-        agent = _new(_AgentWithHighlightTool)
-        sent = _capture(agent)
-
-        params = MagicMock()
-        params.result_callback = AsyncMock()
-
-        await agent.highlight(params, ref="e7")  # type: ignore[attr-defined]
-
-        self.assertEqual(len(sent), 1)
-        msg = sent[0]
-        self.assertEqual(msg.command_name, "highlight")
+        self.assertEqual(sent[0].command_name, "scroll_to")
         self.assertEqual(
-            msg.payload,
+            sent[0].payload,
+            {"ref": "e42", "target_id": None, "behavior": None},
+        )
+
+    async def test_highlight_helper_dispatches_command(self):
+        agent = _new(_PlainAgent)
+        sent = _capture(agent)
+
+        await agent.highlight("e7")
+
+        self.assertEqual(len(sent), 1)
+        self.assertEqual(sent[0].command_name, "highlight")
+        self.assertEqual(
+            sent[0].payload,
             {"ref": "e7", "target_id": None, "duration_ms": None},
         )
-        params.result_callback.assert_awaited_once_with(None)
 
-    async def test_highlight_does_not_terminate_task(self):
-        agent = _new(_AgentWithHighlightTool)
-        _capture(agent)
+    async def test_helpers_are_not_llm_tools(self):
+        # The helper methods are just instance methods, not @tool-decorated.
+        # They must not appear in the LLM's tool list.
+        agent = _new(_PlainAgent)
+        tool_names = [t.__name__ for t in _collect_tools(agent)]
+        self.assertNotIn("scroll_to", tool_names)
+        self.assertNotIn("highlight", tool_names)
+
+
+class TestReplyToolMixin(unittest.IsolatedAsyncioTestCase):
+    async def test_mixin_exposes_reply_tool(self):
+        agent = _new(_AgentWithReply)
+        tool_names = [t.__name__ for t in _collect_tools(agent)]
+        self.assertEqual(tool_names, ["reply"])
+
+    async def test_plain_uiagent_has_no_reply_tool(self):
+        agent = _new(_PlainAgent)
+        tool_names = [t.__name__ for t in _collect_tools(agent)]
+        self.assertNotIn("reply", tool_names)
+
+    async def test_reply_with_answer_only_terminates(self):
+        # Descriptive shape: spoken reply, no visual actions.
+        agent = _new(_AgentWithReply)
+        sent = _capture(agent)
         agent.respond_to_task = AsyncMock()  # type: ignore[method-assign]
 
         params = MagicMock()
         params.result_callback = AsyncMock()
 
-        await agent.highlight(params, ref="e7")  # type: ignore[attr-defined]
+        await agent.reply(params, answer="The Pixel 9 is from Google.")  # type: ignore[attr-defined]
 
-        agent.respond_to_task.assert_not_awaited()
+        # No UI commands.
+        self.assertEqual(sent, [])
+        # Task terminated with the spoken text.
+        agent.respond_to_task.assert_awaited_once_with(speak="The Pixel 9 is from Google.")
+        params.result_callback.assert_awaited_once_with(None)
 
-
-class TestSelectTextToolMixin(unittest.IsolatedAsyncioTestCase):
-    async def test_mixin_exposes_select_text_tool(self):
-        agent = _new(_AgentWithSelectTextTool)
-        tool_names = [t.__name__ for t in _collect_tools(agent)]
-        self.assertIn("select_text", tool_names)
-
-    async def test_plain_uiagent_has_no_select_text_tool(self):
-        class PlainAgent(UIAgent):
-            def build_llm(self):
-                return MagicMock()
-
-        agent = _new(PlainAgent)
-        tool_names = [t.__name__ for t in _collect_tools(agent)]
-        self.assertNotIn("select_text", tool_names)
-
-    async def test_select_text_dispatches_command_with_ref(self):
-        agent = _new(_AgentWithSelectTextTool)
+    async def test_reply_with_highlight_only(self):
+        # Pointing at a visible item.
+        agent = _new(_AgentWithReply)
         sent = _capture(agent)
+        agent.respond_to_task = AsyncMock()  # type: ignore[method-assign]
 
         params = MagicMock()
         params.result_callback = AsyncMock()
 
-        await agent.select_text(params, ref="e42")  # type: ignore[attr-defined]
-
-        self.assertEqual(len(sent), 1)
-        msg = sent[0]
-        self.assertEqual(msg.command_name, "select_text")
-        self.assertEqual(
-            msg.payload,
-            {
-                "ref": "e42",
-                "target_id": None,
-                "start_offset": None,
-                "end_offset": None,
-            },
+        await agent.reply(  # type: ignore[attr-defined]
+            params,
+            answer="This one, the Nothing Phone 3.",
+            highlight="e29",
         )
-        params.result_callback.assert_awaited_once_with(None)
 
-    async def test_select_text_does_not_terminate_task(self):
-        agent = _new(_AgentWithSelectTextTool)
-        _capture(agent)
+        self.assertEqual([m.command_name for m in sent], ["highlight"])
+        self.assertEqual(sent[0].payload["ref"], "e29")
+        agent.respond_to_task.assert_awaited_once_with(speak="This one, the Nothing Phone 3.")
+
+    async def test_reply_with_scroll_and_highlight_runs_in_order(self):
+        # Pointing at an offscreen item: scroll first, then highlight,
+        # then speak. Order matters because the highlight pulse should
+        # run on an in-view element.
+        agent = _new(_AgentWithReply)
+        sent = _capture(agent)
         agent.respond_to_task = AsyncMock()  # type: ignore[method-assign]
 
         params = MagicMock()
         params.result_callback = AsyncMock()
 
-        await agent.select_text(params, ref="e42")  # type: ignore[attr-defined]
-
-        agent.respond_to_task.assert_not_awaited()
-
-
-class TestSetInputValueToolMixin(unittest.IsolatedAsyncioTestCase):
-    async def test_mixin_exposes_set_input_value_tool(self):
-        agent = _new(_AgentWithSetInputValueTool)
-        tool_names = [t.__name__ for t in _collect_tools(agent)]
-        self.assertIn("set_input_value", tool_names)
-
-    async def test_plain_uiagent_has_no_set_input_value_tool(self):
-        class PlainAgent(UIAgent):
-            def build_llm(self):
-                return MagicMock()
-
-        agent = _new(PlainAgent)
-        tool_names = [t.__name__ for t in _collect_tools(agent)]
-        self.assertNotIn("set_input_value", tool_names)
-
-    async def test_set_input_value_dispatches_command_with_ref_and_value(self):
-        agent = _new(_AgentWithSetInputValueTool)
-        sent = _capture(agent)
-
-        params = MagicMock()
-        params.result_callback = AsyncMock()
-
-        await agent.set_input_value(params, ref="e42", value="hello world")  # type: ignore[attr-defined]
-
-        self.assertEqual(len(sent), 1)
-        msg = sent[0]
-        self.assertEqual(msg.command_name, "set_input_value")
-        self.assertEqual(
-            msg.payload,
-            {
-                "ref": "e42",
-                "target_id": None,
-                "value": "hello world",
-                "replace": True,
-            },
+        await agent.reply(  # type: ignore[attr-defined]
+            params,
+            answer="Here's the iPhone 17.",
+            scroll_to="e5",
+            highlight="e5",
         )
-        params.result_callback.assert_awaited_once_with(None)
 
-    async def test_set_input_value_does_not_terminate_task(self):
-        agent = _new(_AgentWithSetInputValueTool)
-        _capture(agent)
-        agent.respond_to_task = AsyncMock()  # type: ignore[method-assign]
-
-        params = MagicMock()
-        params.result_callback = AsyncMock()
-
-        await agent.set_input_value(params, ref="e42", value="hi")  # type: ignore[attr-defined]
-
-        agent.respond_to_task.assert_not_awaited()
-
-
-class TestClickToolMixin(unittest.IsolatedAsyncioTestCase):
-    async def test_mixin_exposes_click_tool(self):
-        agent = _new(_AgentWithClickTool)
-        tool_names = [t.__name__ for t in _collect_tools(agent)]
-        self.assertIn("click", tool_names)
-
-    async def test_plain_uiagent_has_no_click_tool(self):
-        class PlainAgent(UIAgent):
-            def build_llm(self):
-                return MagicMock()
-
-        agent = _new(PlainAgent)
-        tool_names = [t.__name__ for t in _collect_tools(agent)]
-        self.assertNotIn("click", tool_names)
-
-    async def test_click_dispatches_command_with_ref(self):
-        agent = _new(_AgentWithClickTool)
-        sent = _capture(agent)
-
-        params = MagicMock()
-        params.result_callback = AsyncMock()
-
-        await agent.click(params, ref="e42")  # type: ignore[attr-defined]
-
-        self.assertEqual(len(sent), 1)
-        msg = sent[0]
-        self.assertEqual(msg.command_name, "click")
-        self.assertEqual(msg.payload, {"ref": "e42", "target_id": None})
-        params.result_callback.assert_awaited_once_with(None)
-
-    async def test_click_does_not_terminate_task(self):
-        agent = _new(_AgentWithClickTool)
-        _capture(agent)
-        agent.respond_to_task = AsyncMock()  # type: ignore[method-assign]
-
-        params = MagicMock()
-        params.result_callback = AsyncMock()
-
-        await agent.click(params, ref="e42")  # type: ignore[attr-defined]
-
-        agent.respond_to_task.assert_not_awaited()
-
-
-class TestAnswerToolMixin(unittest.IsolatedAsyncioTestCase):
-    async def test_mixin_exposes_answer_tool(self):
-        agent = _new(_AgentWithAnswerTool)
-        tool_names = [t.__name__ for t in _collect_tools(agent)]
-        self.assertIn("answer", tool_names)
-
-    async def test_plain_uiagent_has_no_answer_tool(self):
-        class PlainAgent(UIAgent):
-            def build_llm(self):
-                return MagicMock()
-
-        agent = _new(PlainAgent)
-        tool_names = [t.__name__ for t in _collect_tools(agent)]
-        self.assertNotIn("answer", tool_names)
-
-    async def test_answer_terminates_task_with_speak(self):
-        agent = _new(_AgentWithAnswerTool)
-        agent.respond_to_task = AsyncMock()  # type: ignore[method-assign]
-
-        params = MagicMock()
-        params.result_callback = AsyncMock()
-
-        await agent.answer(params, text="Here it is.")  # type: ignore[attr-defined]
-
-        agent.respond_to_task.assert_awaited_once_with(speak="Here it is.")
-        params.result_callback.assert_awaited_once_with(None)
-
-    async def test_answer_with_empty_text_terminates_silently(self):
-        # Empty text is a deliberate "end the turn without speaking"
-        # signal, e.g. when a chained visual action is the entire
-        # user-facing feedback.
-        agent = _new(_AgentWithAnswerTool)
-        agent.respond_to_task = AsyncMock()  # type: ignore[method-assign]
-
-        params = MagicMock()
-        params.result_callback = AsyncMock()
-
-        await agent.answer(params, text="")  # type: ignore[attr-defined]
-
-        agent.respond_to_task.assert_awaited_once_with(speak=None)
-        params.result_callback.assert_awaited_once_with(None)
-
-
-class TestCombinedMixins(unittest.IsolatedAsyncioTestCase):
-    async def test_both_mixins_expose_both_tools(self):
-        agent = _new(_AgentWithBothTools)
-        tool_names = [t.__name__ for t in _collect_tools(agent)]
-        self.assertIn("scroll_to", tool_names)
-        self.assertIn("highlight", tool_names)
-
-    async def test_chainable_action_then_answer_terminates_once(self):
-        # End-to-end shape of a chained turn: action mixins fire UI
-        # commands but leave the task open; the final ``answer`` call
-        # is what closes it. This is the canonical pattern for
-        # "scroll + highlight + speak" in one turn.
-        agent = _new(_AgentWithChainable)
-        sent = _capture(agent)
-        agent.respond_to_task = AsyncMock()  # type: ignore[method-assign]
-
-        params = MagicMock()
-        params.result_callback = AsyncMock()
-
-        await agent.scroll_to(params, ref="e42")  # type: ignore[attr-defined]
-        agent.respond_to_task.assert_not_awaited()
-
-        await agent.highlight(params, ref="e42")  # type: ignore[attr-defined]
-        agent.respond_to_task.assert_not_awaited()
-
-        await agent.answer(params, text="Here's the iPhone 17.")  # type: ignore[attr-defined]
+        self.assertEqual([m.command_name for m in sent], ["scroll_to", "highlight"])
         agent.respond_to_task.assert_awaited_once_with(speak="Here's the iPhone 17.")
 
-        # Two UI commands dispatched (scroll + highlight); the answer
-        # carries no command, just the task response.
-        self.assertEqual([m.command_name for m in sent], ["scroll_to", "highlight"])
+    async def test_reply_dispatches_via_helper_methods(self):
+        # Confirms reply uses the UIAgent.scroll_to / highlight helpers
+        # rather than send_command directly. This is what makes the
+        # extension story work: a subclass can override one helper
+        # (e.g. to climb to a wrapping element first) and the bundled
+        # reply picks it up automatically.
+        agent = _new(_AgentWithReply)
+        agent.scroll_to = AsyncMock()  # type: ignore[method-assign]
+        agent.highlight = AsyncMock()  # type: ignore[method-assign]
+        agent.respond_to_task = AsyncMock()  # type: ignore[method-assign]
+
+        params = MagicMock()
+        params.result_callback = AsyncMock()
+
+        await agent.reply(  # type: ignore[attr-defined]
+            params,
+            answer="x",
+            scroll_to="e1",
+            highlight="e2",
+        )
+
+        agent.scroll_to.assert_awaited_once_with("e1")
+        agent.highlight.assert_awaited_once_with("e2")
 
 
 if __name__ == "__main__":
