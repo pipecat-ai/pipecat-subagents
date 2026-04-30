@@ -10,15 +10,18 @@ from __future__ import annotations
 
 import json
 import time
-from abc import abstractmethod
 from dataclasses import asdict, dataclass, is_dataclass
 from typing import Any
 
 from loguru import logger
 from pipecat.frames.frames import LLMMessagesAppendFrame
-from pipecat.services.llm_service import LLMService
+from pipecat.processors.aggregators.llm_context import LLMContext
+from pipecat.processors.aggregators.llm_response_universal import (
+    LLMAssistantAggregatorParams,
+    LLMUserAggregatorParams,
+)
 
-from pipecat_subagents.agents.llm.llm_agent import LLMAgent
+from pipecat_subagents.agents.llm.llm_context_agent import LLMContextAgent
 from pipecat_subagents.agents.task_context import TaskStatus
 from pipecat_subagents.agents.ui.ui_event_decorator import _collect_ui_event_handlers
 from pipecat_subagents.agents.ui.ui_task_context import UserTaskGroupContext
@@ -51,7 +54,7 @@ class _UserTaskGroupRegistration:
     cancellable: bool
 
 
-class UIAgent(LLMAgent):
+class UIAgent(LLMContextAgent):
     """LLM agent that dispatches UI events from the client.
 
     Receives ``BusUIEventMessage`` (republished by ``attach_ui_bridge``)
@@ -70,33 +73,17 @@ class UIAgent(LLMAgent):
     the LLM picks a tool, and the task completes with a spoken reply
     the voice agent hands to TTS.
 
-    A working subclass needs three things: an LLM, a pipeline that
-    wraps the LLM in a context aggregator (so ``LLMMessagesAppendFrame``
-    threads into the running context), and an ``on_task_request``
-    override that feeds the user's query into the LLM. The defaults
-    handle activation, snapshot injection, and tool registration.
+    A working subclass needs two things: an LLM and an
+    ``on_task_request`` override that feeds the user's query into the
+    LLM. The pipeline (LLM wrapped in an aggregator pair) comes from
+    ``LLMContextAgent``; activation, snapshot injection, and tool
+    registration are handled by the defaults.
 
     Example::
 
         class MyUIAgent(UIAgent):
             def build_llm(self) -> LLMService:
                 return OpenAILLMService(api_key="...")
-
-            async def build_pipeline(self) -> Pipeline:
-                # The default ``LLMAgent`` pipeline is just
-                # ``Pipeline([self._llm])`` — fine for bridged agents
-                # whose context lives on the transport pipeline, but
-                # a non-bridged UIAgent receives ``LLMMessagesAppendFrame``
-                # directly and needs its own aggregator pair to thread
-                # those messages into the LLM's running context.
-                self._llm = self.create_llm()
-                context = LLMContext()
-                aggregator = LLMContextAggregatorPair(context)
-                return Pipeline([
-                    aggregator.user(),
-                    self._llm,
-                    aggregator.assistant(),
-                ])
 
             async def on_task_request(self, message):
                 # super() records the in-flight task and (if
@@ -122,14 +109,14 @@ class UIAgent(LLMAgent):
 
     ## Activation default
 
-    Unlike ``LLMAgent`` (which defaults to ``active=False`` because
-    voice handoff patterns require parent-driven activation),
-    ``UIAgent`` defaults to ``active=True``. UIAgents are typically
-    always-on delegates with no equivalent of "the user is now
-    talking to UIAgent" — the agent activates as soon as its
-    pipeline starts, registers its tools, and stays online to
-    receive tasks. Pass ``active=False`` explicitly if you have a
-    handoff use case.
+    Unlike ``LLMAgent`` and ``LLMContextAgent`` (which default to
+    ``active=False`` because voice handoff patterns require
+    parent-driven activation), ``UIAgent`` defaults to
+    ``active=True``. UIAgents are typically always-on delegates with
+    no equivalent of "the user is now talking to UIAgent" — the
+    agent activates as soon as its pipeline starts, registers its
+    tools, and stays online to receive tasks. Pass ``active=False``
+    explicitly if you have a handoff use case.
 
     ## Visibility convention
 
@@ -150,6 +137,10 @@ class UIAgent(LLMAgent):
         bus: AgentBus,
         active: bool = True,
         bridged: tuple[str, ...] | None = None,
+        defer_tool_frames: bool = True,
+        context: LLMContext | None = None,
+        user_params: LLMUserAggregatorParams | None = None,
+        assistant_params: LLMAssistantAggregatorParams | None = None,
         inject_events: bool = True,
         auto_inject_ui_state: bool = True,
         log_snapshots: bool = False,
@@ -161,11 +152,22 @@ class UIAgent(LLMAgent):
             bus: The `AgentBus` for inter-agent communication.
             active: Whether the agent starts active. Defaults to
                 ``True`` for ``UIAgent`` (vs. ``False`` on
-                ``LLMAgent``) because the canonical UIAgent role is
-                an always-on delegate that should self-activate as
-                soon as its pipeline starts. Pass ``active=False``
-                only if you have a handoff use case.
+                ``LLMAgent`` / ``LLMContextAgent``) because the
+                canonical UIAgent role is an always-on delegate that
+                should self-activate as soon as its pipeline starts.
+                Pass ``active=False`` only if you have a handoff use
+                case.
             bridged: Bridge configuration. See ``BaseAgent`` for details.
+            defer_tool_frames: Forwarded to ``LLMContextAgent``. See
+                ``LLMAgent`` for details.
+            context: Optional pre-built ``LLMContext``. Forwarded to
+                ``LLMContextAgent``. Apps that want to seed the LLM
+                with an initial system prompt or message history pass
+                it here.
+            user_params: Optional user-aggregator parameters.
+                Forwarded to ``LLMContextAgent``.
+            assistant_params: Optional assistant-aggregator parameters.
+                Forwarded to ``LLMContextAgent``.
             inject_events: Whether to auto-append each UI event to the
                 LLM context as a ``<ui_event>`` developer message.
                 Defaults to True. Override ``render_ui_event`` to change
@@ -207,7 +209,16 @@ class UIAgent(LLMAgent):
                 "LLMAgent) or pass auto_inject_ui_state=False if you really "
                 "want a bridged UIAgent and will manage injection manually."
             )
-        super().__init__(name, bus=bus, active=active, bridged=bridged)
+        super().__init__(
+            name,
+            bus=bus,
+            active=active,
+            bridged=bridged,
+            defer_tool_frames=defer_tool_frames,
+            context=context,
+            user_params=user_params,
+            assistant_params=assistant_params,
+        )
         self._inject_events = inject_events
         self._auto_inject_ui_state = auto_inject_ui_state
         self._log_snapshots = log_snapshots
@@ -227,15 +238,6 @@ class UIAgent(LLMAgent):
         # update / response messages should be forwarded to the
         # client as ``ui.task`` envelopes.
         self._user_task_groups: dict[str, _UserTaskGroupRegistration] = {}
-
-    @abstractmethod
-    def build_llm(self) -> LLMService:
-        """Return the LLM service for this agent.
-
-        Returns:
-            An `LLMService` instance.
-        """
-        pass
 
     async def send_command(self, name: str, payload: Any = None) -> None:
         """Send a named UI command to the client.
