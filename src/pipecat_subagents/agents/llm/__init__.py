@@ -6,7 +6,7 @@
 
 """LLM agent and tool decorator."""
 
-from pipecat_subagents.agents.llm.agent import LLMAgent, LLMAgentActivationArgs
+from pipecat_subagents.agents.llm.llm_agent import LLMAgent, LLMAgentActivationArgs
 from pipecat_subagents.agents.llm.tool_decorator import tool
 
 __all__ = [

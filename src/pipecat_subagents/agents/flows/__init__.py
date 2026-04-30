@@ -6,7 +6,7 @@
 
 """Flows agent that integrates Pipecat Flows into the multi-agent framework."""
 
-from pipecat_subagents.agents.flows.agent import FlowsAgent
+from pipecat_subagents.agents.flows.flows_agent import FlowsAgent
 
 __all__ = [
     "FlowsAgent",

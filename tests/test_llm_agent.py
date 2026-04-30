@@ -12,7 +12,7 @@ from pipecat.frames.frames import LLMMessagesAppendFrame
 from pipecat.processors.frame_processor import FrameDirection
 
 from pipecat_subagents.agents.llm import LLMAgent, tool
-from pipecat_subagents.agents.llm.agent import PipelineFlushFrame
+from pipecat_subagents.agents.llm.llm_agent import PipelineFlushFrame
 from pipecat_subagents.bus import AsyncQueueBus
 
 
