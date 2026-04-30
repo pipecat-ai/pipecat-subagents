@@ -1,6 +1,9 @@
 :root {
   color-scheme: light;
-  font-family: system-ui, -apple-system, sans-serif;
+  font-family:
+    system-ui,
+    -apple-system,
+    sans-serif;
   --border: #d4d4d8;
   --muted: #71717a;
   --highlight: #fbbf24;
@@ -46,7 +49,7 @@ header h1 {
   background: #f4f4f5;
 }
 
-#connect[data-state="connected"] {
+#connect[data-state='connected'] {
   background: #ef4444;
   color: white;
   border-color: #ef4444;
@@ -124,7 +127,7 @@ main {
 }
 
 .ui-highlight {
-  animation: ui-highlight-pulse var(--highlight-duration, 1500ms)
+  animation: ui-highlight-pulse var(--highlight-duration, 2500ms)
     cubic-bezier(0.2, 0.8, 0.2, 1);
   z-index: 2;
 }
@@ -143,6 +146,6 @@ main {
   pointer-events: none;
 }
 
-#status[data-show="1"] {
+#status[data-show='1'] {
   opacity: 1;
 }
