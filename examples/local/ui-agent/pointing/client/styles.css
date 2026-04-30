@@ -1,0 +1,148 @@
+:root {
+  color-scheme: light;
+  font-family: system-ui, -apple-system, sans-serif;
+  --border: #d4d4d8;
+  --muted: #71717a;
+  --highlight: #fbbf24;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #fafafa;
+  color: #18181b;
+}
+
+header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+  background: #fff;
+}
+
+header h1 {
+  font-size: 1.25rem;
+  margin: 0;
+}
+
+#connect {
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--border);
+  background: #fff;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.875rem;
+}
+
+#connect:hover {
+  background: #f4f4f5;
+}
+
+#connect[data-state="connected"] {
+  background: #ef4444;
+  color: white;
+  border-color: #ef4444;
+}
+
+main {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+  padding: 1.5rem;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.phone-card {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem;
+  /* Tall enough that, combined with N rows, the bottom of the grid
+     scrolls below typical viewport heights — exercises offscreen
+     detection and scroll_to. */
+  min-height: 130px;
+  scroll-margin-top: 5rem;
+  /* Position relative + z-index so the lifted card during the
+     highlight pulse renders above its neighbors. */
+  position: relative;
+  z-index: 0;
+}
+
+.phone-card h2 {
+  margin: 0 0 0.25rem;
+  font-size: 1rem;
+}
+
+.phone-card .brand {
+  margin: 0 0 0.5rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.phone-card .desc {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: #3f3f46;
+}
+
+/* Highlight pulse: card scales up briefly, glows, tints, then
+   settles back. The animation duration is keyed off a CSS variable
+   so the handler can drive it from the server-supplied ``duration_ms``.
+   The visual restyle is entirely client-side — ``highlight`` is
+   just a command name, the page decides what "highlight" looks like. */
+@keyframes ui-highlight-pulse {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(251, 191, 36, 0);
+    background: #fff;
+    border-color: var(--border);
+  }
+  35% {
+    transform: scale(1.04);
+    box-shadow: 0 0 36px 8px rgba(251, 191, 36, 0.55);
+    background: #fffbeb;
+    border-color: var(--highlight);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(251, 191, 36, 0);
+    background: #fff;
+    border-color: var(--border);
+  }
+}
+
+.ui-highlight {
+  animation: ui-highlight-pulse var(--highlight-duration, 1500ms)
+    cubic-bezier(0.2, 0.8, 0.2, 1);
+  z-index: 2;
+}
+
+#status {
+  position: fixed;
+  bottom: 1rem;
+  right: 1rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.8125rem;
+  background: #18181b;
+  color: white;
+  opacity: 0;
+  transition: opacity 0.2s;
+  pointer-events: none;
+}
+
+#status[data-show="1"] {
+  opacity: 1;
+}

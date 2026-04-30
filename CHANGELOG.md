@@ -26,10 +26,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     Standard payload dataclasses (`Toast`, `Navigate`, `ScrollTo`,
     `Highlight`, `Focus`) match the client's default React handlers; apps
     can also publish their own command names freely.
-  - New opt-in tool mixins (`ScrollToToolMixin`, `HighlightToolMixin`)
-    that ship `scroll_to(ref)` and `highlight(ref)` LLM tools as silent
-    fire-and-forget side effects (the visual change on the client is
-    the user-facing feedback). Apps override the tool to add narration.
+  - New opt-in **action tool mixins** (`ScrollToToolMixin`,
+    `HighlightToolMixin`, `SelectTextToolMixin`,
+    `SetInputValueToolMixin`, `ClickToolMixin`) that expose pure
+    chainable LLM tools: each dispatches a UI command and returns
+    without completing the in-flight task. The LLM can chain
+    multiple actions in a single turn (e.g. `scroll_to` →
+    `highlight` → `answer`).
+  - New **terminator mixin** `AnswerToolMixin` that exposes
+    `answer(text)`. It calls `respond_to_task(speak=text)` to close
+    the in-flight task and hand the spoken reply to TTS. Compose
+    alongside one or more action mixins (or write your own
+    terminator) so every turn has something to end it. Empty `text`
+    means a silent end-of-turn.
   - New `attach_ui_bridge(root_agent)` that wires the RTVI client-message
     channel to the agent bus in both directions: `ui.event` from the
     client becomes `BusUIEventMessage`, and `BusUICommandMessage` from
