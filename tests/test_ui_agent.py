@@ -11,7 +11,7 @@ import json
 import unittest
 from unittest.mock import AsyncMock, MagicMock
 
-from pipecat.frames.frames import LLMMessagesAppendFrame
+from pipecat.frames.frames import LLMMessagesAppendFrame, LLMMessagesUpdateFrame
 from pipecat.processors.frame_processor import FrameDirection
 from pipecat.utils.asyncio.task_manager import TaskManager, TaskManagerParams
 
@@ -675,6 +675,90 @@ class TestUIAgentAutoInject(unittest.IsolatedAsyncioTestCase):
             )
         )
         self.assertEqual(_append_frames(agent), [])
+
+
+def _update_frames(agent: _StubUIAgent) -> list[LLMMessagesUpdateFrame]:
+    return [
+        call.args[0]
+        for call in agent._pipeline_task.queue_frame.call_args_list
+        if isinstance(call.args[0], LLMMessagesUpdateFrame)
+    ]
+
+
+class TestUIAgentKeepHistory(unittest.IsolatedAsyncioTestCase):
+    async def test_default_resets_context_per_task(self):
+        # keep_history defaults to False: every task starts with an
+        # LLMMessagesUpdateFrame(messages=[]) so the LLM context is
+        # cleared before the new <ui_state> + query land.
+        agent = await _make_agent()
+        agent._latest_snapshot = _SAMPLE_SNAPSHOT
+
+        await agent.on_task_request(
+            BusTaskRequestMessage(
+                source="voice",
+                target="ui",
+                task_name="handle_request",
+                task_id="t1",
+                payload={"query": "hi"},
+            )
+        )
+
+        updates = _update_frames(agent)
+        self.assertEqual(len(updates), 1)
+        self.assertEqual(updates[0].messages, [])
+        self.assertFalse(updates[0].run_llm)
+
+    async def test_reset_runs_before_inject(self):
+        # Order matters: pipeline processes frames in queue order,
+        # so the reset must be queued before the <ui_state> append.
+        agent = await _make_agent()
+        agent._latest_snapshot = _SAMPLE_SNAPSHOT
+
+        await agent.on_task_request(
+            BusTaskRequestMessage(
+                source="voice",
+                target="ui",
+                task_name="handle_request",
+                task_id="t1",
+                payload={"query": "hi"},
+            )
+        )
+
+        all_calls = agent._pipeline_task.queue_frame.call_args_list
+        frame_types = [type(call.args[0]).__name__ for call in all_calls]
+        update_idx = frame_types.index("LLMMessagesUpdateFrame")
+        append_idx = frame_types.index("LLMMessagesAppendFrame")
+        self.assertLess(update_idx, append_idx)
+
+    async def test_keep_history_true_skips_reset(self):
+        # In accumulate mode no reset frame is emitted; the <ui_state>
+        # is appended on top of whatever messages already exist.
+        agent = await _make_agent(keep_history=True)
+        agent._latest_snapshot = _SAMPLE_SNAPSHOT
+
+        await agent.on_task_request(
+            BusTaskRequestMessage(
+                source="voice",
+                target="ui",
+                task_name="handle_request",
+                task_id="t1",
+                payload={"query": "hi"},
+            )
+        )
+
+        self.assertEqual(_update_frames(agent), [])
+        self.assertEqual(len(_append_frames(agent)), 1)
+
+    async def test_reset_context_method_emits_update_frame(self):
+        # Public escape hatch for keep_history=True apps.
+        agent = await _make_agent(keep_history=True)
+
+        await agent.reset_context()
+
+        updates = _update_frames(agent)
+        self.assertEqual(len(updates), 1)
+        self.assertEqual(updates[0].messages, [])
+        self.assertFalse(updates[0].run_llm)
 
 
 class TestUIAgentRespondToTask(unittest.IsolatedAsyncioTestCase):

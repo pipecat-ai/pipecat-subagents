@@ -37,6 +37,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     tools) that wrap `send_command` with the standard payload
     dataclasses. `ReplyToolMixin` calls them under the hood; apps
     that write their own `@tool reply(...)` use them directly.
+  - New `keep_history: bool = False` constructor flag on `UIAgent`.
+    By default the LLM context is cleared at the start of every
+    task (via `LLMMessagesUpdateFrame(messages=[])`) so each task
+    starts with just the current `<ui_state>` and the user's query.
+    This matches the canonical stateless-delegate role and avoids
+    the "stale snapshot in context" bug where an old `<ui_state>`
+    block contradicts the current viewport. Set `keep_history=True`
+    to accumulate history across tasks (queries, prior snapshots,
+    tool calls, responses) when the LLM needs multi-turn references
+    like "show me the next one." Apps in `keep_history=True` mode
+    can call `await self.reset_context()` to clear manually.
   - New `attach_ui_bridge(root_agent)` that wires the RTVI client-message
     channel to the agent bus in both directions: `ui.event` from the
     client becomes `BusUIEventMessage`, and `BusUICommandMessage` from
