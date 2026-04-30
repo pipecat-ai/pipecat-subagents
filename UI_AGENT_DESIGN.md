@@ -291,24 +291,20 @@ Two repos move together. Each one is small.
   voice agent's in-flight `handle_request` task. `speak` (when set) is
   the verbatim text the voice agent hands to TTS; omit it for a silent
   turn (useful when the visual change is the user-facing feedback).
-- **Action tool mixins**
-  (`ScrollToToolMixin`, `HighlightToolMixin`,
-  `SelectTextToolMixin`, `SetInputValueToolMixin`, `ClickToolMixin`)
-  — opt-in LLM tools, composed via inheritance. They ship as **pure
-  chainable side effects**: dispatch the UI command and return
-  without completing the task. The LLM can chain several actions
-  plus a final `answer` in one turn (e.g. `scroll_to` →
-  `highlight` → `answer`). Developer extension follows the same
-  shape: write a `@tool` that calls `send_command(...)` and
-  `params.result_callback(None)`.
-- **Terminator mixin** (`AnswerToolMixin`) — exposes `answer(text)`
-  that calls `respond_to_task(speak=text)` and closes the in-flight
-  task. Compose alongside the action mixins so every turn has
-  something to end it. Pass an empty string for a silent
-  end-of-turn (when the visual change *is* the user-facing
-  feedback). Apps that want a different terminator shape
-  (structured response, no speech, etc.) write their own `@tool`
-  instead of composing this one.
+- **`ReplyToolMixin`** — opt-in LLM tool, composed via inheritance.
+  Exposes a single bundled tool:
+  `reply(answer, scroll_to=None, highlight=None)`. The required
+  `answer` argument is enforced by the API schema, so the model
+  cannot omit the spoken terminator. Optional `scroll_to` and
+  `highlight` refs ride along in the same call when the LLM also
+  wants to point at something. One tool call per turn, no chaining.
+- **Action helpers on `UIAgent`** (`scroll_to(ref)`,
+  `highlight(ref)`) — plain instance methods, NOT LLM tools. They
+  wrap `send_command` with the standard payload dataclasses and are
+  what `ReplyToolMixin` calls under the hood. Apps that need a
+  different bundle of fields (e.g. `click`, `select_text`,
+  app-specific actions) write their own `@tool reply` and use these
+  helpers in the body.
 - **`UI_STATE_PROMPT_GUIDE`** — canonical prompt fragment describing the
   `<ui_state>` / `<ui_event>` format to the LLM. Concatenate into your
   system prompt; future SDK versions update the guide alongside the
@@ -349,35 +345,29 @@ A music-player-style app, end to end, looks roughly like:
 **Server:**
 
 ```python
-class MyUIAgent(
-    ScrollToToolMixin,
-    HighlightToolMixin,
-    AnswerToolMixin,
-    UIAgent,
-):
+class MyUIAgent(ReplyToolMixin, UIAgent):
     def build_llm(self) -> LLMService:
         return OpenAILLMService(
             api_key=...,
             system_instruction=f"{APP_PROMPT}\n\n{UI_STATE_PROMPT_GUIDE}",
         )
 
-    @tool
-    async def navigate_to_artist(self, params, name: str):
-        # Custom action tool: pure side effect, doesn't complete the
-        # task. The LLM chains this with `answer(...)` which closes
-        # the task and speaks the reply.
-        await self.send_command("navigate", Navigate(view=f"/artist/{name}"))
-        await params.result_callback(None)
-
     @on_ui_event("nav_click")
     async def on_nav_click(self, message): ...
 ```
 
-`scroll_to`, `highlight`, and `answer` come from the mixins. The action
-mixins are pure side effects, so the LLM can chain them with `answer`
-in one turn (e.g. `scroll_to(ref) → highlight(ref) →
-answer("Here it is.")`). For a silent visual-only turn the LLM calls
-`answer("")`.
+The LLM gets one tool: `reply(answer, scroll_to=None, highlight=None)`.
+A pointing-style turn ("where's the iPhone 17?") becomes one call:
+`reply(answer="Here's the iPhone 17.", scroll_to="e5", highlight="e5")`.
+A descriptive turn ("which phones are from Google?") becomes
+`reply(answer="The Pixel 9, Pixel 9 Pro, and Pixel 9a.")`.
+
+Apps that need a different bundle of fields (form-fill apps, music
+players with `play`/`navigate_to_artist`/etc.) skip `ReplyToolMixin`
+and write their own `@tool` methods directly. The helpers
+`self.scroll_to(ref)` and `self.highlight(ref)` on `UIAgent` cover
+the standard visual actions; `send_command(...)` covers everything
+else.
 
 **Client:**
 

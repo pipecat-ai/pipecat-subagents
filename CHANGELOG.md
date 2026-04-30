@@ -26,19 +26,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     Standard payload dataclasses (`Toast`, `Navigate`, `ScrollTo`,
     `Highlight`, `Focus`) match the client's default React handlers; apps
     can also publish their own command names freely.
-  - New opt-in **action tool mixins** (`ScrollToToolMixin`,
-    `HighlightToolMixin`, `SelectTextToolMixin`,
-    `SetInputValueToolMixin`, `ClickToolMixin`) that expose pure
-    chainable LLM tools: each dispatches a UI command and returns
-    without completing the in-flight task. The LLM can chain
-    multiple actions in a single turn (e.g. `scroll_to` →
-    `highlight` → `answer`).
-  - New **terminator mixin** `AnswerToolMixin` that exposes
-    `answer(text)`. It calls `respond_to_task(speak=text)` to close
-    the in-flight task and hand the spoken reply to TTS. Compose
-    alongside one or more action mixins (or write your own
-    terminator) so every turn has something to end it. Empty `text`
-    means a silent end-of-turn.
+  - New opt-in **`ReplyToolMixin`** that exposes a single bundled
+    LLM tool: `reply(answer, scroll_to=None, highlight=None)`. The
+    required `answer` argument is enforced by the API schema, so
+    smaller models cannot omit the spoken terminator (a failure
+    mode that the chainable-mixin shape was vulnerable to). One
+    tool call per turn, no chaining.
+  - New action helper methods on `UIAgent`: `scroll_to(ref)` and
+    `highlight(ref)`. These are plain instance methods (not LLM
+    tools) that wrap `send_command` with the standard payload
+    dataclasses. `ReplyToolMixin` calls them under the hood; apps
+    that write their own `@tool reply(...)` use them directly.
   - New `attach_ui_bridge(root_agent)` that wires the RTVI client-message
     channel to the agent bus in both directions: `ui.event` from the
     client becomes `BusUIEventMessage`, and `BusUICommandMessage` from

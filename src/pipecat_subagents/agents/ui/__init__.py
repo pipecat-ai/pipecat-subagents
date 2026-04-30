@@ -7,9 +7,9 @@
 """UI agent: LLM agent that observes and drives a GUI app.
 
 Composes a wire protocol for client UI events, accessibility-tree
-snapshots, and server-emitted UI commands, plus opt-in tool mixins
-for the standard action verbs (scroll_to, highlight, select_text,
-set_input_value, click) and an answer terminator.
+snapshots, and server-emitted UI commands, plus an opt-in
+``ReplyToolMixin`` exposing the canonical bundled reply tool
+(``answer`` + optional ``scroll_to`` / ``highlight``).
 """
 
 from pipecat_subagents.agents.ui.ui_agent import UIAgent
@@ -26,29 +26,17 @@ from pipecat_subagents.agents.ui.ui_commands import (
 )
 from pipecat_subagents.agents.ui.ui_event_decorator import on_ui_event
 from pipecat_subagents.agents.ui.ui_prompts import UI_STATE_PROMPT_GUIDE
-from pipecat_subagents.agents.ui.ui_tools import (
-    AnswerToolMixin,
-    ClickToolMixin,
-    HighlightToolMixin,
-    ScrollToToolMixin,
-    SelectTextToolMixin,
-    SetInputValueToolMixin,
-)
+from pipecat_subagents.agents.ui.ui_tools import ReplyToolMixin
 
 __all__ = [
-    "AnswerToolMixin",
     "Click",
-    "ClickToolMixin",
     "Focus",
     "Highlight",
-    "HighlightToolMixin",
     "Navigate",
+    "ReplyToolMixin",
     "ScrollTo",
-    "ScrollToToolMixin",
     "SelectText",
-    "SelectTextToolMixin",
     "SetInputValue",
-    "SetInputValueToolMixin",
     "Toast",
     "UIAgent",
     "UI_STATE_PROMPT_GUIDE",
