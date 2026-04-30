@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pointing — UIAgent demo</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header>
+      <h1>Phone catalog</h1>
+      <button id="connect" type="button">Connect</button>
+    </header>
+
+    <main aria-label="Phones">
+      <div class="phone-card" id="iphone-17">
+        <h2>iPhone 17</h2>
+        <p class="brand">Apple · 2025</p>
+        <p class="desc">Titanium frame, A19 chip, 48MP triple camera.</p>
+      </div>
+      <div class="phone-card" id="iphone-17-pro">
+        <h2>iPhone 17 Pro</h2>
+        <p class="brand">Apple · 2025</p>
+        <p class="desc">ProMotion 120Hz, A19 Pro, periscope zoom.</p>
+      </div>
+      <div class="phone-card" id="pixel-9">
+        <h2>Pixel 9</h2>
+        <p class="brand">Google · 2024</p>
+        <p class="desc">Tensor G4, 6.3-inch OLED, magic eraser.</p>
+      </div>
+      <div class="phone-card" id="pixel-9-pro">
+        <h2>Pixel 9 Pro</h2>
+        <p class="brand">Google · 2024</p>
+        <p class="desc">Triple lens, 5x telephoto, Tensor G4.</p>
+      </div>
+      <div class="phone-card" id="galaxy-s25">
+        <h2>Galaxy S25</h2>
+        <p class="brand">Samsung · 2025</p>
+        <p class="desc">Snapdragon 8 Gen 4, 200MP main camera.</p>
+      </div>
+      <div class="phone-card" id="galaxy-s25-ultra">
+        <h2>Galaxy S25 Ultra</h2>
+        <p class="brand">Samsung · 2025</p>
+        <p class="desc">S Pen, 6.9-inch Dynamic AMOLED, titanium.</p>
+      </div>
+      <div class="phone-card" id="oneplus-13">
+        <h2>OnePlus 13</h2>
+        <p class="brand">OnePlus · 2025</p>
+        <p class="desc">Hasselblad cameras, 100W charging, 6000mAh.</p>
+      </div>
+      <div class="phone-card" id="xiaomi-15">
+        <h2>Xiaomi 15</h2>
+        <p class="brand">Xiaomi · 2024</p>
+        <p class="desc">Leica optics, Snapdragon 8 Elite.</p>
+      </div>
+      <div class="phone-card" id="nothing-3">
+        <h2>Nothing Phone 3</h2>
+        <p class="brand">Nothing · 2025</p>
+        <p class="desc">Glyph interface, transparent back, MediaTek 8300.</p>
+      </div>
+      <div class="phone-card" id="motorola-edge-60">
+        <h2>Motorola Edge 60</h2>
+        <p class="brand">Motorola · 2025</p>
+        <p class="desc">Curved pOLED, 125W charging, slim 7.6mm body.</p>
+      </div>
+      <div class="phone-card" id="oppo-find-x8">
+        <h2>OPPO Find X8</h2>
+        <p class="brand">OPPO · 2024</p>
+        <p class="desc">Hasselblad triple zoom, MediaTek Dimensity 9400.</p>
+      </div>
+      <div class="phone-card" id="vivo-x200">
+        <h2>Vivo X200</h2>
+        <p class="brand">Vivo · 2024</p>
+        <p class="desc">Zeiss optics, 6000mAh battery, AMOLED.</p>
+      </div>
+      <div class="phone-card" id="honor-magic-7">
+        <h2>Honor Magic 7</h2>
+        <p class="brand">Honor · 2025</p>
+        <p class="desc">AI-driven imaging, 6.8-inch quad-curve display.</p>
+      </div>
+      <div class="phone-card" id="zenfone-12">
+        <h2>Zenfone 12</h2>
+        <p class="brand">ASUS · 2025</p>
+        <p class="desc">Compact 5.9-inch flagship, Snapdragon 8 Elite.</p>
+      </div>
+      <div class="phone-card" id="iphone-16e">
+        <h2>iPhone 16e</h2>
+        <p class="brand">Apple · 2025</p>
+        <p class="desc">Budget A18 chip, single-lens 48MP, USB-C.</p>
+      </div>
+      <div class="phone-card" id="pixel-9a">
+        <h2>Pixel 9a</h2>
+        <p class="brand">Google · 2025</p>
+        <p class="desc">Mid-range Tensor G4, 6.1-inch OLED.</p>
+      </div>
+      <div class="phone-card" id="galaxy-a56">
+        <h2>Galaxy A56</h2>
+        <p class="brand">Samsung · 2025</p>
+        <p class="desc">5,000mAh battery, Exynos 1580, mid-tier flagship.</p>
+      </div>
+      <div class="phone-card" id="redmi-note-14-pro">
+        <h2>Redmi Note 14 Pro</h2>
+        <p class="brand">Xiaomi · 2024</p>
+        <p class="desc">200MP camera, Dimensity 7300, AMOLED.</p>
+      </div>
+      <div class="phone-card" id="oneplus-nord-4">
+        <h2>OnePlus Nord 4</h2>
+        <p class="brand">OnePlus · 2024</p>
+        <p class="desc">Metal unibody, Snapdragon 7 Gen 3, 100W charging.</p>
+      </div>
+      <div class="phone-card" id="poco-f7">
+        <h2>POCO F7</h2>
+        <p class="brand">Xiaomi · 2025</p>
+        <p class="desc">Flagship-grade Snapdragon, 120Hz AMOLED, gamer focus.</p>
+      </div>
+    </main>
+
+    <div id="status" aria-live="polite"></div>
+    <audio id="bot-audio" autoplay data-a11y-exclude></audio>
+
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>

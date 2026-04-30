@@ -202,9 +202,7 @@ class TestUIAgentDispatch(unittest.IsolatedAsyncioTestCase):
             def build_llm(self):
                 return MagicMock()
 
-        agent = _Plain(
-            "ui", bus=AsyncQueueBus(), bridged=(), auto_inject_ui_state=False
-        )
+        agent = _Plain("ui", bus=AsyncQueueBus(), bridged=(), auto_inject_ui_state=False)
         self.assertFalse(agent._auto_inject_ui_state)
 
     async def test_default_construction_unaffected(self):

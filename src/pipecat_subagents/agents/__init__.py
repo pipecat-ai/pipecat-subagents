@@ -43,6 +43,7 @@ from pipecat_subagents.agents.ui_commands import (
 from pipecat_subagents.agents.ui_event_decorator import on_ui_event
 from pipecat_subagents.agents.ui_prompts import UI_STATE_PROMPT_GUIDE
 from pipecat_subagents.agents.ui_tools import (
+    AnswerToolMixin,
     ClickToolMixin,
     HighlightToolMixin,
     ScrollToToolMixin,
@@ -53,6 +54,7 @@ from pipecat_subagents.agents.watch_decorator import agent_ready
 
 __all__ = [
     "AgentActivationArgs",
+    "AnswerToolMixin",
     "BaseAgent",
     "Click",
     "ClickToolMixin",
