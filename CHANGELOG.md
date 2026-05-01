@@ -28,13 +28,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     can also publish their own command names freely.
   - New opt-in **`ReplyToolMixin`** that exposes a single bundled
     LLM tool:
-    `reply(answer, scroll_to=None, highlight=None, select_text=None)`.
-    The required `answer` argument is enforced by the API schema,
-    so smaller models cannot omit the spoken terminator (a failure
-    mode that the chainable-mixin shape was vulnerable to). One
-    tool call per turn, no chaining. Covers both pointing-style apps
-    (grids, lists — use `scroll_to` + `highlight`) and reading-style
-    apps (articles, documents — use `scroll_to` + `select_text`).
+    `reply(answer, scroll_to=None, highlight=None, select_text=None,
+    fills=None, click=None)`. The required `answer` argument is
+    enforced by the API schema, so smaller models cannot omit the
+    spoken terminator (a failure mode that the chainable-mixin
+    shape was vulnerable to). One tool call per turn, no chaining.
+    Covers pointing apps (`scroll_to` + `highlight`), reading apps
+    (`scroll_to` + `select_text`), form apps (`fills` + `click`),
+    and any blend of them — the LLM uses whichever fields fit the
+    user's request per turn; unused fields stay `null`. Apps that
+    want a tighter schema or app-specific commands write their own
+    `@tool reply` using the helper methods on `UIAgent`.
   - New action helper methods on `UIAgent` covering the standard UI
     commands: `scroll_to(ref)`, `highlight(ref)`,
     `select_text(ref, *, start_offset=None, end_offset=None)`,
