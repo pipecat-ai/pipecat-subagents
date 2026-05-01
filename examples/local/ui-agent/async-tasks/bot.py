@@ -338,41 +338,21 @@ class ResearchAgent(UIAgent):
         """
         logger.info(f"{self}: reply(answer={answer!r}, research_query={research_query!r})")
         if research_query:
-            # Fire-and-forget the task group. The asyncio task runs
-            # the user_task_group context manager to completion, but
-            # we don't await it here. The voice agent unblocks as
-            # soon as we respond_to_task below.
-            self.create_asyncio_task(
-                self._run_research(research_query),
-                f"{self.name}::research::{research_query[:24]}",
-            )
-        await self.respond_to_task(speak=answer)
-        await params.result_callback(None)
-
-    async def _run_research(self, query: str) -> None:
-        """Dispatch the three workers and let the SDK forward events.
-
-        The body looks empty because ``user_task_group`` does the
-        heavy lifting: on enter it publishes a ``group_started``
-        envelope (so the client renders the in-flight card); each
-        worker's ``send_task_update`` is forwarded as a
-        ``task_update``; each worker's ``send_task_response`` is
-        forwarded as a ``task_completed``; on exit a
-        ``group_completed`` is published. We only need to keep the
-        context open while workers run.
-        """
-        try:
-            async with self.user_task_group(
+            # Fire-and-forget the task group via the SDK helper. The
+            # group_started envelope fires before this returns so the
+            # client renders the in-flight card immediately; workers
+            # run in the background and the SDK forwards every
+            # lifecycle event automatically. The voice agent unblocks
+            # as soon as we respond_to_task below.
+            await self.start_user_task_group(
                 "wikipedia",
                 "news",
                 "scholar",
-                payload={"query": query},
-                label=f"Research: {query}",
-                cancellable=True,
-            ):
-                pass
-        except Exception as e:
-            logger.warning(f"{self}: research task group failed: {e}")
+                payload={"query": research_query},
+                label=f"Research: {research_query}",
+            )
+        await self.respond_to_task(speak=answer)
+        await params.result_callback(None)
 
 
 class AsyncTasksRoot(BaseAgent):
