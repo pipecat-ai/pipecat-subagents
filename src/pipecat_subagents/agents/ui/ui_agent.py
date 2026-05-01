@@ -23,7 +23,7 @@ from pipecat.processors.aggregators.llm_response_universal import (
 
 from pipecat_subagents.agents.llm.llm_context_agent import LLMContextAgent
 from pipecat_subagents.agents.task_context import TaskStatus
-from pipecat_subagents.agents.ui.ui_commands import Highlight, ScrollTo
+from pipecat_subagents.agents.ui.ui_commands import Highlight, ScrollTo, SelectText
 from pipecat_subagents.agents.ui.ui_event_decorator import _collect_ui_event_handlers
 from pipecat_subagents.agents.ui.ui_task_context import UserTaskGroupContext
 from pipecat_subagents.bus import AgentBus
@@ -321,6 +321,41 @@ class UIAgent(LLMContextAgent):
                 ``<ui_state>``.
         """
         await self.send_command("highlight", Highlight(ref=ref))
+
+    async def select_text(
+        self,
+        ref: str,
+        *,
+        start_offset: int | None = None,
+        end_offset: int | None = None,
+    ) -> None:
+        """Dispatch a standard ``select_text`` UI command for the given ref.
+
+        Convenience wrapper around ``send_command("select_text",
+        SelectText(...))``. Same pattern as ``scroll_to`` and
+        ``highlight``: a plain instance method, not an LLM tool.
+        Compose into a custom ``@tool`` body for apps that want to
+        point at content via the page's text selection (deixis).
+
+        With ``start_offset`` / ``end_offset`` set, the client's
+        standard handler selects a sub-range of the element's text.
+        With both ``None`` (the default), the entire element's
+        contents are selected. The offsets are character offsets over
+        the element's concatenated ``textContent``.
+
+        Args:
+            ref: Snapshot ref like ``"e42"`` from the most recent
+                ``<ui_state>``.
+            start_offset: Optional character offset where the
+                selection should start. Pass with ``end_offset`` to
+                select a sub-range.
+            end_offset: Optional character offset where the selection
+                should end (exclusive).
+        """
+        await self.send_command(
+            "select_text",
+            SelectText(ref=ref, start_offset=start_offset, end_offset=end_offset),
+        )
 
     async def on_bus_message(self, message: BusMessage) -> None:
         """Dispatch UI events alongside base lifecycle handling."""

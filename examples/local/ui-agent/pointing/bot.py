@@ -113,32 +113,49 @@ chaining.
 
 - ``answer`` (REQUIRED): the spoken reply, plain language, one \
 short sentence. No markdown, no symbols, no specs read aloud.
-- ``scroll_to`` (OPTIONAL): a snapshot ref like ``"e5"``. Set this \
-when the item the user wants is tagged ``[offscreen]`` in \
-``<ui_state>``.
-- ``highlight`` (OPTIONAL): a snapshot ref like ``"e5"``. Set this \
-when pointing at a specific item the user named.
+- ``scroll_to`` (OPTIONAL): a single snapshot ref like ``"e5"``. \
+Set this when at least one phone you want to point at is tagged \
+``[offscreen]`` in ``<ui_state>``. Pick the most relevant ref \
+(typically the first match).
+- ``highlight`` (OPTIONAL): a list of snapshot refs like ``["e5"]`` \
+or ``["e5", "e8", "e47"]``. Each ref pulses on screen \
+simultaneously. Use a single-element list for one phone, multi-element \
+for several.
 
 ## Decision rules
 
-- Pointing at a **visible** item → set ``highlight=ref``; leave \
-``scroll_to`` unset.
-- Pointing at an **offscreen** item → set both ``scroll_to=ref`` and \
-``highlight=ref`` (same ref).
-- **Descriptive / conversational** question → leave both unset.
+**Highlight every phone you name in your answer.** This is the most \
+reliable rule: whatever specific phones appear in the spoken text \
+should also pulse on screen. One phone named → \
+``highlight=["e5"]``. Three named → ``highlight=["e5", "e8", "e47"]``. \
+None named (a generic answer like "I don't see any matches") → \
+omit ``highlight``.
+
+When any highlighted phone is tagged ``[offscreen]`` in \
+``<ui_state>``, also set ``scroll_to`` to the ref of the most \
+relevant one (typically the first in the list, or the one the user \
+asked about most directly).
 
 ## Examples
 
 - "Where's the iPhone 17?" (offscreen) → \
-``reply(answer="Here's the iPhone 17.", scroll_to="e5", highlight="e5")``
-- "Where's the iPhone 17 Pro?" (offscreen) → \
-``reply(answer="Here's the iPhone 17 Pro.", scroll_to="e8", highlight="e8")``
+``reply(answer="Here's the iPhone 17.", scroll_to="e5", highlight=["e5"])``
+- "Show me the Pixel 9 Pro." (offscreen) → \
+``reply(answer="Here's the Pixel 9 Pro.", scroll_to="e14", highlight=["e14"])``
+- "Tell me about the iPhone 17 Pro." (offscreen) → \
+``reply(answer="It's Apple's 2025 flagship with a 120Hz ProMotion display and periscope zoom.", scroll_to="e8", highlight=["e8"])``
 - "Which one is the Nothing phone?" (visible) → \
-``reply(answer="This one, the Nothing Phone 3.", highlight="e29")``
+``reply(answer="This one, the Nothing Phone 3.", highlight=["e29"])``
+- "Show me the Galaxy S25." (visible) → \
+``reply(answer="Here's the Galaxy S25.", highlight=["e17"])``
+- "Show me all the Apple phones." (all visible) → \
+``reply(answer="Here are the three Apple phones.", highlight=["e5", "e8", "e47"])``
+- "Highlight the Apple phones." (mix: e5 and e8 visible, e47 offscreen) → \
+``reply(answer="Highlighting the Apple phones now.", scroll_to="e47", highlight=["e5", "e8", "e47"])``
 - "Which phones are from Google?" → \
-``reply(answer="The Pixel 9, Pixel 9 Pro, and Pixel 9a are from Google.")``
-- "Tell me about the iPhone 17 Pro" → \
-``reply(answer="It's Apple's 2025 flagship with a 120Hz ProMotion display and periscope zoom.")``"""
+``reply(answer="The Pixel 9, Pixel 9 Pro, and Pixel 9a are from Google.", highlight=["e11", "e14", "e50"])``
+- "What's the cheapest one?" (no specific phones named) → \
+``reply(answer="The iPhone 16e is the most budget-friendly option here.", highlight=["e47"])``"""
     + UI_STATE_PROMPT_GUIDE
 )
 
@@ -179,13 +196,10 @@ class VoiceAgent(LLMAgent):
             await params.result_callback(None)
             return
 
-        await self.queue_frame(
-            LLMMessagesAppendFrame(
-                messages=[{"role": "assistant", "content": speak}],
-                run_llm=False,
-            )
-        )
-        await self.queue_frame(TTSSpeakFrame(text=speak))
+        # Feed the verbatim spoken reply through TTS without re-running
+        # the voice LLM. Append it to context so subsequent turns stay
+        # coherent.
+        await self.queue_frame(TTSSpeakFrame(text=speak, append_to_context=True))
         await params.result_callback(None)
 
 
@@ -216,7 +230,7 @@ class PointingAgent(ReplyToolMixin, UIAgent):
         logger.info(f"{self}: task query '{query}'")
         await self.queue_frame(
             LLMMessagesAppendFrame(
-                messages=[{"role": "developer", "content": query}],
+                messages=[{"role": "user", "content": query}],
                 run_llm=True,
             )
         )
@@ -262,7 +276,16 @@ class PointingRoot(BaseAgent):
         async def _on_client_ready(_rtvi):
             logger.info("Client ready")
             await self.add_agent(VoiceAgent("voice", bus=self.bus))
-            await self.add_agent(PointingAgent("ui", bus=self.bus))
+            # ``keep_history=False`` (the UIAgent default) clears the
+            # LLM context at the start of every task so each turn sees
+            # only the current ``<ui_state>`` and the user's query.
+            # Stale snapshots from prior turns would otherwise pile up
+            # and contradict the current viewport (e.g., the LLM
+            # thinks the iPhone 17 Pro is still offscreen because two
+            # turns ago it was). Pointing is the canonical
+            # stateless-delegate case; the voice agent owns dialog
+            # state.
+            await self.add_agent(PointingAgent("ui", bus=self.bus, keep_history=False))
 
         return task
 

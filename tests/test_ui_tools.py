@@ -75,6 +75,43 @@ class TestUIAgentActionHelpers(unittest.IsolatedAsyncioTestCase):
             {"ref": "e7", "target_id": None, "duration_ms": None},
         )
 
+    async def test_select_text_helper_whole_element(self):
+        # No offsets: select the entire element's text content.
+        agent = _new(_PlainAgent)
+        sent = _capture(agent)
+
+        await agent.select_text("e42")
+
+        self.assertEqual(len(sent), 1)
+        self.assertEqual(sent[0].command_name, "select_text")
+        self.assertEqual(
+            sent[0].payload,
+            {
+                "ref": "e42",
+                "target_id": None,
+                "start_offset": None,
+                "end_offset": None,
+            },
+        )
+
+    async def test_select_text_helper_with_offsets(self):
+        # Subrange selection: pass start_offset and end_offset.
+        agent = _new(_PlainAgent)
+        sent = _capture(agent)
+
+        await agent.select_text("e42", start_offset=10, end_offset=25)
+
+        self.assertEqual(len(sent), 1)
+        self.assertEqual(
+            sent[0].payload,
+            {
+                "ref": "e42",
+                "target_id": None,
+                "start_offset": 10,
+                "end_offset": 25,
+            },
+        )
+
     async def test_helpers_are_not_llm_tools(self):
         # The helper methods are just instance methods, not @tool-decorated.
         # They must not appear in the LLM's tool list.
@@ -82,6 +119,7 @@ class TestUIAgentActionHelpers(unittest.IsolatedAsyncioTestCase):
         tool_names = [t.__name__ for t in _collect_tools(agent)]
         self.assertNotIn("scroll_to", tool_names)
         self.assertNotIn("highlight", tool_names)
+        self.assertNotIn("select_text", tool_names)
 
 
 class TestReplyToolMixin(unittest.IsolatedAsyncioTestCase):
@@ -113,7 +151,7 @@ class TestReplyToolMixin(unittest.IsolatedAsyncioTestCase):
         params.result_callback.assert_awaited_once_with(None)
 
     async def test_reply_with_highlight_only(self):
-        # Pointing at a visible item.
+        # Pointing at a visible item: single-element list.
         agent = _new(_AgentWithReply)
         sent = _capture(agent)
         agent.respond_to_task = AsyncMock()  # type: ignore[method-assign]
@@ -124,12 +162,35 @@ class TestReplyToolMixin(unittest.IsolatedAsyncioTestCase):
         await agent.reply(  # type: ignore[attr-defined]
             params,
             answer="This one, the Nothing Phone 3.",
-            highlight="e29",
+            highlight=["e29"],
         )
 
         self.assertEqual([m.command_name for m in sent], ["highlight"])
         self.assertEqual(sent[0].payload["ref"], "e29")
         agent.respond_to_task.assert_awaited_once_with(speak="This one, the Nothing Phone 3.")
+
+    async def test_reply_with_multiple_highlights(self):
+        # "Highlight all Apple phones" — multiple refs in one call,
+        # one highlight command dispatched per ref.
+        agent = _new(_AgentWithReply)
+        sent = _capture(agent)
+        agent.respond_to_task = AsyncMock()  # type: ignore[method-assign]
+
+        params = MagicMock()
+        params.result_callback = AsyncMock()
+
+        await agent.reply(  # type: ignore[attr-defined]
+            params,
+            answer="Here are the Apple phones.",
+            highlight=["e5", "e8", "e47"],
+        )
+
+        self.assertEqual([m.command_name for m in sent], ["highlight"] * 3)
+        self.assertEqual(
+            [m.payload["ref"] for m in sent],
+            ["e5", "e8", "e47"],
+        )
+        agent.respond_to_task.assert_awaited_once_with(speak="Here are the Apple phones.")
 
     async def test_reply_with_scroll_and_highlight_runs_in_order(self):
         # Pointing at an offscreen item: scroll first, then highlight,
@@ -146,7 +207,7 @@ class TestReplyToolMixin(unittest.IsolatedAsyncioTestCase):
             params,
             answer="Here's the iPhone 17.",
             scroll_to="e5",
-            highlight="e5",
+            highlight=["e5"],
         )
 
         self.assertEqual([m.command_name for m in sent], ["scroll_to", "highlight"])
@@ -170,11 +231,14 @@ class TestReplyToolMixin(unittest.IsolatedAsyncioTestCase):
             params,
             answer="x",
             scroll_to="e1",
-            highlight="e2",
+            highlight=["e2", "e3"],
         )
 
         agent.scroll_to.assert_awaited_once_with("e1")
-        agent.highlight.assert_awaited_once_with("e2")
+        self.assertEqual(
+            agent.highlight.await_args_list,
+            [unittest.mock.call("e2"), unittest.mock.call("e3")],
+        )
 
 
 if __name__ == "__main__":

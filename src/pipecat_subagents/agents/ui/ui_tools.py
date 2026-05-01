@@ -8,9 +8,11 @@
 
 Ships ``ReplyToolMixin``: a single ``reply(answer, scroll_to,
 highlight)`` LLM tool that bundles a required spoken answer with
-optional visual actions. One tool call per turn; the model cannot
-drop the terminator because ``answer`` is a required argument that
-the API schema enforces.
+optional visual actions. ``scroll_to`` is a single ref (one viewport
+position); ``highlight`` is a list of refs (many elements can pulse
+together). One tool call per turn; the model cannot drop the
+terminator because ``answer`` is a required argument that the API
+schema enforces.
 
 Apps that need a different bundle of fields (e.g. ``click``,
 ``select_text``, app-specific actions) write their own ``@tool reply``
@@ -61,21 +63,30 @@ class ReplyToolMixin:
         params: FunctionCallParams,
         answer: str,
         scroll_to: str | None = None,
-        highlight: str | None = None,
+        highlight: list[str] | None = None,
     ):
-        """Reply to the user. Optionally scroll to and/or highlight an item.
+        """Reply to the user. Optionally scroll to and/or highlight items.
 
         Always called exactly once per turn. ``answer`` is required;
         the visual fields are optional.
+
+        ``scroll_to`` is a single ref because there's only one viewport
+        position. ``highlight`` is a list because multiple elements can
+        pulse simultaneously, e.g. answering "highlight all the Apple
+        phones" with refs for each match.
 
         Args:
             params: Framework-provided tool invocation context.
             answer: The spoken reply in plain language. One short
                 sentence. No markdown, no symbols.
             scroll_to: Optional snapshot ref like ``"e5"``. When set,
-                scrolls that element into view before speaking.
-            highlight: Optional snapshot ref like ``"e5"``. When set,
-                visually pulses that element while speaking.
+                scrolls that element into view before speaking. Use
+                this for the most relevant target when several items
+                are highlighted.
+            highlight: Optional list of snapshot refs like
+                ``["e5", "e8", "e47"]``. When set, visually pulses
+                each element while speaking. Pass a single-element
+                list to highlight one item.
         """
         preview = (answer or "").strip()
         if len(preview) > 80:
@@ -86,6 +97,7 @@ class ReplyToolMixin:
         if scroll_to:
             await self.scroll_to(scroll_to)  # type: ignore[attr-defined]
         if highlight:
-            await self.highlight(highlight)  # type: ignore[attr-defined]
+            for ref in highlight:
+                await self.highlight(ref)  # type: ignore[attr-defined]
         await self.respond_to_task(speak=answer)  # type: ignore[attr-defined]
         await params.result_callback(None)

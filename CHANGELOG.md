@@ -32,11 +32,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     smaller models cannot omit the spoken terminator (a failure
     mode that the chainable-mixin shape was vulnerable to). One
     tool call per turn, no chaining.
-  - New action helper methods on `UIAgent`: `scroll_to(ref)` and
-    `highlight(ref)`. These are plain instance methods (not LLM
-    tools) that wrap `send_command` with the standard payload
-    dataclasses. `ReplyToolMixin` calls them under the hood; apps
-    that write their own `@tool reply(...)` use them directly.
+  - New action helper methods on `UIAgent`: `scroll_to(ref)`,
+    `highlight(ref)`, and
+    `select_text(ref, *, start_offset=None, end_offset=None)`.
+    These are plain instance methods (not LLM tools) that wrap
+    `send_command` with the standard payload dataclasses.
+    `ReplyToolMixin` calls `scroll_to` / `highlight` under the hood;
+    apps that write their own `@tool reply(...)` (e.g. deixis-style
+    apps that need `select_text`) use them directly.
   - New `keep_history: bool = False` constructor flag on `UIAgent`.
     By default the LLM context is cleared at the start of every
     task (via `LLMMessagesUpdateFrame(messages=[])`) so each task
