@@ -179,13 +179,7 @@ class VoiceAgent(LLMAgent):
         # Feed the verbatim spoken reply through TTS without re-running
         # the voice LLM. Append it to context so subsequent turns stay
         # coherent.
-        await self.queue_frame(
-            LLMMessagesAppendFrame(
-                messages=[{"role": "assistant", "content": speak}],
-                run_llm=False,
-            )
-        )
-        await self.queue_frame(TTSSpeakFrame(text=speak))
+        await self.queue_frame(TTSSpeakFrame(text=speak, append_to_context=True))
         await params.result_callback(None)
 
 
@@ -209,7 +203,7 @@ class HelloAgent(UIAgent):
     async def on_task_request(self, message: BusTaskRequestMessage) -> None:
         # super() records the in-flight task on ``current_task`` and
         # auto-injects ``<ui_state>``. After that, append the user's
-        # query as a developer message and trigger the LLM. Without
+        # query as a user message and trigger the LLM. Without
         # this step the snapshot lands in context but the question
         # never does — the LLM has nothing to answer.
         await super().on_task_request(message)
@@ -217,7 +211,7 @@ class HelloAgent(UIAgent):
         logger.info(f"{self}: task query '{query}'")
         await self.queue_frame(
             LLMMessagesAppendFrame(
-                messages=[{"role": "developer", "content": query}],
+                messages=[{"role": "user", "content": query}],
                 run_llm=True,
             )
         )
