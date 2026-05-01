@@ -21,12 +21,10 @@ Two directions:
   the OS-level selection on that element → user sees what the agent
   is referring to.
 
-Same canonical setup as pointing. The interesting bit is that
-``DeixisAgent`` does NOT compose ``ReplyToolMixin``: that mixin's
-``reply(answer, scroll_to, highlight)`` doesn't have a ``select_text``
-field, and we want the LLM to be able to point at content via
-selection. So we hand-roll a custom ``@tool reply`` with the extra
-field. This is the canonical extension story for the SDK.
+Same canonical setup as pointing. ``DeixisAgent`` composes
+``ReplyToolMixin``, the same SDK mixin pointing uses: the
+``reply(answer, scroll_to, highlight, select_text)`` bundle covers
+both pointing-style apps and reading-style apps.
 
 Architecture::
 
@@ -34,8 +32,8 @@ Architecture::
       ├── VoiceAgent (LLMAgent, bridged)      -- conversational layer
       │     └── @tool answer_about_screen(query)
       │           └── self.task("ui", payload={"query": query})
-      └── DeixisAgent (UIAgent)
-            └── @tool reply(answer, scroll_to, highlight, select_text)
+      └── DeixisAgent (ReplyToolMixin + UIAgent)
+            └── inherited: reply(answer, scroll_to, highlight, select_text)
 
 Run::
 
@@ -76,6 +74,7 @@ from pipecat_subagents.agents import (
     BaseAgent,
     LLMAgent,
     LLMAgentActivationArgs,
+    ReplyToolMixin,
     TaskError,
     UIAgent,
     agent_ready,
@@ -224,18 +223,16 @@ class VoiceAgent(LLMAgent):
         await params.result_callback(None)
 
 
-class DeixisAgent(UIAgent):
-    """UIAgent with a custom ``reply`` tool that exposes ``select_text``.
+class DeixisAgent(ReplyToolMixin, UIAgent):
+    """UIAgent that grounds in user selection and points back via select_text.
 
-    The SDK ships ``ReplyToolMixin`` for the canonical
-    ``reply(answer, scroll_to, highlight)`` shape. Deixis needs a
-    fourth field — ``select_text`` — so the agent can put the page's
-    text selection on a paragraph it's referring to. Rather than
-    forcing the SDK mixin to grow, we hand-roll a ``@tool reply``
-    with the field we need. This is the SDK's canonical extension
-    story: when the bundled mixin doesn't fit, write your own using
-    the ``UIAgent`` helper methods (``scroll_to``, ``highlight``)
-    plus ``send_command`` for new commands.
+    Composes the SDK's ``ReplyToolMixin``, which exposes a single
+    ``reply(answer, scroll_to=None, highlight=None,
+    select_text=None)`` LLM tool. The same bundle that pointing
+    apps use also covers reading-style apps: ``select_text`` is for
+    "this paragraph" / "the section about X" (durable text
+    selection), while ``highlight`` flashes briefly for short
+    emphasis.
     """
 
     def build_llm(self) -> LLMService:
@@ -259,50 +256,6 @@ class DeixisAgent(UIAgent):
                 run_llm=True,
             )
         )
-
-    @tool
-    async def reply(
-        self,
-        params: FunctionCallParams,
-        answer: str,
-        scroll_to: str | None = None,
-        highlight: list[str] | None = None,
-        select_text: str | None = None,
-    ):
-        """Reply to the user. Optionally point at content visually.
-
-        Always called exactly once per turn. ``answer`` is required;
-        the visual fields are optional and may be combined.
-
-        Args:
-            answer: The spoken reply in plain language. One or two
-                short sentences. No markdown, no symbols.
-            scroll_to: Optional snapshot ref. When set, scrolls the
-                element into view before speaking.
-            highlight: Optional list of snapshot refs to flash
-                briefly. Best for short emphasis, not whole
-                paragraphs.
-            select_text: Optional snapshot ref. Sets the page's text
-                selection to that element. Best for "this paragraph"
-                / "the section that talks about X" so the user sees
-                exactly what was meant.
-        """
-        preview = (answer or "").strip()
-        if len(preview) > 80:
-            preview = preview[:80] + "…"
-        logger.info(
-            f"{self}: reply(answer={preview!r}, scroll_to={scroll_to!r}, "
-            f"highlight={highlight!r}, select_text={select_text!r})"
-        )
-        if scroll_to:
-            await self.scroll_to(scroll_to)
-        if highlight:
-            for ref in highlight:
-                await self.highlight(ref)
-        if select_text:
-            await self.select_text(select_text)
-        await self.respond_to_task(speak=answer)
-        await params.result_callback(None)
 
 
 class DeixisRoot(BaseAgent):
