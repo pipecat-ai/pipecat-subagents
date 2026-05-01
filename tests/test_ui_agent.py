@@ -825,6 +825,42 @@ class TestUIAgentRespondToTask(unittest.IsolatedAsyncioTestCase):
         call = agent.send_task_response.await_args
         self.assertEqual(call.kwargs["response"], {"description": "scrolled", "speak": "ok"})
 
+    async def test_concurrent_task_requests_serialize(self):
+        """Two overlapping on_task_request calls must process one at a time.
+
+        UIAgent's single-flight invariant: while task A is in flight,
+        task B's on_task_request blocks at lock acquisition. Only
+        once A's respond_to_task fires does B proceed and become
+        ``current_task``.
+        """
+        agent = await _make_agent()
+        agent.send_task_response = AsyncMock()
+        msg_a = BusTaskRequestMessage(source="voice", target="ui", task_id="a")
+        msg_b = BusTaskRequestMessage(source="voice", target="ui", task_id="b")
+
+        # A starts and parks on respond_to_task pending.
+        await agent.on_task_request(msg_a)
+        self.assertIs(agent.current_task, msg_a)
+
+        # B's setup starts but blocks at the lock. Run it in a task
+        # so we can verify it does not progress until A completes.
+        b_task = asyncio.create_task(agent.on_task_request(msg_b))
+        # Yield so b_task gets a chance to start and block.
+        await asyncio.sleep(0)
+        self.assertFalse(b_task.done())
+        # current_task is still A, not B.
+        self.assertIs(agent.current_task, msg_a)
+
+        # A completes. The lock releases, B unblocks.
+        await agent.respond_to_task(speak="A done")
+        await b_task
+
+        self.assertIs(agent.current_task, msg_b)
+
+        # Clean up so the lock isn't left held across tests.
+        await agent.respond_to_task(speak="B done")
+        self.assertIsNone(agent.current_task)
+
 
 if __name__ == "__main__":
     unittest.main()
