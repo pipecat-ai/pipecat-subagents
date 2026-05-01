@@ -579,6 +579,42 @@ class TestStartUserTaskGroup(unittest.IsolatedAsyncioTestCase):
         await agent.cancel_task(task_id, reason="test cleanup")
         await asyncio.sleep(0.05)
 
+    async def test_cancel_does_not_leak_task_group_error(self):
+        # Regression: when the client cancels a fire-and-forget group,
+        # the group's wait() raises TaskGroupError on __aexit__. The
+        # background runner must catch it (cancellation is an expected
+        # exit) instead of letting it bubble to the task manager as an
+        # unexpected exception.
+        sent = _capture_bus(self.bus)
+        agent = await self._make_ui_agent()
+
+        slow = _SlowWorker("slow", bus=self.bus)
+        await _add_to_bus(self.bus, self.registry, slow)
+
+        task_id = await agent.start_user_task_group("slow", payload={"q": "hi"}, label="cancel me")
+
+        # Wait long enough for the worker to actually start (so the
+        # cancel reaches a running task).
+        await slow.started.wait()
+
+        # User-driven cancel via the same path the client takes
+        # (__cancel_task event → cancel_task call).
+        await agent.cancel_task(task_id, reason="user requested")
+
+        # Pump until group_completed lands, with a hard ceiling.
+        for _ in range(50):
+            await asyncio.sleep(0.02)
+            if any(
+                isinstance(m, BusUITaskGroupCompletedMessage) and m.task_id == task_id for m in sent
+            ):
+                break
+        else:
+            self.fail("group_completed envelope not published after cancel")
+
+        # The group's been cleaned up; no leaked task_group registration.
+        self.assertNotIn(task_id, agent._user_task_groups)
+        self.assertTrue(slow.was_cancelled)
+
     async def test_group_completes_in_background(self):
         # The full lifecycle still publishes — group_started,
         # task_completed (per worker), group_completed — even though
