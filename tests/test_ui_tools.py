@@ -112,14 +112,49 @@ class TestUIAgentActionHelpers(unittest.IsolatedAsyncioTestCase):
             },
         )
 
+    async def test_click_helper_dispatches_command(self):
+        agent = _new(_PlainAgent)
+        sent = _capture(agent)
+
+        await agent.click("e42")
+
+        self.assertEqual(len(sent), 1)
+        self.assertEqual(sent[0].command_name, "click")
+        self.assertEqual(sent[0].payload, {"ref": "e42", "target_id": None})
+
+    async def test_set_input_value_helper_default_replace(self):
+        agent = _new(_PlainAgent)
+        sent = _capture(agent)
+
+        await agent.set_input_value("e42", "hello world")
+
+        self.assertEqual(len(sent), 1)
+        self.assertEqual(sent[0].command_name, "set_input_value")
+        self.assertEqual(
+            sent[0].payload,
+            {
+                "ref": "e42",
+                "target_id": None,
+                "value": "hello world",
+                "replace": True,
+            },
+        )
+
+    async def test_set_input_value_helper_append_mode(self):
+        agent = _new(_PlainAgent)
+        sent = _capture(agent)
+
+        await agent.set_input_value("e42", "more text", replace=False)
+
+        self.assertEqual(sent[0].payload["replace"], False)
+
     async def test_helpers_are_not_llm_tools(self):
         # The helper methods are just instance methods, not @tool-decorated.
         # They must not appear in the LLM's tool list.
         agent = _new(_PlainAgent)
         tool_names = [t.__name__ for t in _collect_tools(agent)]
-        self.assertNotIn("scroll_to", tool_names)
-        self.assertNotIn("highlight", tool_names)
-        self.assertNotIn("select_text", tool_names)
+        for name in ("scroll_to", "highlight", "select_text", "click", "set_input_value"):
+            self.assertNotIn(name, tool_names)
 
 
 class TestReplyToolMixin(unittest.IsolatedAsyncioTestCase):

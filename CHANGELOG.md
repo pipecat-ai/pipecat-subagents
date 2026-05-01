@@ -35,14 +35,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     tool call per turn, no chaining. Covers both pointing-style apps
     (grids, lists — use `scroll_to` + `highlight`) and reading-style
     apps (articles, documents — use `scroll_to` + `select_text`).
-  - New action helper methods on `UIAgent`: `scroll_to(ref)`,
-    `highlight(ref)`, and
-    `select_text(ref, *, start_offset=None, end_offset=None)`.
-    These are plain instance methods (not LLM tools) that wrap
-    `send_command` with the standard payload dataclasses.
-    `ReplyToolMixin` calls `scroll_to` / `highlight` under the hood;
-    apps that write their own `@tool reply(...)` (e.g. deixis-style
-    apps that need `select_text`) use them directly.
+  - New action helper methods on `UIAgent` covering the standard UI
+    commands: `scroll_to(ref)`, `highlight(ref)`,
+    `select_text(ref, *, start_offset=None, end_offset=None)`,
+    `click(ref)`, and
+    `set_input_value(ref, value, *, replace=True)`. These are plain
+    instance methods (not LLM tools) that wrap `send_command` with
+    the standard payload dataclasses. `ReplyToolMixin` calls the
+    pointing helpers under the hood; apps with state-changing tool
+    surfaces (form-fill, etc.) write their own `@tool reply(...)`
+    and call the helpers in the body.
   - New `keep_history: bool = False` constructor flag on `UIAgent`.
     By default the LLM context is cleared at the start of every
     task (via `LLMMessagesUpdateFrame(messages=[])`) so each task

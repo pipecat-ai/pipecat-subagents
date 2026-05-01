@@ -23,7 +23,13 @@ from pipecat.processors.aggregators.llm_response_universal import (
 
 from pipecat_subagents.agents.llm.llm_context_agent import LLMContextAgent
 from pipecat_subagents.agents.task_context import TaskStatus
-from pipecat_subagents.agents.ui.ui_commands import Highlight, ScrollTo, SelectText
+from pipecat_subagents.agents.ui.ui_commands import (
+    Click,
+    Highlight,
+    ScrollTo,
+    SelectText,
+    SetInputValue,
+)
 from pipecat_subagents.agents.ui.ui_event_decorator import _collect_ui_event_handlers
 from pipecat_subagents.agents.ui.ui_task_context import UserTaskGroupContext
 from pipecat_subagents.bus import AgentBus
@@ -355,6 +361,54 @@ class UIAgent(LLMContextAgent):
         await self.send_command(
             "select_text",
             SelectText(ref=ref, start_offset=start_offset, end_offset=end_offset),
+        )
+
+    async def click(self, ref: str) -> None:
+        """Dispatch a standard ``click`` UI command for the given ref.
+
+        Convenience wrapper around ``send_command("click",
+        Click(ref=ref))``. Same pattern as the other helpers: a plain
+        instance method, not an LLM tool. Use inside custom ``@tool``
+        bodies for state-changing form actions like checkboxes,
+        radio buttons, and submit buttons.
+
+        The standard client handler silently no-ops on ``disabled``
+        targets so the agent can't bypass UI affordances meant to be
+        user-controlled.
+
+        Args:
+            ref: Snapshot ref like ``"e42"`` from the most recent
+                ``<ui_state>``.
+        """
+        await self.send_command("click", Click(ref=ref))
+
+    async def set_input_value(
+        self,
+        ref: str,
+        value: str,
+        *,
+        replace: bool = True,
+    ) -> None:
+        """Dispatch a standard ``set_input_value`` UI command.
+
+        Convenience wrapper around ``send_command("set_input_value",
+        SetInputValue(...))``. Same pattern as the other helpers: a
+        plain instance method, not an LLM tool. Use inside custom
+        ``@tool`` bodies for filling text inputs and textareas.
+
+        With ``replace=True`` (the default) the field's existing
+        value is overwritten. With ``replace=False`` the value is
+        appended (useful for continuing a long answer in a textarea).
+
+        Args:
+            ref: Snapshot ref like ``"e42"`` of the input/textarea.
+            value: Text to write into the field.
+            replace: When True, overwrite the existing value. When
+                False, append to it. Defaults to True.
+        """
+        await self.send_command(
+            "set_input_value",
+            SetInputValue(ref=ref, value=value, replace=replace),
         )
 
     async def on_bus_message(self, message: BusMessage) -> None:
