@@ -38,6 +38,7 @@ from pipecat_subagents.bus.messages import (
     UI_CANCEL_TASK_EVENT_NAME,
     UI_SNAPSHOT_EVENT_NAME,
     BusMessage,
+    BusTaskCancelMessage,
     BusTaskRequestMessage,
     BusTaskResponseMessage,
     BusTaskUpdateMessage,
@@ -135,18 +136,23 @@ class UIAgent(LLMContextAgent):
     injections, race on which task is "current" when a tool calls
     ``respond_to_task``, and corrupt the conversation history. To
     codify the single-flight invariant, ``on_task_request`` acquires an
-    internal lock that is held until ``respond_to_task`` fires. Task
-    requests that arrive while another is in flight queue and process
-    in arrival order. Concurrent submission is safe; concurrent
+    internal lock that is held for the lifetime of the in-flight task.
+    Task requests that arrive while another is in flight queue and
+    process in arrival order. Concurrent submission is safe; concurrent
     execution is what gets serialized.
 
-    The lock release lives in ``respond_to_task``, so a tool that
-    forgets to call it will hold the lock indefinitely and subsequent
-    task requests will block. That's intentional. The hang is a
-    fast-surfacing signal that a tool is missing its terminator. Don't
-    add a watchdog timeout: it would mask the bug instead of exposing
-    it, and the requester's own task timeout already provides
-    error-path liveness on the calling side.
+    The lock is released along two paths: ``respond_to_task`` (the
+    happy path, where a tool fires the response) and
+    ``on_task_cancelled`` (the cancellation path, where ``BaseAgent``
+    sends the CANCELLED response directly and bypasses
+    ``respond_to_task``). A tool that forgets to call
+    ``respond_to_task`` for a non-cancelled task will hold the lock
+    indefinitely and subsequent task requests will block. That's
+    intentional. The hang is a fast-surfacing signal that a tool is
+    missing its terminator. Don't add a watchdog timeout: it would
+    mask the bug instead of exposing it, and the requester's own
+    task timeout already provides error-path liveness on the
+    calling side.
 
     ## Visibility convention
 
@@ -605,6 +611,29 @@ class UIAgent(LLMContextAgent):
             # can proceed. ``locked()`` guard handles the unusual
             # case where a tool calls ``respond_to_task`` outside the
             # ``on_task_request`` flow (no lock to release).
+            if self._task_lock.locked():
+                self._task_lock.release()
+
+    async def on_task_cancelled(self, message: BusTaskCancelMessage) -> None:
+        """Release the single-flight lock when the in-flight task is cancelled.
+
+        ``BaseAgent._handle_task_cancel`` sends a ``CANCELLED``
+        response directly via ``send_task_response``, bypassing
+        ``respond_to_task`` and its lock-release. Without this hook
+        the lock would stay held after a cancellation and every
+        subsequent task request would block at ``on_task_request``'s
+        ``_task_lock.acquire()`` forever.
+
+        Idempotent and race-safe: if a tool happens to fire
+        ``respond_to_task`` concurrently and clears the slot first,
+        the ``current_task`` check below short-circuits, and the
+        ``locked()`` guard makes the release a no-op when nothing
+        is held.
+        """
+        await super().on_task_cancelled(message)
+        current = self._current_task
+        if current is not None and current.task_id == message.task_id:
+            self._current_task = None
             if self._task_lock.locked():
                 self._task_lock.release()
 

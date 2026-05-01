@@ -20,6 +20,7 @@ from pipecat_subagents.agents.llm.llm_agent import PipelineFlushFrame
 from pipecat_subagents.bus import (
     UI_SNAPSHOT_EVENT_NAME,
     AsyncQueueBus,
+    BusTaskCancelMessage,
     BusTaskRequestMessage,
     BusUIEventMessage,
 )
@@ -824,6 +825,59 @@ class TestUIAgentRespondToTask(unittest.IsolatedAsyncioTestCase):
 
         call = agent.send_task_response.await_args
         self.assertEqual(call.kwargs["response"], {"description": "scrolled", "speak": "ok"})
+
+    async def test_cancellation_releases_lock_for_subsequent_tasks(self):
+        """Cancelling the in-flight task must release the single-flight lock.
+
+        ``BaseAgent._handle_task_cancel`` sends the CANCELLED
+        response directly via ``send_task_response`` and bypasses
+        ``respond_to_task``. Without ``UIAgent.on_task_cancelled``
+        clearing the slot and releasing the lock, the next task
+        request would block forever.
+        """
+        agent = await _make_agent()
+        agent.send_task_response = AsyncMock()
+        msg_a = BusTaskRequestMessage(source="voice", target="ui", task_id="a")
+        msg_b = BusTaskRequestMessage(source="voice", target="ui", task_id="b")
+
+        await agent.on_task_request(msg_a)
+        self.assertIs(agent.current_task, msg_a)
+
+        # Simulate the cancellation hook firing for task A. The real
+        # path is ``_handle_task_cancel`` which calls this hook;
+        # invoking it directly is the focused unit test.
+        await agent.on_task_cancelled(
+            BusTaskCancelMessage(source="voice", target="ui", task_id="a")
+        )
+
+        # Slot cleared, lock released.
+        self.assertIsNone(agent.current_task)
+        self.assertFalse(agent._task_lock.locked())
+
+        # A subsequent task can now proceed without blocking.
+        await asyncio.wait_for(agent.on_task_request(msg_b), timeout=1.0)
+        self.assertIs(agent.current_task, msg_b)
+
+        # Cleanup so the lock isn't left held across tests.
+        await agent.respond_to_task(speak="B done")
+
+    async def test_cancellation_for_unrelated_task_id_leaves_lock_held(self):
+        """A cancel for some other task_id must not free the active task's lock."""
+        agent = await _make_agent()
+        agent.send_task_response = AsyncMock()
+        msg_a = BusTaskRequestMessage(source="voice", target="ui", task_id="a")
+
+        await agent.on_task_request(msg_a)
+        await agent.on_task_cancelled(
+            BusTaskCancelMessage(source="voice", target="ui", task_id="unrelated")
+        )
+
+        # A is still in flight.
+        self.assertIs(agent.current_task, msg_a)
+        self.assertTrue(agent._task_lock.locked())
+
+        # Clean up.
+        await agent.respond_to_task(speak="A done")
 
     async def test_concurrent_task_requests_serialize(self):
         """Two overlapping on_task_request calls must process one at a time.
