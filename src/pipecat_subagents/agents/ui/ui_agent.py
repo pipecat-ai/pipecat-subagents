@@ -191,9 +191,14 @@ class UIAgent(LLMContextAgent):
             defer_tool_frames: Forwarded to ``LLMContextAgent``. See
                 ``LLMAgent`` for details.
             context: Optional pre-built ``LLMContext``. Forwarded to
-                ``LLMContextAgent``. Apps that want to seed the LLM
-                with an initial system prompt or message history pass
-                it here.
+                ``LLMContextAgent``. Note that any messages seeded
+                here are part of the mutable task history and are
+                cleared before each task when ``keep_history=False``
+                (the default), since the reset replaces the entire
+                message list. For durable UI / app instructions,
+                pass them via the LLM service's ``system_instruction``
+                instead, where they live outside the context message
+                list and survive resets.
             user_params: Optional user-aggregator parameters.
                 Forwarded to ``LLMContextAgent``.
             assistant_params: Optional assistant-aggregator parameters.
@@ -229,12 +234,15 @@ class UIAgent(LLMContextAgent):
                 Note: in ``keep_history=False`` mode any messages
                 pre-seeded via ``context=`` are also cleared on the
                 first task, since the reset replaces the entire
-                message list. Put persistent app instructions in the
-                LLM service's ``system_instruction`` setting (which
-                is sent at API call time and is not touched by the
-                context reset), or use ``keep_history=True`` if the
-                seeded messages need to live in the conversation
-                history.
+                message list. Durable UI / app instructions belong
+                in the LLM service's ``system_instruction`` setting
+                (which is sent at API call time and is not touched
+                by the context reset). For example, include the
+                ``UI_STATE_PROMPT_GUIDE`` constant there alongside
+                your app's prompt so the wire-format guide is always
+                available to the LLM. Use ``keep_history=True`` if
+                the seeded messages genuinely need to live in the
+                conversation history.
 
         Raises:
             ValueError: If ``bridged`` is set together with the default
@@ -534,7 +542,11 @@ class UIAgent(LLMContextAgent):
 
         Replaces all messages in the running context with an empty
         list. The system prompt (set on the LLM service via
-        ``system_instruction``) is unaffected.
+        ``system_instruction``) is unaffected. Messages pre-seeded
+        via ``context=`` on construction live in the same mutable
+        message list and ARE cleared, so anything that needs to
+        survive resets (durable instructions, prompt guides) belongs
+        in ``system_instruction`` rather than in seed messages.
 
         Implemented via ``LLMMessagesUpdateFrame``, which the context
         aggregator processes in pipeline order alongside other
