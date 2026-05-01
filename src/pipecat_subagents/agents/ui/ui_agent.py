@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 from dataclasses import asdict, dataclass, is_dataclass
@@ -125,6 +126,28 @@ class UIAgent(LLMContextAgent):
     tools, and stays online to receive tasks. Pass ``active=False``
     explicitly if you have a handoff use case.
 
+    ## Single-flight task semantics
+
+    A ``UIAgent`` owns a single LLM context, one running pipeline, and
+    one notion of "the current screen the user is looking at."
+    Concurrent task processing has no clean meaning under that model:
+    two overlapping tasks would interleave their ``<ui_state>``
+    injections, race on which task is "current" when a tool calls
+    ``respond_to_task``, and corrupt the conversation history. To
+    codify the single-flight invariant, ``on_task_request`` acquires an
+    internal lock that is held until ``respond_to_task`` fires. Task
+    requests that arrive while another is in flight queue and process
+    in arrival order. Concurrent submission is safe; concurrent
+    execution is what gets serialized.
+
+    The lock release lives in ``respond_to_task``, so a tool that
+    forgets to call it will hold the lock indefinitely and subsequent
+    task requests will block. That's intentional. The hang is a
+    fast-surfacing signal that a tool is missing its terminator. Don't
+    add a watchdog timeout: it would mask the bug instead of exposing
+    it, and the requester's own task timeout already provides
+    error-path liveness on the calling side.
+
     ## Visibility convention
 
     When the client captures snapshots with ``trackViewport`` enabled
@@ -203,6 +226,16 @@ class UIAgent(LLMContextAgent):
                 occasionally want to clear can call
                 ``await self.reset_context()``.
 
+                Note: in ``keep_history=False`` mode any messages
+                pre-seeded via ``context=`` are also cleared on the
+                first task, since the reset replaces the entire
+                message list. Put persistent app instructions in the
+                LLM service's ``system_instruction`` setting (which
+                is sent at API call time and is not touched by the
+                context reset), or use ``keep_history=True`` if the
+                seeded messages need to live in the conversation
+                history.
+
         Raises:
             ValueError: If ``bridged`` is set together with the default
                 ``auto_inject_ui_state=True``. The two are
@@ -251,6 +284,11 @@ class UIAgent(LLMContextAgent):
         # ``@tool`` methods (and the mixin tools) close out the task
         # without having to thread the task id through every call.
         self._current_task: BusTaskRequestMessage | None = None
+        # Single-flight serialization. ``on_task_request`` acquires
+        # this lock and holds it until ``respond_to_task`` fires.
+        # See the "Single-flight task semantics" section in the
+        # class docstring for why.
+        self._task_lock = asyncio.Lock()
         # Registry of in-flight user task groups dispatched by this
         # agent (see ``user_task_group``). Keyed by ``task_id``.
         # ``on_bus_message`` consults this to decide which task
@@ -461,21 +499,35 @@ class UIAgent(LLMContextAgent):
     async def on_task_request(self, message: BusTaskRequestMessage) -> None:
         """Reset (when configured) and inject ``<ui_state>`` before dispatch.
 
-        Records the in-flight task for ``respond_to_task`` to close
-        out. When ``keep_history=False`` (the default), clears the LLM
-        context so each task starts fresh. When
-        ``auto_inject_ui_state=True`` (the default), injects the
-        current snapshot. The pipeline processes these frames in
-        order, so by the time the subclass appends the user's query
-        with ``run_llm=True`` the context contains exactly: current
+        Acquires the single-flight lock, records the in-flight task
+        for ``respond_to_task`` to close out, clears the LLM context
+        when ``keep_history=False``, and injects the current snapshot
+        when ``auto_inject_ui_state=True``. Returns to the subclass,
+        which queues the LLM frame; the lock stays held until
+        ``respond_to_task`` fires from inside a tool. Concurrent task
+        requests block on the lock and process in arrival order.
+
+        The pipeline processes the queued frames in order, so by the
+        time the subclass appends the user's query with
+        ``run_llm=True`` the context contains exactly: current
         ``<ui_state>`` + query.
         """
-        await super().on_task_request(message)
-        self._current_task = message
-        if not self._keep_history:
-            await self.reset_context()
-        if self._auto_inject_ui_state:
-            await self.inject_ui_state()
+        await self._task_lock.acquire()
+        try:
+            await super().on_task_request(message)
+            self._current_task = message
+            if not self._keep_history:
+                await self.reset_context()
+            if self._auto_inject_ui_state:
+                await self.inject_ui_state()
+        except BaseException:
+            # Setup failed before the LLM ever ran. Release so the
+            # next task can proceed; respond_to_task won't fire on
+            # this one.
+            self._current_task = None
+            if self._task_lock.locked():
+                self._task_lock.release()
+            raise
 
     async def reset_context(self) -> None:
         """Clear the LLM conversation history.
@@ -534,7 +586,15 @@ class UIAgent(LLMContextAgent):
         payload: dict = dict(response) if response else {}
         if speak is not None:
             payload["speak"] = speak
-        await self.send_task_response(message.task_id, response=payload, status=status)
+        try:
+            await self.send_task_response(message.task_id, response=payload, status=status)
+        finally:
+            # Release the single-flight lock so the next queued task
+            # can proceed. ``locked()`` guard handles the unusual
+            # case where a tool calls ``respond_to_task`` outside the
+            # ``on_task_request`` flow (no lock to release).
+            if self._task_lock.locked():
+                self._task_lock.release()
 
     def user_task_group(
         self,
