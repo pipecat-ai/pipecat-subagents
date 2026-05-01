@@ -12,15 +12,12 @@ field values; the agent fills the right inputs based on field
 labels in ``<ui_state>``. The user can also tell the agent to check
 boxes or submit.
 
-Same canonical UIAgent setup as pointing/deixis, but ``FormAgent``
-does NOT compose ``ReplyToolMixin``: that mixin's bundle is for
-attention-pointing (``scroll_to`` + ``highlight`` + ``select_text``)
-which doesn't fit form-fill. Form-fill is about state-changing
-actions — writing values, clicking buttons. So we hand-roll a
-``@tool reply`` with the form-fill bundle and call the helper
-methods on ``UIAgent`` (``self.set_input_value``, ``self.click``)
-in the body. This is the SDK extension story for state-changing
-apps.
+Same canonical UIAgent setup as pointing/deixis. ``FormAgent``
+composes the SDK's ``ReplyToolMixin``, which bundles all the
+standard UI actions in one tool. The mixin's ``fills`` and
+``click`` fields cover the form-fill use case; the pointing fields
+(``highlight``, ``select_text``) just stay ``null``. The prompt
+below steers the LLM toward the form-fill action set.
 
 Architecture::
 
@@ -28,8 +25,9 @@ Architecture::
       ├── VoiceAgent (LLMAgent, bridged)    -- conversational layer
       │     └── @tool answer_about_screen(query)
       │           └── self.task("ui", payload={"query": query})
-      └── FormAgent (UIAgent)
-            └── @tool reply(answer, scroll_to, fills, click)
+      └── FormAgent (ReplyToolMixin + UIAgent)
+            └── inherited: reply(answer, scroll_to, highlight,
+                                 select_text, fills, click)
 
 Run::
 
@@ -70,6 +68,7 @@ from pipecat_subagents.agents import (
     BaseAgent,
     LLMAgent,
     LLMAgentActivationArgs,
+    ReplyToolMixin,
     TaskError,
     UIAgent,
     agent_ready,
@@ -216,19 +215,15 @@ class VoiceAgent(LLMAgent):
         await params.result_callback(None)
 
 
-class FormAgent(UIAgent):
-    """UIAgent with a custom ``reply`` for state-changing form actions.
+class FormAgent(ReplyToolMixin, UIAgent):
+    """UIAgent for form-fill, composing the SDK's ``ReplyToolMixin``.
 
-    The SDK ships ``ReplyToolMixin`` for the attention-pointing
-    bundle (``scroll_to`` + ``highlight`` + ``select_text``). Form
-    fill is a different shape: state-changing actions (write values,
-    click buttons) instead of pointing. So we hand-roll a custom
-    ``@tool reply`` with ``fills`` and ``click`` instead of
-    composing the mixin. The body uses ``self.set_input_value`` and
-    ``self.click`` (helper methods on ``UIAgent``) to dispatch the
-    underlying UI commands. This is the canonical SDK extension
-    story for apps whose tool surface doesn't fit the bundled
-    pointing shape.
+    The bundled mixin's ``reply(answer, scroll_to, highlight,
+    select_text, fills, click)`` covers the form-fill bundle: ``fills``
+    writes values into inputs and ``click`` ticks checkboxes / submits.
+    Pointing fields (``highlight``, ``select_text``) are unused here;
+    the LLM leaves them ``null``. The prompt below steers the model
+    toward the form-fill action set.
     """
 
     def build_llm(self) -> LLMService:
@@ -252,54 +247,6 @@ class FormAgent(UIAgent):
                 run_llm=True,
             )
         )
-
-    @tool
-    async def reply(
-        self,
-        params: FunctionCallParams,
-        answer: str,
-        scroll_to: str | None = None,
-        fills: list[dict] | None = None,
-        click: list[str] | None = None,
-    ):
-        """Reply to the user. Optionally fill inputs and click buttons.
-
-        Always called exactly once per turn. ``answer`` is required;
-        the action fields are optional and may be combined.
-
-        Args:
-            answer: The spoken reply in plain language. One short
-                sentence confirming what you did or asking for
-                missing info. No markdown, no symbols.
-            scroll_to: Optional snapshot ref. Use when a field the
-                user wants to see is offscreen.
-            fills: Optional list of ``{"ref": "eN", "value": "..."}``
-                objects. Each entry writes ``value`` into the input
-                at ``ref``. Multi-fill in one turn is fine.
-            click: Optional list of snapshot refs to click in order.
-                Use for checkboxes and submit buttons.
-        """
-        preview = (answer or "").strip()
-        if len(preview) > 80:
-            preview = preview[:80] + "…"
-        logger.info(
-            f"{self}: reply(answer={preview!r}, scroll_to={scroll_to!r}, "
-            f"fills={fills!r}, click={click!r})"
-        )
-        if scroll_to:
-            await self.scroll_to(scroll_to)
-        if fills:
-            for entry in fills:
-                ref = entry.get("ref")
-                value = entry.get("value")
-                if not isinstance(ref, str) or value is None:
-                    continue
-                await self.set_input_value(ref, str(value))
-        if click:
-            for ref in click:
-                await self.click(ref)
-        await self.respond_to_task(speak=answer)
-        await params.result_callback(None)
 
 
 class FormRoot(BaseAgent):

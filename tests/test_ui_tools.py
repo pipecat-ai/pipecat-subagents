@@ -288,16 +288,87 @@ class TestReplyToolMixin(unittest.IsolatedAsyncioTestCase):
             ["scroll_to", "select_text"],
         )
 
+    async def test_reply_with_fills_writes_each_input(self):
+        # Form-fill: multi-field write in one turn.
+        agent = _new(_AgentWithReply)
+        sent = _capture(agent)
+        agent.respond_to_task = AsyncMock()  # type: ignore[method-assign]
+
+        params = MagicMock()
+        params.result_callback = AsyncMock()
+
+        await agent.reply(  # type: ignore[attr-defined]
+            params,
+            answer="Got it.",
+            fills=[
+                {"ref": "e5", "value": "Mark"},
+                {"ref": "e7", "value": "Backman"},
+            ],
+        )
+
+        self.assertEqual(
+            [m.command_name for m in sent],
+            ["set_input_value", "set_input_value"],
+        )
+        self.assertEqual(sent[0].payload["ref"], "e5")
+        self.assertEqual(sent[0].payload["value"], "Mark")
+        self.assertEqual(sent[1].payload["ref"], "e7")
+        self.assertEqual(sent[1].payload["value"], "Backman")
+
+    async def test_reply_with_click_clicks_each_in_order(self):
+        # Form-fill: terms + submit.
+        agent = _new(_AgentWithReply)
+        sent = _capture(agent)
+        agent.respond_to_task = AsyncMock()  # type: ignore[method-assign]
+
+        params = MagicMock()
+        params.result_callback = AsyncMock()
+
+        await agent.reply(  # type: ignore[attr-defined]
+            params,
+            answer="Submitted.",
+            click=["e22", "e26"],
+        )
+
+        self.assertEqual([m.command_name for m in sent], ["click", "click"])
+        self.assertEqual([m.payload["ref"] for m in sent], ["e22", "e26"])
+
+    async def test_reply_with_fills_skips_invalid_entries(self):
+        # Defensive: malformed fill entries are skipped, not crashed on.
+        agent = _new(_AgentWithReply)
+        sent = _capture(agent)
+        agent.respond_to_task = AsyncMock()  # type: ignore[method-assign]
+
+        params = MagicMock()
+        params.result_callback = AsyncMock()
+
+        await agent.reply(  # type: ignore[attr-defined]
+            params,
+            answer="x",
+            fills=[
+                {"ref": "e5", "value": "Mark"},
+                {"ref": None, "value": "missing ref"},
+                {"value": "no ref"},
+                {"ref": "e7"},
+            ],
+        )
+
+        # Only the first entry was valid.
+        self.assertEqual(len(sent), 1)
+        self.assertEqual(sent[0].payload["ref"], "e5")
+
     async def test_reply_dispatches_via_helper_methods(self):
-        # Confirms reply uses the UIAgent.scroll_to / highlight /
-        # select_text helpers rather than send_command directly. This
-        # is what makes the extension story work: a subclass can
-        # override one helper (e.g. to climb to a wrapping element
-        # first) and the bundled reply picks it up automatically.
+        # Confirms reply uses the UIAgent helper methods rather than
+        # send_command directly. This is what makes the extension
+        # story work: a subclass can override one helper (e.g. to
+        # climb to a wrapping element first) and the bundled reply
+        # picks it up automatically.
         agent = _new(_AgentWithReply)
         agent.scroll_to = AsyncMock()  # type: ignore[method-assign]
         agent.highlight = AsyncMock()  # type: ignore[method-assign]
         agent.select_text = AsyncMock()  # type: ignore[method-assign]
+        agent.set_input_value = AsyncMock()  # type: ignore[method-assign]
+        agent.click = AsyncMock()  # type: ignore[method-assign]
         agent.respond_to_task = AsyncMock()  # type: ignore[method-assign]
 
         params = MagicMock()
@@ -309,6 +380,8 @@ class TestReplyToolMixin(unittest.IsolatedAsyncioTestCase):
             scroll_to="e1",
             highlight=["e2", "e3"],
             select_text="e4",
+            fills=[{"ref": "e5", "value": "v"}],
+            click=["e6", "e7"],
         )
 
         agent.scroll_to.assert_awaited_once_with("e1")
@@ -317,6 +390,11 @@ class TestReplyToolMixin(unittest.IsolatedAsyncioTestCase):
             [unittest.mock.call("e2"), unittest.mock.call("e3")],
         )
         agent.select_text.assert_awaited_once_with("e4")
+        agent.set_input_value.assert_awaited_once_with("e5", "v")
+        self.assertEqual(
+            agent.click.await_args_list,
+            [unittest.mock.call("e6"), unittest.mock.call("e7")],
+        )
 
 
 if __name__ == "__main__":
