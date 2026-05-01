@@ -22,6 +22,7 @@ import {
   RTVIEvent,
   UIAgentClient,
   findElementByRef,
+  findRefForElement,
 } from "@pipecat-ai/client-js";
 import { SmallWebRTCTransport } from "@pipecat-ai/small-webrtc-transport";
 
@@ -34,6 +35,7 @@ const noteInput = document.getElementById("note-input");
 const noteForm = document.getElementById("note-form");
 const notesList = document.getElementById("notes-list");
 const notesEmpty = document.getElementById("notes-empty");
+const articleEl = document.querySelector("article");
 
 let client;
 let ui;
@@ -47,6 +49,37 @@ const reviewGroups = new Map();
 // All notes ever added in this session (transient — not persisted).
 // We use refs to find them and to drive the has-notes paragraph styling.
 const notes = [];
+
+// The last article paragraph the user selected. Tracked separately
+// from window.getSelection() because the textarea steals selection
+// focus when the user (or the agent) types into it. Updated only
+// when the selection lands inside the article.
+let lastArticleRef = null;
+
+// Walk up from a node looking for the first ancestor that has a
+// snapshot ref assigned. Used both at submit time and from the
+// selection-tracker below.
+function findRefForAncestor(node) {
+  let el = node && node.nodeType === 1 ? node : node?.parentElement ?? null;
+  while (el && el !== document.body) {
+    const ref = findRefForElement(el);
+    if (ref) return { ref, element: el };
+    el = el.parentElement;
+  }
+  return null;
+}
+
+document.addEventListener("selectionchange", () => {
+  const sel = document.getSelection();
+  if (!sel || sel.isCollapsed || !sel.anchorNode) return;
+  const found = findRefForAncestor(sel.anchorNode);
+  if (!found) return;
+  // Only remember selections inside the article column. Textarea /
+  // notes-pane selections shouldn't override it.
+  if (articleEl && articleEl.contains(found.element)) {
+    lastArticleRef = found.ref;
+  }
+});
 
 function setStatus(text, autoHideMs = 0) {
   status.textContent = text;
@@ -335,27 +368,15 @@ function extractRefFromLabel(label) {
 
 // The user (or the agent via fills + click) submits a note. Pull the
 // textarea content into a synthetic add_note so it shows up in the
-// list, then clear the textarea.
+// list, then clear the textarea. The note attaches to whichever
+// article paragraph the user last selected (tracked via
+// selectionchange above) — this works for both flows because the
+// textarea's selection focus does NOT overwrite ``lastArticleRef``.
 noteForm.addEventListener("submit", (e) => {
   e.preventDefault();
   const text = noteInput.value.trim();
   if (!text) return;
-  // Try to use the user's current selection ref, if any, so the note
-  // attaches to that paragraph.
-  let ref = null;
-  const sel = window.getSelection();
-  if (sel && !sel.isCollapsed && sel.anchorNode) {
-    let node =
-      sel.anchorNode.nodeType === 1 ? sel.anchorNode : sel.anchorNode.parentElement;
-    while (node && node !== document.body) {
-      if (node.dataset && node.dataset.ref) {
-        ref = node.dataset.ref;
-        break;
-      }
-      node = node.parentElement;
-    }
-  }
-  handleAddNote({ source: "me", ref, text });
+  handleAddNote({ source: "me", ref: lastArticleRef, text });
   noteInput.value = "";
 });
 
