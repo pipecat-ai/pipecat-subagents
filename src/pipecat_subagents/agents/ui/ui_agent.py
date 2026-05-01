@@ -22,7 +22,7 @@ from pipecat.processors.aggregators.llm_response_universal import (
 )
 
 from pipecat_subagents.agents.llm.llm_context_agent import LLMContextAgent
-from pipecat_subagents.agents.task_context import TaskStatus
+from pipecat_subagents.agents.task_context import TaskGroupError, TaskStatus
 from pipecat_subagents.agents.ui.ui_commands import (
     Click,
     Highlight,
@@ -685,18 +685,35 @@ class UIAgent(LLMContextAgent):
         task_id = ctx.task_id
 
         async def _run_to_completion() -> None:
+            # Drain the event stream so __aexit__ sees a fully
+            # consumed group, matching what ``async with ... : pass``
+            # does. Cancellation and worker errors are expected exits
+            # for fire-and-forget groups: the client already learned
+            # via the group_completed envelope, so we log at debug.
+            iteration_exc: BaseException | None = None
             try:
-                # Drain the event stream so __aexit__ sees a fully
-                # consumed group, matching what ``async with ... :
-                # pass`` does.
                 async for _ in ctx:
                     pass
+            except Exception as e:
+                iteration_exc = e
+
+            try:
+                if iteration_exc is None:
+                    await ctx.__aexit__(None, None, None)
+                else:
+                    await ctx.__aexit__(
+                        type(iteration_exc),
+                        iteration_exc,
+                        iteration_exc.__traceback__,
+                    )
+            except TaskGroupError as e:
+                logger.debug(
+                    f"UIAgent '{self.name}': background user task group {task_id} ended: {e}"
+                )
             except Exception as e:
                 logger.warning(
                     f"UIAgent '{self.name}': background user task group {task_id} failed: {e}"
                 )
-            finally:
-                await ctx.__aexit__(None, None, None)
 
         self.create_asyncio_task(
             _run_to_completion(),
