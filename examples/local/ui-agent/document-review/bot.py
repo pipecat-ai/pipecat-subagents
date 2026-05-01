@@ -180,8 +180,9 @@ you think of this"** with a selection → ``start_review``.
 ``<ui_state>`` to find the ref + text, call ``start_review``.
 - **"Add a note: …"** or any dictated note content → use ``reply`` \
 with ``fills`` for the notes textarea and ``click`` on the Save \
-button. Pre-existing user selection (if any) becomes the note's \
-attached paragraph automatically (the client picks it up).
+button. The note will automatically attach to whichever article \
+paragraph the user last selected — the client tracks selection \
+across the textarea fill, so you don't need to do anything special.
 - **"Where does it talk about X"** → ``reply`` with ``scroll_to`` + \
 ``select_text`` to navigate to the matching paragraph.
 - **"Read me back the notes"** / **"What did you say about \
