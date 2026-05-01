@@ -132,6 +132,17 @@ You are reviewing a draft article with the user. The current \
 ``<ui_state>`` block is in your context, and may contain a \
 ``<selection>`` block when the user has highlighted text.
 
+## The hard rule
+
+**Every turn MUST call exactly one tool: either ``reply`` or \
+``start_review``.** Never respond with plain text. If the user \
+asks something that doesn't need a visual action — including \
+open questions like "how can we improve it?", "what do you think?", \
+"any suggestions?" — call ``reply`` with the answer in the \
+``answer`` field. The spoken response is whatever you put there. \
+If you forget to call a tool, the user hears nothing and the turn \
+times out.
+
 You have two LLM tools:
 
 ## Tool: reply
@@ -188,8 +199,11 @@ across the textarea fill, so you don't need to do anything special.
 - **"Read me back the notes"** / **"What did you say about \
 paragraph 3"** → ``reply`` with answer text only; the notes panel \
 is in ``<ui_state>`` so you can summarize from it.
-- **General questions about the draft** → ``reply`` with answer \
-only.
+- **General questions about the draft** ("how can we improve it?", \
+"what do you think?", "any suggestions?", "what's missing?") → \
+``reply`` with the answer text only. Put your suggestions / \
+opinions / analysis directly in the ``answer`` field; that becomes \
+the spoken reply.
 
 ## Examples
 
@@ -375,8 +389,11 @@ class ReviewAgent(ReplyToolMixin, UIAgent):
     notes panel as it lands.
     """
 
-    def __init__(self, name: str, *, bus: AgentBus):
-        super().__init__(name, bus=bus, keep_history=False)
+    def __init__(self, name: str, *, bus: AgentBus, keep_history: bool = True):
+        # Default keep_history=True so the UI agent can resolve deixis
+        # like "can we have a note for that?" against its own prior
+        # replies. Apps that want fresh-per-turn can override.
+        super().__init__(name, bus=bus, keep_history=keep_history)
         # task_id -> {"paragraph_ref": "..."}; lets on_task_response
         # know which paragraph a worker's feedback belongs to.
         self._reviews: dict[str, dict] = {}
