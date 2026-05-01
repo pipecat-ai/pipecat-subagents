@@ -27,11 +27,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `Highlight`, `Focus`) match the client's default React handlers; apps
     can also publish their own command names freely.
   - New opt-in **`ReplyToolMixin`** that exposes a single bundled
-    LLM tool: `reply(answer, scroll_to=None, highlight=None)`. The
-    required `answer` argument is enforced by the API schema, so
-    smaller models cannot omit the spoken terminator (a failure
+    LLM tool:
+    `reply(answer, scroll_to=None, highlight=None, select_text=None)`.
+    The required `answer` argument is enforced by the API schema,
+    so smaller models cannot omit the spoken terminator (a failure
     mode that the chainable-mixin shape was vulnerable to). One
-    tool call per turn, no chaining.
+    tool call per turn, no chaining. Covers both pointing-style apps
+    (grids, lists — use `scroll_to` + `highlight`) and reading-style
+    apps (articles, documents — use `scroll_to` + `select_text`).
   - New action helper methods on `UIAgent`: `scroll_to(ref)`,
     `highlight(ref)`, and
     `select_text(ref, *, start_offset=None, end_offset=None)`.

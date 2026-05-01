@@ -213,15 +213,56 @@ class TestReplyToolMixin(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([m.command_name for m in sent], ["scroll_to", "highlight"])
         agent.respond_to_task.assert_awaited_once_with(speak="Here's the iPhone 17.")
 
+    async def test_reply_with_select_text_only(self):
+        # Reading-style: agent points at a paragraph via text selection.
+        agent = _new(_AgentWithReply)
+        sent = _capture(agent)
+        agent.respond_to_task = AsyncMock()  # type: ignore[method-assign]
+
+        params = MagicMock()
+        params.result_callback = AsyncMock()
+
+        await agent.reply(  # type: ignore[attr-defined]
+            params,
+            answer="Here, in this paragraph.",
+            select_text="e11",
+        )
+
+        self.assertEqual([m.command_name for m in sent], ["select_text"])
+        self.assertEqual(sent[0].payload["ref"], "e11")
+        agent.respond_to_task.assert_awaited_once_with(speak="Here, in this paragraph.")
+
+    async def test_reply_with_scroll_and_select_text(self):
+        # Pointing at an offscreen paragraph: scroll first, then select.
+        agent = _new(_AgentWithReply)
+        sent = _capture(agent)
+        agent.respond_to_task = AsyncMock()  # type: ignore[method-assign]
+
+        params = MagicMock()
+        params.result_callback = AsyncMock()
+
+        await agent.reply(  # type: ignore[attr-defined]
+            params,
+            answer="Here, in this paragraph.",
+            scroll_to="e11",
+            select_text="e11",
+        )
+
+        self.assertEqual(
+            [m.command_name for m in sent],
+            ["scroll_to", "select_text"],
+        )
+
     async def test_reply_dispatches_via_helper_methods(self):
-        # Confirms reply uses the UIAgent.scroll_to / highlight helpers
-        # rather than send_command directly. This is what makes the
-        # extension story work: a subclass can override one helper
-        # (e.g. to climb to a wrapping element first) and the bundled
-        # reply picks it up automatically.
+        # Confirms reply uses the UIAgent.scroll_to / highlight /
+        # select_text helpers rather than send_command directly. This
+        # is what makes the extension story work: a subclass can
+        # override one helper (e.g. to climb to a wrapping element
+        # first) and the bundled reply picks it up automatically.
         agent = _new(_AgentWithReply)
         agent.scroll_to = AsyncMock()  # type: ignore[method-assign]
         agent.highlight = AsyncMock()  # type: ignore[method-assign]
+        agent.select_text = AsyncMock()  # type: ignore[method-assign]
         agent.respond_to_task = AsyncMock()  # type: ignore[method-assign]
 
         params = MagicMock()
@@ -232,6 +273,7 @@ class TestReplyToolMixin(unittest.IsolatedAsyncioTestCase):
             answer="x",
             scroll_to="e1",
             highlight=["e2", "e3"],
+            select_text="e4",
         )
 
         agent.scroll_to.assert_awaited_once_with("e1")
@@ -239,6 +281,7 @@ class TestReplyToolMixin(unittest.IsolatedAsyncioTestCase):
             agent.highlight.await_args_list,
             [unittest.mock.call("e2"), unittest.mock.call("e3")],
         )
+        agent.select_text.assert_awaited_once_with("e4")
 
 
 if __name__ == "__main__":
