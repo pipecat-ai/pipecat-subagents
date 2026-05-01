@@ -604,6 +604,106 @@ class UIAgent(LLMContextAgent):
             cancellable=cancellable,
         )
 
+    async def start_user_task_group(
+        self,
+        *agent_names: str,
+        name: str | None = None,
+        payload: dict | None = None,
+        timeout: float | None = None,
+        cancel_on_error: bool = True,
+        label: str | None = None,
+        cancellable: bool = True,
+    ) -> str:
+        """Fire-and-forget version of ``user_task_group``.
+
+        Dispatches a user task group in the background and returns
+        immediately. The SDK manages the asyncio task that holds the
+        ``user_task_group`` context open while workers run, so callers
+        don't need to spawn one themselves. All lifecycle events
+        (``group_started``, ``task_update``, ``task_completed``,
+        ``group_completed``) are forwarded to the client as usual.
+
+        Use this when an LLM ``@tool`` body wants to kick off a task
+        group and return immediately so the voice agent unblocks.
+        Use ``user_task_group`` (the context manager) when the caller
+        wants to consume worker events inline (``async for event in
+        tg``) or react to results before returning.
+
+        Worker exceptions inside the dispatched context are logged
+        but do not propagate; cancellation works the same way it
+        does for the context-manager form (the user clicks Cancel,
+        the SDK turns it into ``cancel_task``).
+
+        Args:
+            *agent_names: Names of the agents to send the task to.
+            name: Optional task name for routing to named ``@task``
+                handlers on the workers.
+            payload: Optional structured data describing the work.
+            timeout: Optional timeout in seconds covering both the
+                ready-wait and task execution.
+            cancel_on_error: Whether to cancel the group if a worker
+                errors. Defaults to True.
+            label: Optional human-readable label surfaced to the
+                client. The client UI uses it to title the in-flight
+                task card.
+            cancellable: Whether the client may request cancellation
+                of this group via the reserved ``__cancel_task``
+                event. Defaults to True.
+
+        Returns:
+            The ``task_id`` of the dispatched group. Useful if the
+            caller wants to track it (e.g. to cancel programmatically
+            via ``cancel_task(task_id)``).
+
+        Example::
+
+            @tool
+            async def reply(self, params, answer, research_query=None):
+                if research_query:
+                    await self.start_user_task_group(
+                        "wikipedia", "news", "scholar",
+                        payload={"query": research_query},
+                        label=f"Research: {research_query}",
+                    )
+                await self.respond_to_task(speak=answer)
+                await params.result_callback(None)
+        """
+        ctx = self.user_task_group(
+            *agent_names,
+            name=name,
+            payload=payload,
+            timeout=timeout,
+            cancel_on_error=cancel_on_error,
+            label=label,
+            cancellable=cancellable,
+        )
+        # Enter the context now so the caller has a valid task_id and
+        # the ``group_started`` envelope has fired before we return.
+        # The body and exit run in a background asyncio task so the
+        # caller doesn't await worker completion.
+        await ctx.__aenter__()
+        task_id = ctx.task_id
+
+        async def _run_to_completion() -> None:
+            try:
+                # Drain the event stream so __aexit__ sees a fully
+                # consumed group, matching what ``async with ... :
+                # pass`` does.
+                async for _ in ctx:
+                    pass
+            except Exception as e:
+                logger.warning(
+                    f"UIAgent '{self.name}': background user task group {task_id} failed: {e}"
+                )
+            finally:
+                await ctx.__aexit__(None, None, None)
+
+        self.create_asyncio_task(
+            _run_to_completion(),
+            f"{self.name}::user_task_group::{task_id}",
+        )
+        return task_id
+
     def _register_user_task_group(
         self,
         *,

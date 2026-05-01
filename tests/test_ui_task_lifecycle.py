@@ -515,6 +515,118 @@ class TestUserTaskGroup(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(started.cancellable)
 
 
+class TestStartUserTaskGroup(unittest.IsolatedAsyncioTestCase):
+    """Fire-and-forget helper around ``user_task_group``."""
+
+    async def asyncSetUp(self):
+        self.bus, self.tm, self.registry = await _create_env()
+
+    async def asyncTearDown(self):
+        await self.bus.stop()
+
+    async def _make_ui_agent(self, name="ui") -> _StubUIAgent:
+        agent = _StubUIAgent(name, bus=self.bus, active=False)
+        await _add_to_bus(self.bus, self.registry, agent)
+        _wire_pipeline(agent)
+        return agent
+
+    async def test_returns_task_id_and_emits_started_before_returning(self):
+        # The contract: by the time start_user_task_group returns,
+        # the group is registered and a group_started envelope has
+        # been published. Workers may or may not have completed yet.
+        sent = _capture_bus(self.bus)
+        agent = await self._make_ui_agent()
+
+        slow = _SlowWorker("slow", bus=self.bus)
+        await _add_to_bus(self.bus, self.registry, slow)
+
+        task_id = await agent.start_user_task_group(
+            "slow", payload={"q": "hi"}, label="Background work"
+        )
+
+        self.assertIsInstance(task_id, str)
+        self.assertTrue(task_id)
+        self.assertIn(task_id, agent._user_task_groups)
+
+        started = next(m for m in sent if isinstance(m, BusUITaskGroupStartedMessage))
+        self.assertEqual(started.task_id, task_id)
+        self.assertEqual(started.label, "Background work")
+
+        # Cancel so the background task drains cleanly during teardown.
+        await agent.cancel_task(task_id, reason="test cleanup")
+        await asyncio.sleep(0.05)
+
+    async def test_does_not_block_on_worker_completion(self):
+        # The caller returns immediately; workers run in the
+        # background. Verified by checking that we get back well
+        # before _SlowWorker would normally finish (it blocks
+        # forever absent cancellation).
+        agent = await self._make_ui_agent()
+
+        slow = _SlowWorker("slow", bus=self.bus)
+        await _add_to_bus(self.bus, self.registry, slow)
+
+        loop = asyncio.get_running_loop()
+        t0 = loop.time()
+        task_id = await agent.start_user_task_group("slow")
+        elapsed = loop.time() - t0
+
+        # Should be well under half a second; the worker is blocked.
+        self.assertLess(elapsed, 0.5)
+        self.assertIn(task_id, agent._user_task_groups)
+
+        # Cancel so the background task drains cleanly during teardown.
+        await agent.cancel_task(task_id, reason="test cleanup")
+        await asyncio.sleep(0.05)
+
+    async def test_group_completes_in_background(self):
+        # The full lifecycle still publishes — group_started,
+        # task_completed (per worker), group_completed — even though
+        # the caller didn't await it.
+        sent = _capture_bus(self.bus)
+        agent = await self._make_ui_agent()
+
+        worker = _AutoWorker("w1", bus=self.bus, response={"ok": True})
+        await _add_to_bus(self.bus, self.registry, worker)
+
+        task_id = await agent.start_user_task_group("w1", payload={"q": "hi"})
+
+        # Pump until group_completed shows up.
+        for _ in range(50):
+            await asyncio.sleep(0.02)
+            if any(
+                isinstance(m, BusUITaskGroupCompletedMessage) and m.task_id == task_id for m in sent
+            ):
+                break
+        else:
+            self.fail("group_completed envelope was not published")
+
+        kinds = [
+            type(m).__name__
+            for m in sent
+            if isinstance(
+                m,
+                (
+                    BusUITaskGroupStartedMessage,
+                    BusUITaskCompletedMessage,
+                    BusUITaskGroupCompletedMessage,
+                ),
+            )
+            and getattr(m, "task_id", None) == task_id
+        ]
+        self.assertEqual(
+            kinds,
+            [
+                "BusUITaskGroupStartedMessage",
+                "BusUITaskCompletedMessage",
+                "BusUITaskGroupCompletedMessage",
+            ],
+        )
+
+        # Group is unregistered after completion.
+        self.assertNotIn(task_id, agent._user_task_groups)
+
+
 # ---------------------------------------------------------------------------
 # Bridge envelope translation
 # ---------------------------------------------------------------------------

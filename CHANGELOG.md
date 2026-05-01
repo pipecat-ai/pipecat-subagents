@@ -49,6 +49,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     pointing helpers under the hood; apps with state-changing tool
     surfaces (form-fill, etc.) write their own `@tool reply(...)`
     and call the helpers in the body.
+  - New `start_user_task_group(...)` helper on `UIAgent`. Fire-and-forget
+    counterpart to the `user_task_group` context manager: dispatches the
+    task group, waits long enough for the `group_started` envelope to
+    fire, then returns the `task_id` while workers run in a background
+    asyncio task that the SDK manages. Removes the `create_asyncio_task` +
+    `async with ... : pass` ceremony that the canonical fire-and-forget
+    pattern required. Use the context manager when the caller wants to
+    consume worker events inline; use `start_user_task_group` when an
+    LLM `@tool` body wants to kick off background work and unblock the
+    voice agent.
   - New `keep_history: bool = False` constructor flag on `UIAgent`.
     By default the LLM context is cleared at the start of every
     task (via `LLMMessagesUpdateFrame(messages=[])`) so each task
