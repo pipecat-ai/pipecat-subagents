@@ -18,7 +18,7 @@ import time
 from typing import TYPE_CHECKING
 
 from pipecat_subagents.agents.task_context import TaskGroupContext
-from pipecat_subagents.bus.messages import (
+from pipecat_subagents.agents.ui.ui_messages import (
     BusUITaskGroupCompletedMessage,
     BusUITaskGroupStartedMessage,
 )

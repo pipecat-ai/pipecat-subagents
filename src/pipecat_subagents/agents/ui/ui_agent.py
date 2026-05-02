@@ -35,6 +35,12 @@ from pydantic import BaseModel
 from pipecat_subagents.agents.llm.llm_context_agent import LLMContextAgent
 from pipecat_subagents.agents.task_context import TaskGroupError, TaskStatus
 from pipecat_subagents.agents.ui.ui_event_decorator import _collect_ui_event_handlers
+from pipecat_subagents.agents.ui.ui_messages import (
+    BusUICommandMessage,
+    BusUIEventMessage,
+    BusUITaskCompletedMessage,
+    BusUITaskUpdateMessage,
+)
 from pipecat_subagents.agents.ui.ui_task_context import UserTaskGroupContext
 from pipecat_subagents.bus import AgentBus
 from pipecat_subagents.bus.messages import (
@@ -43,10 +49,6 @@ from pipecat_subagents.bus.messages import (
     BusTaskRequestMessage,
     BusTaskResponseMessage,
     BusTaskUpdateMessage,
-    BusUICommandMessage,
-    BusUIEventMessage,
-    BusUITaskCompletedMessage,
-    BusUITaskUpdateMessage,
 )
 
 

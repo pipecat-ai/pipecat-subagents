@@ -38,7 +38,7 @@ from pipecat.processors.frameworks.rtvi.models import (
 )
 
 from pipecat_subagents.agents.base_agent import BaseAgent
-from pipecat_subagents.bus.messages import (
+from pipecat_subagents.agents.ui.ui_messages import (
     BusUICommandMessage,
     BusUIEventMessage,
     BusUITaskCompletedMessage,

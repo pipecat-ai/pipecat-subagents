@@ -22,7 +22,8 @@ from pipecat.processors.frameworks.rtvi.models import (
 )
 
 from pipecat_subagents.agents import UIAgent
-from pipecat_subagents.bus import AsyncQueueBus, BusUICommandMessage
+from pipecat_subagents.agents.ui.ui_messages import BusUICommandMessage
+from pipecat_subagents.bus import AsyncQueueBus
 
 
 class _StubUIAgent(UIAgent):

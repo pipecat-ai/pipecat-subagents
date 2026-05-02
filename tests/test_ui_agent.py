@@ -19,11 +19,11 @@ from pipecat.processors.frameworks.rtvi.models import UI_SNAPSHOT_EVENT_NAME
 
 from pipecat_subagents.agents import UIAgent, on_ui_event
 from pipecat_subagents.agents.llm.llm_agent import PipelineFlushFrame
+from pipecat_subagents.agents.ui.ui_messages import BusUIEventMessage
 from pipecat_subagents.bus import (
     AsyncQueueBus,
     BusTaskCancelMessage,
     BusTaskRequestMessage,
-    BusUIEventMessage,
 )
 
 
