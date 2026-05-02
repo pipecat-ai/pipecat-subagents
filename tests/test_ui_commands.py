@@ -235,7 +235,7 @@ class TestStandardCommands(unittest.IsolatedAsyncioTestCase):
 
 class TestMessageTypeConstant(unittest.TestCase):
     def test_ui_command_type_string(self):
-        self.assertEqual(UI_COMMAND_MESSAGE_TYPE, "ui.command")
+        self.assertEqual(UI_COMMAND_MESSAGE_TYPE, "ui-command")
 
 
 if __name__ == "__main__":
