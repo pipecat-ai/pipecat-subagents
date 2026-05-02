@@ -41,6 +41,9 @@ venv
 # Node
 node_modules/
 *.tsbuildinfo
+.vite
+dist-ssr
+*.local
 
 # macOS
 .DS_Store
