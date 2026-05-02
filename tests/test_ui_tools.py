@@ -19,7 +19,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 from pipecat_subagents.agents import ReplyToolMixin, UIAgent
 from pipecat_subagents.agents.llm.tool_decorator import _collect_tools
-from pipecat_subagents.bus import AsyncQueueBus, BusUICommandMessage
+from pipecat_subagents.agents.ui.ui_messages import BusUICommandMessage
+from pipecat_subagents.bus import AsyncQueueBus
 
 
 class _AgentWithReply(ReplyToolMixin, UIAgent):

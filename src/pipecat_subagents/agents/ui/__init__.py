@@ -15,6 +15,14 @@ snapshots, and server-emitted UI commands, plus an opt-in
 from pipecat_subagents.agents.ui.ui_agent import UIAgent
 from pipecat_subagents.agents.ui.ui_bridge import attach_ui_bridge
 from pipecat_subagents.agents.ui.ui_event_decorator import on_ui_event
+from pipecat_subagents.agents.ui.ui_messages import (
+    BusUICommandMessage,
+    BusUIEventMessage,
+    BusUITaskCompletedMessage,
+    BusUITaskGroupCompletedMessage,
+    BusUITaskGroupStartedMessage,
+    BusUITaskUpdateMessage,
+)
 from pipecat_subagents.agents.ui.ui_prompts import UI_STATE_PROMPT_GUIDE
 from pipecat_subagents.agents.ui.ui_tools import ReplyToolMixin
 
@@ -24,6 +32,12 @@ from pipecat_subagents.agents.ui.ui_tools import ReplyToolMixin
 # 1.2.0). Import them from there directly.
 
 __all__ = [
+    "BusUICommandMessage",
+    "BusUIEventMessage",
+    "BusUITaskCompletedMessage",
+    "BusUITaskGroupCompletedMessage",
+    "BusUITaskGroupStartedMessage",
+    "BusUITaskUpdateMessage",
     "ReplyToolMixin",
     "UIAgent",
     "UI_STATE_PROMPT_GUIDE",

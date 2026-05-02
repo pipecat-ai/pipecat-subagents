@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, MagicMock
 from pipecat.processors.frameworks.rtvi.frames import RTVIServerMessageFrame
 
 from pipecat_subagents.agents import attach_ui_bridge
-from pipecat_subagents.bus import BusUICommandMessage, BusUIEventMessage
+from pipecat_subagents.agents.ui.ui_messages import BusUICommandMessage, BusUIEventMessage
 
 
 def _make_bridge_fixture(*, target: str | None = None):

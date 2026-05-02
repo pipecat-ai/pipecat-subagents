@@ -33,16 +33,18 @@ from pipecat_subagents.agents import UIAgent, attach_ui_bridge
 from pipecat_subagents.agents.base_agent import BaseAgent
 from pipecat_subagents.agents.llm.llm_agent import PipelineFlushFrame
 from pipecat_subagents.agents.task_context import TaskStatus
-from pipecat_subagents.bus import (
-    AsyncQueueBus,
-    BusTaskCancelMessage,
-    BusTaskResponseMessage,
-    BusTaskUpdateMessage,
+from pipecat_subagents.agents.ui.ui_messages import (
     BusUIEventMessage,
     BusUITaskCompletedMessage,
     BusUITaskGroupCompletedMessage,
     BusUITaskGroupStartedMessage,
     BusUITaskUpdateMessage,
+)
+from pipecat_subagents.bus import (
+    AsyncQueueBus,
+    BusTaskCancelMessage,
+    BusTaskResponseMessage,
+    BusTaskUpdateMessage,
 )
 from pipecat_subagents.registry import AgentRegistry
 from pipecat_subagents.types import AgentReadyData

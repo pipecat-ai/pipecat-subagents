@@ -49,12 +49,6 @@ from pipecat_subagents.bus.messages import (
     BusTaskUpdateMessage,
     BusTaskUpdateRequestMessage,
     BusTaskUpdateUrgentMessage,
-    BusUICommandMessage,
-    BusUIEventMessage,
-    BusUITaskCompletedMessage,
-    BusUITaskGroupCompletedMessage,
-    BusUITaskGroupStartedMessage,
-    BusUITaskUpdateMessage,
 )
 from pipecat_subagents.bus.subscriber import BusSubscriber
 from pipecat_subagents.types import AgentRegistryEntry
@@ -91,10 +85,4 @@ __all__ = [
     "BusTaskUpdateMessage",
     "BusTaskUpdateRequestMessage",
     "BusTaskUpdateUrgentMessage",
-    "BusUICommandMessage",
-    "BusUIEventMessage",
-    "BusUITaskCompletedMessage",
-    "BusUITaskGroupCompletedMessage",
-    "BusUITaskGroupStartedMessage",
-    "BusUITaskUpdateMessage",
 ]
