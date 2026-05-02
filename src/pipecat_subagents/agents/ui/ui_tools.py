@@ -125,15 +125,24 @@ class ReplyToolMixin:
             f"highlight={highlight!r}, select_text={select_text!r}, "
             f"fills={fills!r}, click={click!r})"
         )
+        # Defensive guards on the list arguments: an LLM that emits a
+        # malformed entry (None, a bare string, etc.) would crash the
+        # tool body before respond_to_task fires, leaving the
+        # single-flight lock held until the voice-task timeout cancels
+        # us. Skip non-conforming entries instead.
         if scroll_to:
             await self.scroll_to(scroll_to)  # type: ignore[attr-defined]
         if highlight:
             for ref in highlight:
+                if not isinstance(ref, str):
+                    continue
                 await self.highlight(ref)  # type: ignore[attr-defined]
         if select_text:
             await self.select_text(select_text)  # type: ignore[attr-defined]
         if fills:
             for entry in fills:
+                if not isinstance(entry, dict):
+                    continue
                 ref = entry.get("ref")
                 value = entry.get("value")
                 if not isinstance(ref, str) or value is None:
@@ -141,6 +150,8 @@ class ReplyToolMixin:
                 await self.set_input_value(ref, str(value))  # type: ignore[attr-defined]
         if click:
             for ref in click:
+                if not isinstance(ref, str):
+                    continue
                 await self.click(ref)  # type: ignore[attr-defined]
         await self.respond_to_task(speak=answer)  # type: ignore[attr-defined]
         await params.result_callback(None)
