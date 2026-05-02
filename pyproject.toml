@@ -18,7 +18,7 @@ classifiers = [
     "Topic :: Communications :: Conferencing",
     "Topic :: Multimedia :: Sound/Audio",
 ]
-dependencies = [ "pipecat-ai>=1.0.0" ]
+dependencies = [ "pipecat-ai>=1.2.0" ]
 
 [project.optional-dependencies]
 flows = ["pipecat-ai-flows>=1.0.0"]

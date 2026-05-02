@@ -4,12 +4,13 @@
 # SPDX-License-Identifier: BSD 2-Clause License
 #
 
-"""Tests for UIAgent.send_command and standard command dataclasses."""
+"""Tests for UIAgent.send_command and standard command payload models."""
 
 import unittest
 from unittest.mock import MagicMock
 
-from pipecat_subagents.agents import (
+from pipecat.processors.frameworks.rtvi.models import (
+    UI_COMMAND_MESSAGE_TYPE,
     Click,
     Focus,
     Highlight,
@@ -18,13 +19,10 @@ from pipecat_subagents.agents import (
     SelectText,
     SetInputValue,
     Toast,
-    UIAgent,
 )
-from pipecat_subagents.bus import (
-    UI_COMMAND_MESSAGE_TYPE,
-    AsyncQueueBus,
-    BusUICommandMessage,
-)
+
+from pipecat_subagents.agents import UIAgent
+from pipecat_subagents.bus import AsyncQueueBus, BusUICommandMessage
 
 
 class _StubUIAgent(UIAgent):
@@ -49,7 +47,7 @@ def _make_agent():
 
 
 class TestSendCommand(unittest.IsolatedAsyncioTestCase):
-    async def test_serializes_dataclass_payload_via_asdict(self):
+    async def test_serializes_pydantic_payload_via_model_dump(self):
         agent, sent = _make_agent()
 
         await agent.send_command("toast", Toast(title="Saved", subtitle="Favorites"))
@@ -85,13 +83,10 @@ class TestSendCommand(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(sent[0].payload, {})
 
-    async def test_rejects_dataclass_type_vs_instance_gracefully(self):
-        """Passing the class (not an instance) should not be misread as a dataclass instance."""
+    async def test_dict_payload_for_apps_with_custom_command_names(self):
+        """Apps that publish app-specific commands pass a plain dict."""
         agent, sent = _make_agent()
 
-        # Passing a plain dict remains the expected usage; this asserts
-        # the is_dataclass(not type) guard is in place so the class
-        # object isn't accidentally recursed into by asdict.
         await agent.send_command("navigate", {"view": "home"})
         self.assertEqual(sent[0].payload, {"view": "home"})
 

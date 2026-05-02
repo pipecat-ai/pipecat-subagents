@@ -30,34 +30,23 @@ from pipecat_subagents.agents.task_context import (
 from pipecat_subagents.agents.task_decorator import task
 from pipecat_subagents.agents.ui import (
     UI_STATE_PROMPT_GUIDE,
-    Click,
-    Focus,
-    Highlight,
-    Navigate,
     ReplyToolMixin,
-    ScrollTo,
-    SelectText,
-    SetInputValue,
-    Toast,
     UIAgent,
     attach_ui_bridge,
     on_ui_event,
 )
 from pipecat_subagents.agents.watch_decorator import agent_ready
 
+# Built-in UI command payload models live in
+# ``pipecat.processors.frameworks.rtvi.models`` (since pipecat-ai
+# 1.2.0). Import them from there directly.
+
 __all__ = [
     "AgentActivationArgs",
     "BaseAgent",
-    "Click",
-    "Focus",
-    "Highlight",
     "LLMAgent",
     "LLMAgentActivationArgs",
-    "Navigate",
     "ReplyToolMixin",
-    "ScrollTo",
-    "SelectText",
-    "SetInputValue",
     "TaskContext",
     "TaskError",
     "TaskEvent",
@@ -66,7 +55,6 @@ __all__ = [
     "TaskGroupEvent",
     "TaskGroupResponse",
     "TaskStatus",
-    "Toast",
     "UIAgent",
     "UI_STATE_PROMPT_GUIDE",
     "agent_ready",

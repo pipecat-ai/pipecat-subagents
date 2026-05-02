@@ -14,30 +14,17 @@ snapshots, and server-emitted UI commands, plus an opt-in
 
 from pipecat_subagents.agents.ui.ui_agent import UIAgent
 from pipecat_subagents.agents.ui.ui_bridge import attach_ui_bridge
-from pipecat_subagents.agents.ui.ui_commands import (
-    Click,
-    Focus,
-    Highlight,
-    Navigate,
-    ScrollTo,
-    SelectText,
-    SetInputValue,
-    Toast,
-)
 from pipecat_subagents.agents.ui.ui_event_decorator import on_ui_event
 from pipecat_subagents.agents.ui.ui_prompts import UI_STATE_PROMPT_GUIDE
 from pipecat_subagents.agents.ui.ui_tools import ReplyToolMixin
 
+# Built-in UI command payload models (Toast, Navigate, ScrollTo,
+# Highlight, Focus, Click, SetInputValue, SelectText) live in
+# ``pipecat.processors.frameworks.rtvi.models`` (since pipecat-ai
+# 1.2.0). Import them from there directly.
+
 __all__ = [
-    "Click",
-    "Focus",
-    "Highlight",
-    "Navigate",
     "ReplyToolMixin",
-    "ScrollTo",
-    "SelectText",
-    "SetInputValue",
-    "Toast",
     "UIAgent",
     "UI_STATE_PROMPT_GUIDE",
     "attach_ui_bridge",

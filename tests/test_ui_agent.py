@@ -15,10 +15,11 @@ from pipecat.frames.frames import LLMMessagesAppendFrame, LLMMessagesUpdateFrame
 from pipecat.processors.frame_processor import FrameDirection
 from pipecat.utils.asyncio.task_manager import TaskManager, TaskManagerParams
 
+from pipecat.processors.frameworks.rtvi.models import UI_SNAPSHOT_EVENT_NAME
+
 from pipecat_subagents.agents import UIAgent, on_ui_event
 from pipecat_subagents.agents.llm.llm_agent import PipelineFlushFrame
 from pipecat_subagents.bus import (
-    UI_SNAPSHOT_EVENT_NAME,
     AsyncQueueBus,
     BusTaskCancelMessage,
     BusTaskRequestMessage,

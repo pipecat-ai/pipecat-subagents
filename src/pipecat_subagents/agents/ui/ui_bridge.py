@@ -27,12 +27,18 @@ Register with ``attach_ui_bridge(agent)`` from the root agent's
 from __future__ import annotations
 
 from pipecat.processors.frameworks.rtvi.frames import RTVIServerMessageFrame
+from pipecat.processors.frameworks.rtvi.models import (
+    UI_COMMAND_MESSAGE_TYPE,
+    UI_EVENT_MESSAGE_TYPE,
+    UI_TASK_COMPLETED_KIND,
+    UI_TASK_GROUP_COMPLETED_KIND,
+    UI_TASK_GROUP_STARTED_KIND,
+    UI_TASK_MESSAGE_TYPE,
+    UI_TASK_UPDATE_KIND,
+)
 
 from pipecat_subagents.agents.base_agent import BaseAgent
 from pipecat_subagents.bus.messages import (
-    UI_COMMAND_MESSAGE_TYPE,
-    UI_EVENT_MESSAGE_TYPE,
-    UI_TASK_MESSAGE_TYPE,
     BusUICommandMessage,
     BusUIEventMessage,
     BusUITaskCompletedMessage,
@@ -116,7 +122,7 @@ def attach_ui_bridge(agent: BaseAgent, *, target: str | None = None) -> None:
         elif isinstance(message, BusUITaskGroupStartedMessage):
             data = {
                 "type": UI_TASK_MESSAGE_TYPE,
-                "kind": "group_started",
+                "kind": UI_TASK_GROUP_STARTED_KIND,
                 "task_id": message.task_id,
                 "agents": list(message.agents or []),
                 "label": message.label,
@@ -126,7 +132,7 @@ def attach_ui_bridge(agent: BaseAgent, *, target: str | None = None) -> None:
         elif isinstance(message, BusUITaskUpdateMessage):
             data = {
                 "type": UI_TASK_MESSAGE_TYPE,
-                "kind": "task_update",
+                "kind": UI_TASK_UPDATE_KIND,
                 "task_id": message.task_id,
                 "agent_name": message.agent_name,
                 "data": message.data,
@@ -135,7 +141,7 @@ def attach_ui_bridge(agent: BaseAgent, *, target: str | None = None) -> None:
         elif isinstance(message, BusUITaskCompletedMessage):
             data = {
                 "type": UI_TASK_MESSAGE_TYPE,
-                "kind": "task_completed",
+                "kind": UI_TASK_COMPLETED_KIND,
                 "task_id": message.task_id,
                 "agent_name": message.agent_name,
                 "status": message.status,
@@ -145,7 +151,7 @@ def attach_ui_bridge(agent: BaseAgent, *, target: str | None = None) -> None:
         elif isinstance(message, BusUITaskGroupCompletedMessage):
             data = {
                 "type": UI_TASK_MESSAGE_TYPE,
-                "kind": "group_completed",
+                "kind": UI_TASK_GROUP_COMPLETED_KIND,
                 "task_id": message.task_id,
                 "at": message.at,
             }
