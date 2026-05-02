@@ -23,11 +23,6 @@ from pipecat_subagents.bus.bridge_processor import BusBridgeProcessor
 from pipecat_subagents.bus.bus import AgentBus
 from pipecat_subagents.bus.local import AsyncQueueBus
 from pipecat_subagents.bus.messages import (
-    UI_CANCEL_TASK_EVENT_NAME,
-    UI_COMMAND_MESSAGE_TYPE,
-    UI_EVENT_MESSAGE_TYPE,
-    UI_SNAPSHOT_EVENT_NAME,
-    UI_TASK_MESSAGE_TYPE,
     BusActivateAgentMessage,
     BusAddAgentMessage,
     BusAgentErrorMessage,
@@ -102,9 +97,4 @@ __all__ = [
     "BusUITaskGroupCompletedMessage",
     "BusUITaskGroupStartedMessage",
     "BusUITaskUpdateMessage",
-    "UI_CANCEL_TASK_EVENT_NAME",
-    "UI_COMMAND_MESSAGE_TYPE",
-    "UI_EVENT_MESSAGE_TYPE",
-    "UI_SNAPSHOT_EVENT_NAME",
-    "UI_TASK_MESSAGE_TYPE",
 ]

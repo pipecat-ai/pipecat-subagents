@@ -21,22 +21,23 @@ from pipecat.processors.aggregators.llm_response_universal import (
     LLMAssistantAggregatorParams,
     LLMUserAggregatorParams,
 )
-
-from pipecat_subagents.agents.llm.llm_context_agent import LLMContextAgent
-from pipecat_subagents.agents.task_context import TaskGroupError, TaskStatus
-from pipecat_subagents.agents.ui.ui_commands import (
+from pipecat.processors.frameworks.rtvi.models import (
+    UI_CANCEL_TASK_EVENT_NAME,
+    UI_SNAPSHOT_EVENT_NAME,
     Click,
     Highlight,
     ScrollTo,
     SelectText,
     SetInputValue,
 )
+from pydantic import BaseModel
+
+from pipecat_subagents.agents.llm.llm_context_agent import LLMContextAgent
+from pipecat_subagents.agents.task_context import TaskGroupError, TaskStatus
 from pipecat_subagents.agents.ui.ui_event_decorator import _collect_ui_event_handlers
 from pipecat_subagents.agents.ui.ui_task_context import UserTaskGroupContext
 from pipecat_subagents.bus import AgentBus
 from pipecat_subagents.bus.messages import (
-    UI_CANCEL_TASK_EVENT_NAME,
-    UI_SNAPSHOT_EVENT_NAME,
     BusMessage,
     BusTaskCancelMessage,
     BusTaskRequestMessage,
@@ -324,14 +325,19 @@ class UIAgent(LLMContextAgent):
                 ``"navigate"``, or any app-specific name).
             payload: One of:
 
-                - A dataclass instance (including the built-ins in
-                  ``pipecat_subagents.agents.ui``). Converted
-                  to a plain dict with ``dataclasses.asdict``.
+                - A pydantic ``BaseModel`` instance (including the
+                  built-in command models in
+                  ``pipecat.processors.frameworks.rtvi.models``).
+                  Converted to a plain dict with ``model_dump()``.
+                - A dataclass instance. Converted to a plain dict with
+                  ``dataclasses.asdict``.
                 - A ``dict`` forwarded as-is.
                 - ``None``, forwarded as an empty dict.
         """
         if payload is None:
             serialized: Any = {}
+        elif isinstance(payload, BaseModel):
+            serialized = payload.model_dump()
         elif is_dataclass(payload) and not isinstance(payload, type):
             serialized = asdict(payload)
         else:

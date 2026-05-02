@@ -411,40 +411,12 @@ class BusTaskStreamEndMessage(BusDataMessage):
 # ---------------------------------------------------------------------------
 # UI protocol
 # ---------------------------------------------------------------------------
-
-#: RTVI client-message type carrying UI events from the client.
-#: Clients that use ``@pipecat-ai/ui-agent-client-js`` send with this
-#: type via ``UIAgentClient.sendEvent``; ``attach_ui_bridge`` filters
-#: on this constant before republishing onto the bus.
-UI_EVENT_MESSAGE_TYPE = "ui.event"
-
-#: Discriminator written into the ``data`` field of the
-#: ``RTVIServerMessageFrame`` that the bridge pushes for UI commands.
-#: Client-side dispatchers (``UIAgentClient.registerCommandHandler``)
-#: filter on this value before invoking the named handler.
-UI_COMMAND_MESSAGE_TYPE = "ui.command"
-
-#: Reserved ``event_name`` on a ``BusUIEventMessage`` that carries an
-#: accessibility snapshot from the client. ``UIAgent`` stores the
-#: payload in ``_latest_snapshot`` without dispatching to
-#: ``@on_ui_event`` handlers or injecting ``<ui_event>`` into LLM
-#: context. The underscore prefix marks the name as SDK-internal.
-UI_SNAPSHOT_EVENT_NAME = "__ui_snapshot"
-
-#: Discriminator written into the ``data`` field of the
-#: ``RTVIServerMessageFrame`` that the bridge pushes for UI task
-#: lifecycle events (``user_task_group`` start, per-task progress and
-#: completion, group completion). Client-side dispatchers
-#: (``UIAgentClient``) filter on this value before routing the
-#: ``kind`` to the task reducer.
-UI_TASK_MESSAGE_TYPE = "ui.task"
-
-#: Reserved ``event_name`` on a ``BusUIEventMessage`` that requests
-#: cancellation of an in-flight user task group from the client.
-#: Payload shape: ``{"task_id": str, "reason": str | None}``. The
-#: ``UIAgent`` looks up the registered group and routes to
-#: ``cancel_task``. Underscore prefix marks the name as SDK-internal.
-UI_CANCEL_TASK_EVENT_NAME = "__cancel_task"
+#
+# Wire-format envelope-type strings, reserved event names, and the
+# built-in command payload models live in
+# ``pipecat.processors.frameworks.rtvi.models`` (since pipecat-ai
+# 1.2.0). Only the subagents-internal bus carrier classes for those
+# messages are defined below.
 
 
 @dataclass
