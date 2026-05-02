@@ -10,19 +10,33 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
-from pipecat.processors.frameworks.rtvi.frames import RTVIServerMessageFrame
+from pipecat.processors.frameworks.rtvi.frames import RTVIServerTypedMessageFrame
+from pipecat.processors.frameworks.rtvi.models import (
+    UICancelTaskData,
+    UICancelTaskMessage,
+    UICommandMessage,
+    UIEventData,
+    UIEventMessage,
+    UISnapshotData,
+    UISnapshotMessage,
+)
 
 from pipecat_subagents.agents import attach_ui_bridge
-from pipecat_subagents.agents.ui.ui_messages import BusUICommandMessage, BusUIEventMessage
+from pipecat_subagents.agents.ui.ui_messages import (
+    _UI_CANCEL_TASK_BUS_EVENT_NAME,
+    _UI_SNAPSHOT_BUS_EVENT_NAME,
+    BusUICommandMessage,
+    BusUIEventMessage,
+)
 
 
 def _make_bridge_fixture(*, target: str | None = None):
     """Build a mock agent + RTVI processor and call attach_ui_bridge.
 
-    Returns ``(invoke_client, invoke_bus, bus_send, queue_frame)``:
+    Returns ``(invoke_ui, invoke_bus, bus_send, queue_frame)``:
 
-    - ``invoke_client(msg)`` fires the registered RTVI
-      ``on_client_message`` handler.
+    - ``invoke_ui(message)`` fires the registered RTVI
+      ``on_ui_message`` handler with a typed Message envelope.
     - ``invoke_bus(message)`` fires the registered agent
       ``on_bus_message`` handler.
     - ``bus_send`` is the ``AsyncMock`` for ``agent.bus.send`` calls.
@@ -60,26 +74,26 @@ def _make_bridge_fixture(*, target: str | None = None):
 
     attach_ui_bridge(agent, target=target)
 
-    client_handler = captured["rtvi::on_client_message"]
+    ui_handler = captured["rtvi::on_ui_message"]
     bus_handler = captured["agent::on_bus_message"]
 
-    async def invoke_client(msg):
-        await client_handler(rtvi, msg)
+    async def invoke_ui(message):
+        await ui_handler(rtvi, message)
 
     async def invoke_bus(message):
         await bus_handler(agent, message)
 
-    return invoke_client, invoke_bus, bus.send, agent.queue_frame
+    return invoke_ui, invoke_bus, bus.send, agent.queue_frame
 
 
-class TestAttachUIBridge(unittest.IsolatedAsyncioTestCase):
+class TestAttachUIBridgeInbound(unittest.IsolatedAsyncioTestCase):
     async def test_republishes_ui_event_as_bus_message(self):
-        invoke, _invoke_bus, bus_send, _queue_frame = _make_bridge_fixture(target="ui")
+        invoke_ui, _invoke_bus, bus_send, _queue_frame = _make_bridge_fixture(target="ui")
 
-        await invoke(
-            SimpleNamespace(
-                type="ui.event",
-                data={"name": "nav_click", "payload": {"view": "home"}},
+        await invoke_ui(
+            UIEventMessage(
+                id="m1",
+                data=UIEventData(name="nav_click", payload={"view": "home"}),
             )
         )
 
@@ -92,45 +106,51 @@ class TestAttachUIBridge(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(sent.payload, {"view": "home"})
 
     async def test_default_target_is_none_for_broadcast(self):
-        invoke, _invoke_bus, bus_send, _queue_frame = _make_bridge_fixture()
+        invoke_ui, _invoke_bus, bus_send, _queue_frame = _make_bridge_fixture()
 
-        await invoke(
-            SimpleNamespace(
-                type="ui.event",
-                data={"name": "nav_click", "payload": {}},
-            )
+        await invoke_ui(
+            UIEventMessage(id="m1", data=UIEventData(name="nav_click", payload={}))
         )
 
         sent: BusUIEventMessage = bus_send.await_args.args[0]
         self.assertIsNone(sent.target)
 
-    async def test_ignores_other_message_types(self):
-        invoke, _invoke_bus, bus_send, _queue_frame = _make_bridge_fixture()
+    async def test_snapshot_message_routes_to_internal_event_name(self):
+        invoke_ui, _invoke_bus, bus_send, _queue_frame = _make_bridge_fixture()
 
-        await invoke(SimpleNamespace(type="not.ui.event", data={"name": "x"}))
+        await invoke_ui(
+            UISnapshotMessage(id="m2", data=UISnapshotData(tree={"root": "..."}))
+        )
 
-        bus_send.assert_not_awaited()
+        sent: BusUIEventMessage = bus_send.await_args.args[0]
+        self.assertEqual(sent.event_name, _UI_SNAPSHOT_BUS_EVENT_NAME)
+        self.assertEqual(sent.payload, {"root": "..."})
 
-    async def test_ignores_non_dict_data(self):
-        invoke, _invoke_bus, bus_send, _queue_frame = _make_bridge_fixture()
+    async def test_cancel_task_message_routes_to_internal_event_name(self):
+        invoke_ui, _invoke_bus, bus_send, _queue_frame = _make_bridge_fixture()
 
-        await invoke(SimpleNamespace(type="ui.event", data="not a dict"))
-        await invoke(SimpleNamespace(type="ui.event", data=None))
+        await invoke_ui(
+            UICancelTaskMessage(
+                id="m3", data=UICancelTaskData(task_id="t-1", reason="user")
+            )
+        )
 
-        bus_send.assert_not_awaited()
+        sent: BusUIEventMessage = bus_send.await_args.args[0]
+        self.assertEqual(sent.event_name, _UI_CANCEL_TASK_BUS_EVENT_NAME)
+        self.assertEqual(sent.payload, {"task_id": "t-1", "reason": "user"})
 
-    async def test_ignores_missing_or_non_string_name(self):
-        invoke, _invoke_bus, bus_send, _queue_frame = _make_bridge_fixture()
+    async def test_unknown_message_type_is_ignored(self):
+        invoke_ui, _invoke_bus, bus_send, _queue_frame = _make_bridge_fixture()
 
-        await invoke(SimpleNamespace(type="ui.event", data={"payload": {}}))
-        await invoke(SimpleNamespace(type="ui.event", data={"name": 42, "payload": {}}))
+        # A non-UI message object should not trigger a bus send.
+        await invoke_ui(SimpleNamespace(type="other"))
 
         bus_send.assert_not_awaited()
 
     async def test_missing_payload_becomes_none(self):
-        invoke, _invoke_bus, bus_send, _queue_frame = _make_bridge_fixture()
+        invoke_ui, _invoke_bus, bus_send, _queue_frame = _make_bridge_fixture()
 
-        await invoke(SimpleNamespace(type="ui.event", data={"name": "hello"}))
+        await invoke_ui(UIEventMessage(id="m1", data=UIEventData(name="hello")))
 
         sent: BusUIEventMessage = bus_send.await_args.args[0]
         self.assertEqual(sent.event_name, "hello")
@@ -148,8 +168,8 @@ class TestAttachUIBridge(unittest.IsolatedAsyncioTestCase):
 
 
 class TestAttachUIBridgeOutbound(unittest.IsolatedAsyncioTestCase):
-    async def test_command_becomes_rtvi_server_message_frame(self):
-        _invoke_client, invoke_bus, _bus_send, queue_frame = _make_bridge_fixture()
+    async def test_command_becomes_rtvi_typed_message_frame(self):
+        _invoke_ui, invoke_bus, _bus_send, queue_frame = _make_bridge_fixture()
 
         await invoke_bus(
             BusUICommandMessage(
@@ -162,18 +182,14 @@ class TestAttachUIBridgeOutbound(unittest.IsolatedAsyncioTestCase):
 
         queue_frame.assert_awaited_once()
         frame = queue_frame.await_args.args[0]
-        self.assertIsInstance(frame, RTVIServerMessageFrame)
-        self.assertEqual(
-            frame.data,
-            {
-                "type": "ui.command",
-                "name": "toast",
-                "payload": {"title": "Hi"},
-            },
-        )
+        self.assertIsInstance(frame, RTVIServerTypedMessageFrame)
+        self.assertIsInstance(frame.message, UICommandMessage)
+        self.assertEqual(frame.message.type, "ui-command")
+        self.assertEqual(frame.message.data.name, "toast")
+        self.assertEqual(frame.message.data.payload, {"title": "Hi"})
 
     async def test_non_command_bus_messages_are_ignored(self):
-        _invoke_client, invoke_bus, _bus_send, queue_frame = _make_bridge_fixture()
+        _invoke_ui, invoke_bus, _bus_send, queue_frame = _make_bridge_fixture()
 
         # Arbitrary non-command object should not trigger a frame push.
         await invoke_bus(SimpleNamespace(command_name="toast", payload={}))

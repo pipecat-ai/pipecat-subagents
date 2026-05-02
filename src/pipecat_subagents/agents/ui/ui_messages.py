@@ -26,6 +26,21 @@ from typing import Any
 
 from pipecat_subagents.bus.messages import BusDataMessage
 
+#: Internal ``event_name`` used by the UI bridge when republishing a
+#: ``ui-snapshot`` wire message onto the bus as a
+#: ``BusUIEventMessage``. UIAgent's bus dispatch matches on this name
+#: to route the snapshot into ``_latest_snapshot`` storage. The
+#: leading double underscore marks the name as subagents-internal so
+#: app-defined ``@on_ui_event`` handlers can't collide with it.
+_UI_SNAPSHOT_BUS_EVENT_NAME = "__ui_snapshot"
+
+#: Internal ``event_name`` used by the UI bridge when republishing a
+#: ``ui-cancel-task`` wire message onto the bus as a
+#: ``BusUIEventMessage``. UIAgent's bus dispatch matches on this name
+#: to route to ``cancel_task``. Subagents-internal; not part of the
+#: public wire format.
+_UI_CANCEL_TASK_BUS_EVENT_NAME = "__cancel_task"
+
 
 @dataclass
 class BusUIEventMessage(BusDataMessage):
@@ -163,4 +178,6 @@ __all__ = [
     "BusUITaskGroupCompletedMessage",
     "BusUITaskGroupStartedMessage",
     "BusUITaskUpdateMessage",
+    "_UI_CANCEL_TASK_BUS_EVENT_NAME",
+    "_UI_SNAPSHOT_BUS_EVENT_NAME",
 ]

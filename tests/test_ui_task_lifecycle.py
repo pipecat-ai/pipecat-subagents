@@ -24,10 +24,14 @@ from pipecat.frames.frames import LLMMessagesAppendFrame
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.processors.filters.identity_filter import IdentityFilter
 from pipecat.processors.frame_processor import FrameDirection
-from pipecat.processors.frameworks.rtvi.frames import RTVIServerMessageFrame
+from pipecat.processors.frameworks.rtvi.frames import (
+    RTVIServerMessageFrame,
+    RTVIServerTypedMessageFrame,
+)
+from pipecat.processors.frameworks.rtvi.models import UITaskMessage
 from pipecat.utils.asyncio.task_manager import TaskManager, TaskManagerParams
 
-from pipecat.processors.frameworks.rtvi.models import UI_CANCEL_TASK_EVENT_NAME
+from pipecat_subagents.agents.ui.ui_messages import _UI_CANCEL_TASK_BUS_EVENT_NAME
 
 from pipecat_subagents.agents import UIAgent, attach_ui_bridge
 from pipecat_subagents.agents.base_agent import BaseAgent
@@ -278,7 +282,7 @@ class TestCancelTaskEvent(unittest.IsolatedAsyncioTestCase):
             BusUIEventMessage(
                 source="bridge",
                 target=agent.name,
-                event_name=UI_CANCEL_TASK_EVENT_NAME,
+                event_name=_UI_CANCEL_TASK_BUS_EVENT_NAME,
                 payload={"task_id": "t1", "reason": "user clicked cancel"},
             )
         )
@@ -296,7 +300,7 @@ class TestCancelTaskEvent(unittest.IsolatedAsyncioTestCase):
             BusUIEventMessage(
                 source="bridge",
                 target=agent.name,
-                event_name=UI_CANCEL_TASK_EVENT_NAME,
+                event_name=_UI_CANCEL_TASK_BUS_EVENT_NAME,
                 payload={"task_id": "t1"},
             )
         )
@@ -316,7 +320,7 @@ class TestCancelTaskEvent(unittest.IsolatedAsyncioTestCase):
             BusUIEventMessage(
                 source="bridge",
                 target=agent.name,
-                event_name=UI_CANCEL_TASK_EVENT_NAME,
+                event_name=_UI_CANCEL_TASK_BUS_EVENT_NAME,
                 payload={"task_id": "t1"},
             )
         )
@@ -331,7 +335,7 @@ class TestCancelTaskEvent(unittest.IsolatedAsyncioTestCase):
             BusUIEventMessage(
                 source="bridge",
                 target=agent.name,
-                event_name=UI_CANCEL_TASK_EVENT_NAME,
+                event_name=_UI_CANCEL_TASK_BUS_EVENT_NAME,
                 payload={"task_id": "nope"},
             )
         )
@@ -346,7 +350,7 @@ class TestCancelTaskEvent(unittest.IsolatedAsyncioTestCase):
             BusUIEventMessage(
                 source="bridge",
                 target=agent.name,
-                event_name=UI_CANCEL_TASK_EVENT_NAME,
+                event_name=_UI_CANCEL_TASK_BUS_EVENT_NAME,
                 payload=None,
             )
         )
@@ -354,7 +358,7 @@ class TestCancelTaskEvent(unittest.IsolatedAsyncioTestCase):
             BusUIEventMessage(
                 source="bridge",
                 target=agent.name,
-                event_name=UI_CANCEL_TASK_EVENT_NAME,
+                event_name=_UI_CANCEL_TASK_BUS_EVENT_NAME,
                 payload={"task_id": 42},
             )
         )
@@ -480,7 +484,7 @@ class TestUserTaskGroup(unittest.IsolatedAsyncioTestCase):
                 BusUIEventMessage(
                     source="bridge",
                     target=agent.name,
-                    event_name=UI_CANCEL_TASK_EVENT_NAME,
+                    event_name=_UI_CANCEL_TASK_BUS_EVENT_NAME,
                     payload={"task_id": agent_task_id["id"]},
                 )
             )
@@ -729,19 +733,15 @@ class TestBridgeTaskEnvelopes(unittest.IsolatedAsyncioTestCase):
 
         queue_frame.assert_awaited_once()
         frame = queue_frame.await_args.args[0]
-        self.assertIsInstance(frame, RTVIServerMessageFrame)
-        self.assertEqual(
-            frame.data,
-            {
-                "type": "ui.task",
-                "kind": "group_started",
-                "task_id": "t1",
-                "agents": ["w1", "w2"],
-                "label": "Doing stuff",
-                "cancellable": True,
-                "at": 1700,
-            },
-        )
+        self.assertIsInstance(frame, RTVIServerTypedMessageFrame)
+        self.assertIsInstance(frame.message, UITaskMessage)
+        self.assertEqual(frame.message.type, "ui-task")
+        self.assertEqual(frame.message.data.kind, "group_started")
+        self.assertEqual(frame.message.data.task_id, "t1")
+        self.assertEqual(frame.message.data.agents, ["w1", "w2"])
+        self.assertEqual(frame.message.data.label, "Doing stuff")
+        self.assertTrue(frame.message.data.cancellable)
+        self.assertEqual(frame.message.data.at, 1700)
 
     async def test_task_update_envelope(self):
         invoke_bus, queue_frame = _make_bridge_fixture()
@@ -758,17 +758,12 @@ class TestBridgeTaskEnvelopes(unittest.IsolatedAsyncioTestCase):
         )
 
         frame = queue_frame.await_args.args[0]
-        self.assertEqual(
-            frame.data,
-            {
-                "type": "ui.task",
-                "kind": "task_update",
-                "task_id": "t1",
-                "agent_name": "w1",
-                "data": {"kind": "tool_call", "tool": "WebSearch"},
-                "at": 1701,
-            },
-        )
+        self.assertIsInstance(frame, RTVIServerTypedMessageFrame)
+        self.assertEqual(frame.message.data.kind, "task_update")
+        self.assertEqual(frame.message.data.task_id, "t1")
+        self.assertEqual(frame.message.data.agent_name, "w1")
+        self.assertEqual(frame.message.data.data, {"kind": "tool_call", "tool": "WebSearch"})
+        self.assertEqual(frame.message.data.at, 1701)
 
     async def test_task_completed_envelope(self):
         invoke_bus, queue_frame = _make_bridge_fixture()
@@ -786,18 +781,13 @@ class TestBridgeTaskEnvelopes(unittest.IsolatedAsyncioTestCase):
         )
 
         frame = queue_frame.await_args.args[0]
-        self.assertEqual(
-            frame.data,
-            {
-                "type": "ui.task",
-                "kind": "task_completed",
-                "task_id": "t1",
-                "agent_name": "w1",
-                "status": "completed",
-                "response": {"answer": 42},
-                "at": 1702,
-            },
-        )
+        self.assertIsInstance(frame, RTVIServerTypedMessageFrame)
+        self.assertEqual(frame.message.data.kind, "task_completed")
+        self.assertEqual(frame.message.data.task_id, "t1")
+        self.assertEqual(frame.message.data.agent_name, "w1")
+        self.assertEqual(frame.message.data.status, "completed")
+        self.assertEqual(frame.message.data.response, {"answer": 42})
+        self.assertEqual(frame.message.data.at, 1702)
 
     async def test_group_completed_envelope(self):
         invoke_bus, queue_frame = _make_bridge_fixture()
@@ -812,15 +802,10 @@ class TestBridgeTaskEnvelopes(unittest.IsolatedAsyncioTestCase):
         )
 
         frame = queue_frame.await_args.args[0]
-        self.assertEqual(
-            frame.data,
-            {
-                "type": "ui.task",
-                "kind": "group_completed",
-                "task_id": "t1",
-                "at": 1703,
-            },
-        )
+        self.assertIsInstance(frame, RTVIServerTypedMessageFrame)
+        self.assertEqual(frame.message.data.kind, "group_completed")
+        self.assertEqual(frame.message.data.task_id, "t1")
+        self.assertEqual(frame.message.data.at, 1703)
 
 
 # ---------------------------------------------------------------------------

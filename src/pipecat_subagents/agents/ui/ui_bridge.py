@@ -4,41 +4,43 @@
 # SPDX-License-Identifier: BSD 2-Clause License
 #
 
-"""Bridge between the RTVI client-message channel and the agent bus.
+"""Bridge between the RTVI UI message channel and the agent bus.
 
 Register with ``attach_ui_bridge(agent)`` from the root agent's
 ``on_ready`` hook. The bridge handles both directions:
 
-- Inbound: client-side ``UIAgentClient.sendEvent(name, payload)`` calls
-  are republished onto the bus as ``BusUIEventMessage`` for ``UIAgent``
-  subscribers to dispatch.
+- Inbound: typed UI messages from the client (``ui-event``,
+  ``ui-snapshot``, ``ui-cancel-task``) are republished onto the bus
+  as ``BusUIEventMessage`` for ``UIAgent`` subscribers to dispatch.
+  The wire-level type is collapsed onto the bus to a single carrier
+  with an ``event_name`` discriminator; ``ui-snapshot`` and
+  ``ui-cancel-task`` map to subagents-internal event names.
 - Outbound: bus messages in the UI Agent SDK protocol are translated
-  into ``RTVIServerMessageFrame`` envelopes and pushed through the
-  root agent's pipeline. Two surfaces share this path:
-
-  - Commands published by ``UIAgent.send_command(name, payload)`` are
-    forwarded as ``ui.command`` envelopes.
-  - Task lifecycle messages published by
-    ``UIAgent.user_task_group(...)`` and the agent's automatic
-    forwarding of task updates / responses are forwarded as
-    ``ui.task`` envelopes with a ``kind`` discriminator.
+  into the matching typed RTVI envelopes (``UICommandMessage``,
+  ``UITaskMessage``) and pushed through the root agent's pipeline
+  via ``RTVIServerTypedMessageFrame``.
 """
 
 from __future__ import annotations
 
-from pipecat.processors.frameworks.rtvi.frames import RTVIServerMessageFrame
+from pipecat.processors.frameworks.rtvi.frames import RTVIServerTypedMessageFrame
 from pipecat.processors.frameworks.rtvi.models import (
-    UI_COMMAND_MESSAGE_TYPE,
-    UI_EVENT_MESSAGE_TYPE,
-    UI_TASK_COMPLETED_KIND,
-    UI_TASK_GROUP_COMPLETED_KIND,
-    UI_TASK_GROUP_STARTED_KIND,
-    UI_TASK_MESSAGE_TYPE,
-    UI_TASK_UPDATE_KIND,
+    UICancelTaskMessage,
+    UICommandData,
+    UICommandMessage,
+    UIEventMessage,
+    UISnapshotMessage,
+    UITaskCompletedData,
+    UITaskGroupCompletedData,
+    UITaskGroupStartedData,
+    UITaskMessage,
+    UITaskUpdateData,
 )
 
 from pipecat_subagents.agents.base_agent import BaseAgent
 from pipecat_subagents.agents.ui.ui_messages import (
+    _UI_CANCEL_TASK_BUS_EVENT_NAME,
+    _UI_SNAPSHOT_BUS_EVENT_NAME,
     BusUICommandMessage,
     BusUIEventMessage,
     BusUITaskCompletedMessage,
@@ -56,14 +58,16 @@ def attach_ui_bridge(agent: BaseAgent, *, target: str | None = None) -> None:
     be built with ``enable_rtvi=True``.
 
     Side effects:
-        - Registers an ``on_client_message`` handler on RTVI. Messages
-          whose ``type`` matches ``UI_EVENT_MESSAGE_TYPE`` are
-          republished as ``BusUIEventMessage``; all other client
-          messages pass through untouched.
+        - Registers an ``on_ui_message`` handler on RTVI. Typed UI
+          messages from the client (``ui-event``, ``ui-snapshot``,
+          ``ui-cancel-task``) are republished as ``BusUIEventMessage``;
+          ``ui-snapshot`` and ``ui-cancel-task`` collapse to
+          subagents-internal event names so ``UIAgent`` can dispatch
+          them through its existing bus-event path.
         - Registers an ``on_bus_message`` handler on ``agent``. When a
-          ``BusUICommandMessage`` arrives, the bridge pushes an
-          ``RTVIServerMessageFrame`` downstream through ``agent``'s
-          pipeline so RTVI delivers it to the client.
+          ``BusUICommandMessage`` or any of the four ``BusUITask*``
+          messages arrive, the bridge pushes the matching typed RTVI
+          envelope downstream so RTVI delivers it to the client.
 
     Args:
         agent: The root agent owning the pipeline task and RTVI processor.
@@ -78,8 +82,8 @@ def attach_ui_bridge(agent: BaseAgent, *, target: str | None = None) -> None:
 
     Note:
         RTVI's ``on_client_ready`` event fires the moment the client's
-        handshake message arrives — that can land before
-        ``on_ready`` runs. Register ``on_client_ready`` handlers in
+        handshake message arrives, which can land before ``on_ready``
+        runs. Register ``on_client_ready`` handlers in
         ``build_pipeline_task`` (after creating the task) rather than
         ``on_ready`` to avoid a registration-vs-event race that drops
         the event silently.
@@ -92,69 +96,87 @@ def attach_ui_bridge(agent: BaseAgent, *, target: str | None = None) -> None:
             "before calling attach_ui_bridge."
         )
 
-    @rtvi.event_handler("on_client_message")
-    async def _on_client_message(_rtvi, msg):
-        if msg.type != UI_EVENT_MESSAGE_TYPE:
-            return
-        data = msg.data
-        if not isinstance(data, dict):
-            return
-        event_name = data.get("name")
-        if not isinstance(event_name, str):
-            return
-        await agent.bus.send(
-            BusUIEventMessage(
-                source=agent.name,
-                target=target,
-                event_name=event_name,
-                payload=data.get("payload"),
+    @rtvi.event_handler("on_ui_message")
+    async def _on_ui_message(_rtvi, message):
+        # All three inbound UI envelopes collapse to BusUIEventMessage on
+        # the bus, with an event_name discriminator. UIAgent's bus
+        # dispatch already routes on event_name; using two
+        # subagents-internal names for the snapshot and cancel-task
+        # cases keeps app @on_ui_event handlers from colliding.
+        if isinstance(message, UIEventMessage):
+            await agent.bus.send(
+                BusUIEventMessage(
+                    source=agent.name,
+                    target=target,
+                    event_name=message.data.name,
+                    payload=message.data.payload,
+                )
             )
-        )
+        elif isinstance(message, UISnapshotMessage):
+            await agent.bus.send(
+                BusUIEventMessage(
+                    source=agent.name,
+                    target=target,
+                    event_name=_UI_SNAPSHOT_BUS_EVENT_NAME,
+                    payload=message.data.tree,
+                )
+            )
+        elif isinstance(message, UICancelTaskMessage):
+            await agent.bus.send(
+                BusUIEventMessage(
+                    source=agent.name,
+                    target=target,
+                    event_name=_UI_CANCEL_TASK_BUS_EVENT_NAME,
+                    payload={
+                        "task_id": message.data.task_id,
+                        "reason": message.data.reason,
+                    },
+                )
+            )
 
     @agent.event_handler("on_bus_message")
     async def _on_bus_message(_agent, message):
+        envelope = None
         if isinstance(message, BusUICommandMessage):
-            data = {
-                "type": UI_COMMAND_MESSAGE_TYPE,
-                "name": message.command_name,
-                "payload": message.payload,
-            }
+            envelope = UICommandMessage(
+                data=UICommandData(name=message.command_name, payload=message.payload),
+            )
         elif isinstance(message, BusUITaskGroupStartedMessage):
-            data = {
-                "type": UI_TASK_MESSAGE_TYPE,
-                "kind": UI_TASK_GROUP_STARTED_KIND,
-                "task_id": message.task_id,
-                "agents": list(message.agents or []),
-                "label": message.label,
-                "cancellable": message.cancellable,
-                "at": message.at,
-            }
+            envelope = UITaskMessage(
+                data=UITaskGroupStartedData(
+                    task_id=message.task_id,
+                    agents=list(message.agents or []),
+                    label=message.label,
+                    cancellable=message.cancellable,
+                    at=message.at,
+                )
+            )
         elif isinstance(message, BusUITaskUpdateMessage):
-            data = {
-                "type": UI_TASK_MESSAGE_TYPE,
-                "kind": UI_TASK_UPDATE_KIND,
-                "task_id": message.task_id,
-                "agent_name": message.agent_name,
-                "data": message.data,
-                "at": message.at,
-            }
+            envelope = UITaskMessage(
+                data=UITaskUpdateData(
+                    task_id=message.task_id,
+                    agent_name=message.agent_name,
+                    data=message.data,
+                    at=message.at,
+                )
+            )
         elif isinstance(message, BusUITaskCompletedMessage):
-            data = {
-                "type": UI_TASK_MESSAGE_TYPE,
-                "kind": UI_TASK_COMPLETED_KIND,
-                "task_id": message.task_id,
-                "agent_name": message.agent_name,
-                "status": message.status,
-                "response": message.response,
-                "at": message.at,
-            }
+            envelope = UITaskMessage(
+                data=UITaskCompletedData(
+                    task_id=message.task_id,
+                    agent_name=message.agent_name,
+                    status=message.status,
+                    response=message.response,
+                    at=message.at,
+                )
+            )
         elif isinstance(message, BusUITaskGroupCompletedMessage):
-            data = {
-                "type": UI_TASK_MESSAGE_TYPE,
-                "kind": UI_TASK_GROUP_COMPLETED_KIND,
-                "task_id": message.task_id,
-                "at": message.at,
-            }
-        else:
+            envelope = UITaskMessage(
+                data=UITaskGroupCompletedData(
+                    task_id=message.task_id,
+                    at=message.at,
+                )
+            )
+        if envelope is None:
             return
-        await agent.queue_frame(RTVIServerMessageFrame(data=data))
+        await agent.queue_frame(RTVIServerTypedMessageFrame(message=envelope))

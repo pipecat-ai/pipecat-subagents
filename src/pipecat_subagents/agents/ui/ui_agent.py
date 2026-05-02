@@ -22,8 +22,6 @@ from pipecat.processors.aggregators.llm_response_universal import (
     LLMUserAggregatorParams,
 )
 from pipecat.processors.frameworks.rtvi.models import (
-    UI_CANCEL_TASK_EVENT_NAME,
-    UI_SNAPSHOT_EVENT_NAME,
     Click,
     Highlight,
     ScrollTo,
@@ -36,6 +34,8 @@ from pipecat_subagents.agents.llm.llm_context_agent import LLMContextAgent
 from pipecat_subagents.agents.task_context import TaskGroupError, TaskStatus
 from pipecat_subagents.agents.ui.ui_event_decorator import _collect_ui_event_handlers
 from pipecat_subagents.agents.ui.ui_messages import (
+    _UI_CANCEL_TASK_BUS_EVENT_NAME,
+    _UI_SNAPSHOT_BUS_EVENT_NAME,
     BusUICommandMessage,
     BusUIEventMessage,
     BusUITaskCompletedMessage,
@@ -493,7 +493,7 @@ class UIAgent(LLMContextAgent):
 
         # Reserved snapshot event: store and return without dispatch or
         # ``<ui_event>`` injection. Apps render via ``inject_ui_state``.
-        if message.event_name == UI_SNAPSHOT_EVENT_NAME:
+        if message.event_name == _UI_SNAPSHOT_BUS_EVENT_NAME:
             if isinstance(message.payload, dict):
                 self._latest_snapshot = message.payload
             return
@@ -501,7 +501,7 @@ class UIAgent(LLMContextAgent):
         # Reserved cancel event: route to ``cancel_task`` for the
         # registered user task group. Honored only when the group was
         # registered with ``cancellable=True``.
-        if message.event_name == UI_CANCEL_TASK_EVENT_NAME:
+        if message.event_name == _UI_CANCEL_TASK_BUS_EVENT_NAME:
             await self._handle_cancel_task_event(message)
             return
 
@@ -913,20 +913,20 @@ class UIAgent(LLMContextAgent):
         task_id = payload.get("task_id")
         if not isinstance(task_id, str) or not task_id:
             logger.warning(
-                f"UIAgent '{self.name}': received {UI_CANCEL_TASK_EVENT_NAME} "
+                f"UIAgent '{self.name}': received {_UI_CANCEL_TASK_BUS_EVENT_NAME} "
                 "with no task_id; ignoring"
             )
             return
         registration = self._user_task_groups.get(task_id)
         if registration is None:
             logger.debug(
-                f"UIAgent '{self.name}': {UI_CANCEL_TASK_EVENT_NAME} for "
+                f"UIAgent '{self.name}': {_UI_CANCEL_TASK_BUS_EVENT_NAME} for "
                 f"unknown task_id {task_id}; ignoring"
             )
             return
         if not registration.cancellable:
             logger.debug(
-                f"UIAgent '{self.name}': {UI_CANCEL_TASK_EVENT_NAME} for "
+                f"UIAgent '{self.name}': {_UI_CANCEL_TASK_BUS_EVENT_NAME} for "
                 f"non-cancellable group {task_id}; ignoring"
             )
             return

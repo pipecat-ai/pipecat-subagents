@@ -15,11 +15,12 @@ from pipecat.frames.frames import LLMMessagesAppendFrame, LLMMessagesUpdateFrame
 from pipecat.processors.frame_processor import FrameDirection
 from pipecat.utils.asyncio.task_manager import TaskManager, TaskManagerParams
 
-from pipecat.processors.frameworks.rtvi.models import UI_SNAPSHOT_EVENT_NAME
-
 from pipecat_subagents.agents import UIAgent, on_ui_event
 from pipecat_subagents.agents.llm.llm_agent import PipelineFlushFrame
-from pipecat_subagents.agents.ui.ui_messages import BusUIEventMessage
+from pipecat_subagents.agents.ui.ui_messages import (
+    _UI_SNAPSHOT_BUS_EVENT_NAME,
+    BusUIEventMessage,
+)
 from pipecat_subagents.bus import (
     AsyncQueueBus,
     BusTaskCancelMessage,
@@ -374,7 +375,7 @@ class TestUIAgentSnapshot(unittest.IsolatedAsyncioTestCase):
             BusUIEventMessage(
                 source="music",
                 target="ui",
-                event_name=UI_SNAPSHOT_EVENT_NAME,
+                event_name=_UI_SNAPSHOT_BUS_EVENT_NAME,
                 payload=_SAMPLE_SNAPSHOT,
             ),
         )
@@ -394,7 +395,7 @@ class TestUIAgentSnapshot(unittest.IsolatedAsyncioTestCase):
             BusUIEventMessage(
                 source="music",
                 target="ui",
-                event_name=UI_SNAPSHOT_EVENT_NAME,
+                event_name=_UI_SNAPSHOT_BUS_EVENT_NAME,
                 payload="not a snapshot",
             ),
         )
