@@ -358,6 +358,72 @@ class TestReplyToolMixin(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(sent), 1)
         self.assertEqual(sent[0].payload["ref"], "e5")
 
+    async def test_reply_with_non_dict_fill_entries_does_not_crash(self):
+        # Regression: a model emitting a non-dict entry (None, a bare
+        # ref string, etc.) must not raise out of the tool body, or
+        # the single-flight lock would stay held until the voice-task
+        # timeout cancels us. Skip non-dict entries; still terminate.
+        agent = _new(_AgentWithReply)
+        sent = _capture(agent)
+        agent.respond_to_task = AsyncMock()  # type: ignore[method-assign]
+
+        params = MagicMock()
+        params.result_callback = AsyncMock()
+
+        await agent.reply(  # type: ignore[attr-defined]
+            params,
+            answer="x",
+            fills=[
+                None,  # type: ignore[list-item]
+                "e5",  # type: ignore[list-item]
+                42,  # type: ignore[list-item]
+                {"ref": "e9", "value": "ok"},
+            ],
+        )
+
+        self.assertEqual(len(sent), 1)
+        self.assertEqual(sent[0].payload["ref"], "e9")
+        # Critical invariant: respond_to_task must run so the
+        # single-flight lock is released.
+        agent.respond_to_task.assert_awaited_once_with(speak="x")
+        params.result_callback.assert_awaited_once_with(None)
+
+    async def test_reply_with_non_string_highlight_refs_skipped(self):
+        # Same defense at the highlight-list boundary.
+        agent = _new(_AgentWithReply)
+        sent = _capture(agent)
+        agent.respond_to_task = AsyncMock()  # type: ignore[method-assign]
+
+        params = MagicMock()
+        params.result_callback = AsyncMock()
+
+        await agent.reply(  # type: ignore[attr-defined]
+            params,
+            answer="x",
+            highlight=[None, "e1", 42, "e2"],  # type: ignore[list-item]
+        )
+
+        self.assertEqual([m.payload["ref"] for m in sent], ["e1", "e2"])
+        agent.respond_to_task.assert_awaited_once_with(speak="x")
+
+    async def test_reply_with_non_string_click_refs_skipped(self):
+        # Same defense at the click-list boundary.
+        agent = _new(_AgentWithReply)
+        sent = _capture(agent)
+        agent.respond_to_task = AsyncMock()  # type: ignore[method-assign]
+
+        params = MagicMock()
+        params.result_callback = AsyncMock()
+
+        await agent.reply(  # type: ignore[attr-defined]
+            params,
+            answer="x",
+            click=[None, "e1", {"ref": "e2"}, "e3"],  # type: ignore[list-item]
+        )
+
+        self.assertEqual([m.payload["ref"] for m in sent], ["e1", "e3"])
+        agent.respond_to_task.assert_awaited_once_with(speak="x")
+
     async def test_reply_dispatches_via_helper_methods(self):
         # Confirms reply uses the UIAgent helper methods rather than
         # send_command directly. This is what makes the extension
