@@ -2057,8 +2057,8 @@ wheels = [
 
 [[package]]
 name = "pipecat-ai"
-version = "1.1.0"
-source = { registry = "https://pypi.org/simple" }
+version = "1.1.1.dev58"
+source = { git = "https://github.com/pipecat-ai/pipecat?branch=mb%2Fui-agent-wire-format#43abca0b061ac7b65abd71d748a2b1d567bf5f7b" }
 dependencies = [
     { name = "aiofiles" },
     { name = "aiohttp" },
@@ -2079,10 +2079,6 @@ dependencies = [
     { name = "soxr" },
     { name = "transformers" },
     { name = "wait-for2", marker = "python_full_version < '3.12'" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/37/01/e83db0b7e51b13c76579f04ad16167231db1dea9726e43b182ca7324c8c4/pipecat_ai-1.1.0.tar.gz", hash = "sha256:abcb1eda51aac81ed0f236c49581e3ff6afa3d7e1fbce9022645d45b905446a1", size = 11049587, upload-time = "2026-04-27T21:03:48.777Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/88/cf/3fa12ae09e891f5485a0f3cf15aa307049a358d9d4d06e1378c04340fc1f/pipecat_ai-1.1.0-py3-none-any.whl", hash = "sha256:74e576a9434477c11f352ca22ad804c5fd52b49b5c3ff6e7f06615f1f8f24573", size = 10711531, upload-time = "2026-04-27T21:03:45.931Z" },
 ]
 
 [package.optional-dependencies]
@@ -2184,8 +2180,8 @@ dev = [
 requires-dist = [
     { name = "claude-agent-sdk", marker = "extra == 'examples'", specifier = ">=0.1.0" },
     { name = "fastapi", marker = "extra == 'websocket'", specifier = ">=0.115.6,<1" },
-    { name = "pipecat-ai", specifier = ">=1.0.0" },
-    { name = "pipecat-ai", extras = ["cartesia", "daily", "deepgram", "openai", "runner", "silero", "webrtc"], marker = "extra == 'examples'", specifier = ">=1.0.0" },
+    { name = "pipecat-ai", git = "https://github.com/pipecat-ai/pipecat?branch=mb%2Fui-agent-wire-format" },
+    { name = "pipecat-ai", extras = ["cartesia", "daily", "deepgram", "openai", "runner", "silero", "webrtc"], marker = "extra == 'examples'", git = "https://github.com/pipecat-ai/pipecat?branch=mb%2Fui-agent-wire-format" },
     { name = "pipecat-ai-flows", marker = "extra == 'flows'", specifier = ">=1.0.0" },
     { name = "pipecat-ai-subagents", extras = ["flows", "redis", "websocket"], marker = "extra == 'examples'" },
     { name = "redis", extras = ["hiredis"], marker = "extra == 'redis'", specifier = ">=5.0.0" },

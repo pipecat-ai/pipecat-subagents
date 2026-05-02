@@ -140,3 +140,12 @@ showcontent = true
 directory = "other"
 name = "Other"
 showcontent = true
+
+# DEVELOPMENT-ONLY: pin pipecat-ai to the open wire-format PR branch
+# so reviewers can resolve `pipecat-ai>=1.2.0` before 1.2.0 ships on
+# PyPI. Companion PR: https://github.com/pipecat-ai/pipecat/pull/4407
+# uv strips [tool.uv.sources] from the published wheel/sdist, so this
+# is install-time-only. Drop this block before merging once pipecat
+# 1.2.0 is on PyPI.
+[tool.uv.sources]
+pipecat-ai = { git = "https://github.com/pipecat-ai/pipecat", branch = "mb/ui-agent-wire-format" }
