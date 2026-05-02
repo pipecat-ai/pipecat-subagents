@@ -16,24 +16,26 @@ Register with ``attach_ui_bridge(agent)`` from the root agent's
   with an ``event_name`` discriminator; ``ui-snapshot`` and
   ``ui-cancel-task`` map to subagents-internal event names.
 - Outbound: bus messages in the UI Agent SDK protocol are translated
-  into the matching typed RTVI envelopes (``UICommandMessage``,
-  ``UITaskMessage``) and pushed through the root agent's pipeline
-  via ``RTVIServerTypedMessageFrame``.
+  into the matching pipecat RTVI frames (``RTVIUICommandFrame``,
+  ``RTVIUITaskFrame``) and pushed through the root agent's pipeline.
+  The RTVI observer wraps each frame into the corresponding typed
+  RTVI envelope (``UICommandMessage``, ``UITaskMessage``) and sends
+  it to the client.
 """
 
 from __future__ import annotations
 
-from pipecat.processors.frameworks.rtvi.frames import RTVIServerTypedMessageFrame
+from pipecat.processors.frameworks.rtvi.frames import (
+    RTVIUICommandFrame,
+    RTVIUITaskFrame,
+)
 from pipecat.processors.frameworks.rtvi.models import (
     UICancelTaskMessage,
-    UICommandData,
-    UICommandMessage,
     UIEventMessage,
     UISnapshotMessage,
     UITaskCompletedData,
     UITaskGroupCompletedData,
     UITaskGroupStartedData,
-    UITaskMessage,
     UITaskUpdateData,
 )
 
@@ -136,13 +138,14 @@ def attach_ui_bridge(agent: BaseAgent, *, target: str | None = None) -> None:
 
     @agent.event_handler("on_bus_message")
     async def _on_bus_message(_agent, message):
-        envelope = None
+        frame = None
         if isinstance(message, BusUICommandMessage):
-            envelope = UICommandMessage(
-                data=UICommandData(name=message.command_name, payload=message.payload),
+            frame = RTVIUICommandFrame(
+                command_name=message.command_name,
+                payload=message.payload,
             )
         elif isinstance(message, BusUITaskGroupStartedMessage):
-            envelope = UITaskMessage(
+            frame = RTVIUITaskFrame(
                 data=UITaskGroupStartedData(
                     task_id=message.task_id,
                     agents=list(message.agents or []),
@@ -152,7 +155,7 @@ def attach_ui_bridge(agent: BaseAgent, *, target: str | None = None) -> None:
                 )
             )
         elif isinstance(message, BusUITaskUpdateMessage):
-            envelope = UITaskMessage(
+            frame = RTVIUITaskFrame(
                 data=UITaskUpdateData(
                     task_id=message.task_id,
                     agent_name=message.agent_name,
@@ -161,7 +164,7 @@ def attach_ui_bridge(agent: BaseAgent, *, target: str | None = None) -> None:
                 )
             )
         elif isinstance(message, BusUITaskCompletedMessage):
-            envelope = UITaskMessage(
+            frame = RTVIUITaskFrame(
                 data=UITaskCompletedData(
                     task_id=message.task_id,
                     agent_name=message.agent_name,
@@ -171,12 +174,12 @@ def attach_ui_bridge(agent: BaseAgent, *, target: str | None = None) -> None:
                 )
             )
         elif isinstance(message, BusUITaskGroupCompletedMessage):
-            envelope = UITaskMessage(
+            frame = RTVIUITaskFrame(
                 data=UITaskGroupCompletedData(
                     task_id=message.task_id,
                     at=message.at,
                 )
             )
-        if envelope is None:
+        if frame is None:
             return
-        await agent.queue_frame(RTVIServerTypedMessageFrame(message=envelope))
+        await agent.queue_frame(frame)

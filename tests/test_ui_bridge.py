@@ -10,11 +10,10 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
-from pipecat.processors.frameworks.rtvi.frames import RTVIServerTypedMessageFrame
+from pipecat.processors.frameworks.rtvi.frames import RTVIUICommandFrame
 from pipecat.processors.frameworks.rtvi.models import (
     UICancelTaskData,
     UICancelTaskMessage,
-    UICommandMessage,
     UIEventData,
     UIEventMessage,
     UISnapshotData,
@@ -168,7 +167,7 @@ class TestAttachUIBridgeInbound(unittest.IsolatedAsyncioTestCase):
 
 
 class TestAttachUIBridgeOutbound(unittest.IsolatedAsyncioTestCase):
-    async def test_command_becomes_rtvi_typed_message_frame(self):
+    async def test_command_becomes_rtvi_ui_command_frame(self):
         _invoke_ui, invoke_bus, _bus_send, queue_frame = _make_bridge_fixture()
 
         await invoke_bus(
@@ -182,11 +181,9 @@ class TestAttachUIBridgeOutbound(unittest.IsolatedAsyncioTestCase):
 
         queue_frame.assert_awaited_once()
         frame = queue_frame.await_args.args[0]
-        self.assertIsInstance(frame, RTVIServerTypedMessageFrame)
-        self.assertIsInstance(frame.message, UICommandMessage)
-        self.assertEqual(frame.message.type, "ui-command")
-        self.assertEqual(frame.message.data.name, "toast")
-        self.assertEqual(frame.message.data.payload, {"title": "Hi"})
+        self.assertIsInstance(frame, RTVIUICommandFrame)
+        self.assertEqual(frame.command_name, "toast")
+        self.assertEqual(frame.payload, {"title": "Hi"})
 
     async def test_non_command_bus_messages_are_ignored(self):
         _invoke_ui, invoke_bus, _bus_send, queue_frame = _make_bridge_fixture()
