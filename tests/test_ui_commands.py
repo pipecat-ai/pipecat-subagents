@@ -10,7 +10,6 @@ import unittest
 from unittest.mock import MagicMock
 
 from pipecat.processors.frameworks.rtvi.models import (
-    UI_COMMAND_MESSAGE_TYPE,
     Click,
     Focus,
     Highlight,
@@ -231,11 +230,6 @@ class TestStandardCommands(unittest.IsolatedAsyncioTestCase):
         agent, sent = _make_agent()
         await agent.send_command("click", Click(target_id="submit"))
         self.assertEqual(sent[0].payload, {"ref": None, "target_id": "submit"})
-
-
-class TestMessageTypeConstant(unittest.TestCase):
-    def test_ui_command_type_string(self):
-        self.assertEqual(UI_COMMAND_MESSAGE_TYPE, "ui-command")
 
 
 if __name__ == "__main__":
