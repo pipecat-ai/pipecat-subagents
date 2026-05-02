@@ -107,9 +107,7 @@ class TestAttachUIBridgeInbound(unittest.IsolatedAsyncioTestCase):
     async def test_default_target_is_none_for_broadcast(self):
         invoke_ui, _invoke_bus, bus_send, _queue_frame = _make_bridge_fixture()
 
-        await invoke_ui(
-            UIEventMessage(id="m1", data=UIEventData(name="nav_click", payload={}))
-        )
+        await invoke_ui(UIEventMessage(id="m1", data=UIEventData(name="nav_click", payload={})))
 
         sent: BusUIEventMessage = bus_send.await_args.args[0]
         self.assertIsNone(sent.target)
@@ -117,9 +115,7 @@ class TestAttachUIBridgeInbound(unittest.IsolatedAsyncioTestCase):
     async def test_snapshot_message_routes_to_internal_event_name(self):
         invoke_ui, _invoke_bus, bus_send, _queue_frame = _make_bridge_fixture()
 
-        await invoke_ui(
-            UISnapshotMessage(id="m2", data=UISnapshotData(tree={"root": "..."}))
-        )
+        await invoke_ui(UISnapshotMessage(id="m2", data=UISnapshotData(tree={"root": "..."})))
 
         sent: BusUIEventMessage = bus_send.await_args.args[0]
         self.assertEqual(sent.event_name, _UI_SNAPSHOT_BUS_EVENT_NAME)
@@ -129,9 +125,7 @@ class TestAttachUIBridgeInbound(unittest.IsolatedAsyncioTestCase):
         invoke_ui, _invoke_bus, bus_send, _queue_frame = _make_bridge_fixture()
 
         await invoke_ui(
-            UICancelTaskMessage(
-                id="m3", data=UICancelTaskData(task_id="t-1", reason="user")
-            )
+            UICancelTaskMessage(id="m3", data=UICancelTaskData(task_id="t-1", reason="user"))
         )
 
         sent: BusUIEventMessage = bus_send.await_args.args[0]
