@@ -30,13 +30,12 @@ from pipecat.processors.frameworks.rtvi.frames import (
 )
 from pipecat.utils.asyncio.task_manager import TaskManager, TaskManagerParams
 
-from pipecat_subagents.agents.ui.ui_messages import _UI_CANCEL_TASK_BUS_EVENT_NAME
-
 from pipecat_subagents.agents import UIAgent, attach_ui_bridge
 from pipecat_subagents.agents.base_agent import BaseAgent
 from pipecat_subagents.agents.llm.llm_agent import PipelineFlushFrame
 from pipecat_subagents.agents.task_context import TaskStatus
 from pipecat_subagents.agents.ui.ui_messages import (
+    _UI_CANCEL_TASK_BUS_EVENT_NAME,
     BusUIEventMessage,
     BusUITaskCompletedMessage,
     BusUITaskGroupCompletedMessage,
