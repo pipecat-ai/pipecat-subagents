@@ -2,13 +2,13 @@
  * Async tasks — vanilla JS client.
  *
  * Same base wiring as the other examples (PipecatClient +
- * UIAgentClient + A11ySnapshotStreamer + bot audio sink), with one
- * new piece: ``ui.addTaskListener(...)`` to consume the task
- * lifecycle envelopes.
+ * managed snapshot streaming + bot audio sink), with one new piece:
+ * ``RTVIEvent.UITask`` subscription to consume the task lifecycle
+ * envelopes.
  *
  * The server's ``user_task_group`` fans work out to multiple
  * worker agents and forwards their progress automatically as
- * ``ui.task`` envelopes. Four kinds:
+ * ``ui-task`` envelopes. Four kinds:
  *
  * - ``group_started``: workers and label are now known.
  * - ``task_update``: a worker emitted a progress update.
@@ -17,17 +17,12 @@
  *
  * The client maintains a state map keyed by ``task_id``, renders
  * each group as a card with its workers' statuses, and surfaces a
- * cancel button per cancellable group. ``ui.cancelTask(task_id,
+ * cancel button per cancellable group. ``client.cancelUITask(task_id,
  * reason)`` sends a ``__cancel_task`` event back to the server,
  * which calls ``UIAgent.cancel_task(...)`` on the registered group.
  */
 
-import {
-  A11ySnapshotStreamer,
-  PipecatClient,
-  RTVIEvent,
-  UIAgentClient,
-} from "@pipecat-ai/client-js";
+import { PipecatClient, RTVIEvent } from "@pipecat-ai/client-js";
 import { SmallWebRTCTransport } from "@pipecat-ai/small-webrtc-transport";
 
 const BOT_URL = "http://localhost:7860/api/offer";
@@ -41,9 +36,7 @@ const resultsList = document.getElementById("results-list");
 const resultsEmpty = document.getElementById("results-empty");
 
 let client;
-let ui;
-let streamer;
-let detachUI;
+let unsubscribeTasks;
 
 // Map<task_id, { label, cancellable, agents, workers: Map<agent_name, {status, lastUpdate, response}>, cardEl }>
 const groups = new Map();
@@ -83,7 +76,7 @@ function renderGroupCard(group) {
     cancel.addEventListener("click", () => {
       cancel.disabled = true;
       cancel.textContent = "Cancelling…";
-      ui?.cancelTask(group.task_id, "user requested");
+      client?.cancelUITask(group.task_id, "user requested");
     });
     group.cancelButton = cancel;
     header.appendChild(cancel);
@@ -264,14 +257,12 @@ async function connect() {
     botAudio.srcObject = new MediaStream([track]);
   });
 
-  ui = new UIAgentClient(client);
-  ui.addTaskListener(handleTaskEnvelope);
-  detachUI = ui.attach();
-  streamer = new A11ySnapshotStreamer(ui);
-  streamer.start();
+  client.on(RTVIEvent.UITask, handleTaskEnvelope);
+  unsubscribeTasks = () => client.off(RTVIEvent.UITask, handleTaskEnvelope);
 
   try {
     await client.connect({ webrtcUrl: BOT_URL });
+    client.startA11ySnapshotStream();
     connectButton.dataset.state = "connected";
     connectButton.textContent = "Disconnect";
     connectButton.disabled = false;
@@ -298,12 +289,10 @@ async function disconnect() {
 }
 
 function teardownUI() {
-  streamer?.stop();
-  detachUI?.();
+  client?.stopA11ySnapshotStream();
+  unsubscribeTasks?.();
   if (botAudio.srcObject) botAudio.srcObject = null;
-  streamer = undefined;
-  detachUI = undefined;
-  ui = undefined;
+  unsubscribeTasks = undefined;
   client = undefined;
 }
 

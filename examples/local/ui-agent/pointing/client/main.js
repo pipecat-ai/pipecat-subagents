@@ -1,23 +1,21 @@
 /**
  * Pointing — vanilla JS client.
  *
- * Builds on the hello-snapshot wiring (PipecatClient + UIAgentClient
- * + A11ySnapshotStreamer + bot audio sink) and adds two command
+ * Builds on the hello-snapshot wiring (PipecatClient +
+ * managed snapshot streaming + bot audio sink) and adds two command
  * handlers: ``scroll_to`` and ``highlight``. Both resolve the target
  * element via ``findElementByRef`` (the snapshot ref system the
  * walker assigns) and act on the live DOM node.
  *
  * The React SDK ships ``useStandardScrollToHandler`` and
  * ``useStandardHighlightHandler`` that do this same work in hooks.
- * Vanilla apps register equivalent handlers explicitly via
- * ``ui.registerCommandHandler``.
+ * Vanilla apps subscribe to ``RTVIEvent.UICommand`` and filter by
+ * command name.
  */
 
 import {
-  A11ySnapshotStreamer,
   PipecatClient,
   RTVIEvent,
-  UIAgentClient,
   findElementByRef,
 } from "@pipecat-ai/client-js";
 import { SmallWebRTCTransport } from "@pipecat-ai/small-webrtc-transport";
@@ -29,9 +27,7 @@ const status = document.getElementById("status");
 const botAudio = document.getElementById("bot-audio");
 
 let client;
-let ui;
-let streamer;
-let detachUI;
+let unsubscribes = [];
 
 function setStatus(text, autoHideMs = 0) {
   status.textContent = text;
@@ -89,6 +85,15 @@ function handleHighlight(payload) {
   }, duration);
 }
 
+function onUICommand(command, handler) {
+  const listener = (data) => {
+    if (data.command !== command) return;
+    handler(data.payload);
+  };
+  client.on(RTVIEvent.UICommand, listener);
+  return () => client.off(RTVIEvent.UICommand, listener);
+}
+
 async function connect() {
   connectButton.disabled = true;
   setStatus("Connecting…");
@@ -115,15 +120,14 @@ async function connect() {
     botAudio.srcObject = new MediaStream([track]);
   });
 
-  ui = new UIAgentClient(client);
-  ui.registerCommandHandler("scroll_to", handleScrollTo);
-  ui.registerCommandHandler("highlight", handleHighlight);
-  detachUI = ui.attach();
-  streamer = new A11ySnapshotStreamer(ui);
-  streamer.start();
+  unsubscribes = [
+    onUICommand("scroll_to", handleScrollTo),
+    onUICommand("highlight", handleHighlight),
+  ];
 
   try {
     await client.connect({ webrtcUrl: BOT_URL });
+    client.startA11ySnapshotStream();
     connectButton.dataset.state = "connected";
     connectButton.textContent = "Disconnect";
     connectButton.disabled = false;
@@ -150,12 +154,10 @@ async function disconnect() {
 }
 
 function teardownUI() {
-  streamer?.stop();
-  detachUI?.();
+  client?.stopA11ySnapshotStream();
+  unsubscribes.forEach((unsubscribe) => unsubscribe());
+  unsubscribes = [];
   if (botAudio.srcObject) botAudio.srcObject = null;
-  streamer = undefined;
-  detachUI = undefined;
-  ui = undefined;
   client = undefined;
 }
 

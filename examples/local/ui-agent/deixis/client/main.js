@@ -1,24 +1,22 @@
 /**
  * Deixis — vanilla JS client.
  *
- * Same base wiring as pointing (PipecatClient + UIAgentClient +
- * A11ySnapshotStreamer + bot audio sink), with three command
+ * Same base wiring as pointing (PipecatClient +
+ * managed snapshot streaming + bot audio sink), with three command
  * handlers: ``scroll_to``, ``highlight``, and ``select_text``.
  *
  * The interesting one is ``select_text``: it puts the OS-level text
  * selection on the referenced element, so when the agent says
  * "this paragraph here" the user sees exactly which paragraph it
  * means. The READ direction (user selection) flows the other way —
- * ``A11ySnapshotStreamer`` automatically captures
+ * Managed snapshot streaming automatically captures
  * ``window.getSelection()`` and emits a ``<selection ref=...>...
  * </selection>`` block in the snapshot the server sees.
  */
 
 import {
-  A11ySnapshotStreamer,
   PipecatClient,
   RTVIEvent,
-  UIAgentClient,
   findElementByRef,
 } from "@pipecat-ai/client-js";
 import { SmallWebRTCTransport } from "@pipecat-ai/small-webrtc-transport";
@@ -30,9 +28,7 @@ const status = document.getElementById("status");
 const botAudio = document.getElementById("bot-audio");
 
 let client;
-let ui;
-let streamer;
-let detachUI;
+let unsubscribes = [];
 
 function setStatus(text, autoHideMs = 0) {
   status.textContent = text;
@@ -104,6 +100,15 @@ function handleSelectText(payload) {
   el.scrollIntoView({ behavior: "smooth", block: "center" });
 }
 
+function onUICommand(command, handler) {
+  const listener = (data) => {
+    if (data.command !== command) return;
+    handler(data.payload);
+  };
+  client.on(RTVIEvent.UICommand, listener);
+  return () => client.off(RTVIEvent.UICommand, listener);
+}
+
 async function connect() {
   connectButton.disabled = true;
   setStatus("Connecting…");
@@ -129,16 +134,15 @@ async function connect() {
     botAudio.srcObject = new MediaStream([track]);
   });
 
-  ui = new UIAgentClient(client);
-  ui.registerCommandHandler("scroll_to", handleScrollTo);
-  ui.registerCommandHandler("highlight", handleHighlight);
-  ui.registerCommandHandler("select_text", handleSelectText);
-  detachUI = ui.attach();
-  streamer = new A11ySnapshotStreamer(ui);
-  streamer.start();
+  unsubscribes = [
+    onUICommand("scroll_to", handleScrollTo),
+    onUICommand("highlight", handleHighlight),
+    onUICommand("select_text", handleSelectText),
+  ];
 
   try {
     await client.connect({ webrtcUrl: BOT_URL });
+    client.startA11ySnapshotStream();
     connectButton.dataset.state = "connected";
     connectButton.textContent = "Disconnect";
     connectButton.disabled = false;
@@ -165,12 +169,10 @@ async function disconnect() {
 }
 
 function teardownUI() {
-  streamer?.stop();
-  detachUI?.();
+  client?.stopA11ySnapshotStream();
+  unsubscribes.forEach((unsubscribe) => unsubscribe());
+  unsubscribes = [];
   if (botAudio.srcObject) botAudio.srcObject = null;
-  streamer = undefined;
-  detachUI = undefined;
-  ui = undefined;
   client = undefined;
 }
 

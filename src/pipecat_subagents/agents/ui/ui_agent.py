@@ -310,7 +310,7 @@ class UIAgent(LLMContextAgent):
         # agent (see ``user_task_group``). Keyed by ``task_id``.
         # ``on_bus_message`` consults this to decide which task
         # update / response messages should be forwarded to the
-        # client as ``ui.task`` envelopes.
+        # client as ``ui-task`` envelopes.
         self._user_task_groups: dict[str, _UserTaskGroupRegistration] = {}
 
     async def send_command(self, name: str, payload: Any = None) -> None:
@@ -319,7 +319,7 @@ class UIAgent(LLMContextAgent):
         Publishes a ``BusUICommandMessage`` which the bridge installed
         by ``attach_ui_bridge`` translates into an
         ``RTVIServerMessageFrame`` on the root agent's pipeline.
-        Client-side handlers registered via ``registerCommandHandler``
+        Client-side handlers registered via ``registerUICommandHandler``
         dispatch on the command name.
 
         Args:
@@ -658,7 +658,7 @@ class UIAgent(LLMContextAgent):
         """Dispatch a task group whose lifecycle is forwarded to the client.
 
         Behaves exactly like ``task_group(...)`` but additionally emits
-        ``ui.task`` envelopes that the client's task reducer consumes.
+        ``ui-task`` envelopes that the client's task reducer consumes.
         Use this for any user-initiated work that fans out to workers
         and that the user should be able to see (and optionally cancel)
         on screen.

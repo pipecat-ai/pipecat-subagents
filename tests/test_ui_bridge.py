@@ -92,7 +92,7 @@ class TestAttachUIBridgeInbound(unittest.IsolatedAsyncioTestCase):
         await invoke_ui(
             UIEventMessage(
                 id="m1",
-                data=UIEventData(name="nav_click", payload={"view": "home"}),
+                data=UIEventData(event="nav_click", payload={"view": "home"}),
             )
         )
 
@@ -107,19 +107,20 @@ class TestAttachUIBridgeInbound(unittest.IsolatedAsyncioTestCase):
     async def test_default_target_is_none_for_broadcast(self):
         invoke_ui, _invoke_bus, bus_send, _queue_frame = _make_bridge_fixture()
 
-        await invoke_ui(UIEventMessage(id="m1", data=UIEventData(name="nav_click", payload={})))
+        await invoke_ui(UIEventMessage(id="m1", data=UIEventData(event="nav_click", payload={})))
 
         sent: BusUIEventMessage = bus_send.await_args.args[0]
         self.assertIsNone(sent.target)
 
     async def test_snapshot_message_routes_to_internal_event_name(self):
         invoke_ui, _invoke_bus, bus_send, _queue_frame = _make_bridge_fixture()
+        tree = {"root": {"ref": "root", "role": "document"}, "captured_at": 1}
 
-        await invoke_ui(UISnapshotMessage(id="m2", data=UISnapshotData(tree={"root": "..."})))
+        await invoke_ui(UISnapshotMessage(id="m2", data=UISnapshotData(tree=tree)))
 
         sent: BusUIEventMessage = bus_send.await_args.args[0]
         self.assertEqual(sent.event_name, _UI_SNAPSHOT_BUS_EVENT_NAME)
-        self.assertEqual(sent.payload, {"root": "..."})
+        self.assertEqual(sent.payload, tree)
 
     async def test_cancel_task_message_routes_to_internal_event_name(self):
         invoke_ui, _invoke_bus, bus_send, _queue_frame = _make_bridge_fixture()
@@ -143,7 +144,7 @@ class TestAttachUIBridgeInbound(unittest.IsolatedAsyncioTestCase):
     async def test_missing_payload_becomes_none(self):
         invoke_ui, _invoke_bus, bus_send, _queue_frame = _make_bridge_fixture()
 
-        await invoke_ui(UIEventMessage(id="m1", data=UIEventData(name="hello")))
+        await invoke_ui(UIEventMessage(id="m1", data=UIEventData(event="hello")))
 
         sent: BusUIEventMessage = bus_send.await_args.args[0]
         self.assertEqual(sent.event_name, "hello")
@@ -176,7 +177,7 @@ class TestAttachUIBridgeOutbound(unittest.IsolatedAsyncioTestCase):
         queue_frame.assert_awaited_once()
         frame = queue_frame.await_args.args[0]
         self.assertIsInstance(frame, RTVIUICommandFrame)
-        self.assertEqual(frame.command_name, "toast")
+        self.assertEqual(frame.command, "toast")
         self.assertEqual(frame.payload, {"title": "Hi"})
 
     async def test_non_command_bus_messages_are_ignored(self):

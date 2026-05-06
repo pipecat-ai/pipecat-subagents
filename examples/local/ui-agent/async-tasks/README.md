@@ -12,13 +12,13 @@ page, and lets the user cancel mid-flight.
   `async with self.user_task_group("wikipedia", "news", "scholar",
   payload={"query": query}, label=...): pass` and the SDK does the
   rest.
-- The four **`ui.task` envelopes** the SDK forwards
+- The four **`ui-task` envelopes** the SDK forwards
   (`group_started`, `task_update`, `task_completed`,
-  `group_completed`) and the client-side `addTaskListener` API for
+  `group_completed`) and the client-side `addUITaskListener` API for
   consuming them. The client maintains its own state map keyed by
   `task_id` and renders cards with per-worker progress.
 - **Cancellation**: the in-flight card has a Cancel button that
-  calls `ui.cancelTask(task_id, reason)`. The SDK ships a
+  calls `client.cancelUITask(task_id, reason)`. The SDK ships a
   `__cancel_task` event that the agent's `UIAgent` translates
   automatically into `cancel_task(task_id)` on the registered
   group. Cancelled workers report status `cancelled`.

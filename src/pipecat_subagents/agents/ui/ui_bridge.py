@@ -110,7 +110,7 @@ def attach_ui_bridge(agent: BaseAgent, *, target: str | None = None) -> None:
                 BusUIEventMessage(
                     source=agent.name,
                     target=target,
-                    event_name=message.data.name,
+                    event_name=message.data.event,
                     payload=message.data.payload,
                 )
             )
@@ -120,7 +120,7 @@ def attach_ui_bridge(agent: BaseAgent, *, target: str | None = None) -> None:
                     source=agent.name,
                     target=target,
                     event_name=_UI_SNAPSHOT_BUS_EVENT_NAME,
-                    payload=message.data.tree,
+                    payload=message.data.tree.model_dump(exclude_none=True),
                 )
             )
         elif isinstance(message, UICancelTaskMessage):
@@ -141,7 +141,7 @@ def attach_ui_bridge(agent: BaseAgent, *, target: str | None = None) -> None:
         frame = None
         if isinstance(message, BusUICommandMessage):
             frame = RTVIUICommandFrame(
-                command_name=message.command_name,
+                command=message.command_name,
                 payload=message.payload,
             )
         elif isinstance(message, BusUITaskGroupStartedMessage):

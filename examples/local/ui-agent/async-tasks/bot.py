@@ -10,10 +10,10 @@ The user asks the assistant to research a topic. The UI agent
 dispatches three worker agents (Wikipedia, news, scholarly papers)
 in parallel via ``user_task_group``. Each worker emits progress
 updates while it works. The SDK forwards every lifecycle event to
-the client as ``ui.task`` envelopes (``group_started``,
+the client as ``ui-task`` envelopes (``group_started``,
 ``task_update``, ``task_completed``, ``group_completed``) which the
 client renders as in-flight cards with per-worker status. The user
-can cancel any group mid-flight via ``ui.cancelTask(task_id)``,
+can cancel any group mid-flight via ``client.cancelUITask(task_id)``,
 which sends a reserved ``__cancel_task`` event that the SDK turns
 into a ``cancel_task`` call on the registered group.
 
@@ -289,7 +289,7 @@ class ResearchAgent(UIAgent):
     The group dispatch is fire-and-forget from the LLM's perspective
     — the tool returns immediately with the spoken acknowledgement
     so the voice agent is free to handle follow-up turns. The SDK
-    forwards every task lifecycle event to the client as ``ui.task``
+    forwards every task lifecycle event to the client as ``ui-task``
     envelopes, where the client renders progress and a cancel
     button.
     """

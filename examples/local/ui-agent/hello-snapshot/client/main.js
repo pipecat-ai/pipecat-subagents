@@ -3,10 +3,9 @@
  *
  * Wires three pieces of the SDK end to end:
  *   1. PipecatClient + SmallWebRTCTransport for the voice session.
- *   2. UIAgentClient as the typed wrapper for UI events / commands.
- *   3. A11ySnapshotStreamer that emits an accessibility snapshot of
- *      this page on every meaningful change (DOM mutations, focus,
- *      scroll-end, resize, visibility, selection).
+ *   2. PipecatClient-managed accessibility snapshot streaming on
+ *      every meaningful change (DOM mutations, focus, scroll-end,
+ *      resize, visibility, selection).
  *
  * The agent has no tools — the snapshot is the entire input. The
  * server's ``UIAgent`` auto-injects the latest ``<ui_state>`` block
@@ -14,12 +13,7 @@
  * always answers grounded in what's currently on screen.
  */
 
-import {
-  A11ySnapshotStreamer,
-  PipecatClient,
-  RTVIEvent,
-  UIAgentClient,
-} from "@pipecat-ai/client-js";
+import { PipecatClient, RTVIEvent } from "@pipecat-ai/client-js";
 import { SmallWebRTCTransport } from "@pipecat-ai/small-webrtc-transport";
 
 const BOT_URL = "http://localhost:7860/api/offer";
@@ -29,9 +23,6 @@ const status = document.getElementById("status");
 const botAudio = document.getElementById("bot-audio");
 
 let client;
-let ui;
-let streamer;
-let detachUI;
 
 function setStatus(text, autoHideMs = 0) {
   status.textContent = text;
@@ -74,17 +65,11 @@ async function connect() {
     botAudio.srcObject = new MediaStream([track]);
   });
 
-  // 2. Wrap the Pipecat client with UIAgentClient and start the
-  //    snapshot streamer. ``attach()`` subscribes to incoming UI
-  //    commands; ``streamer.start()`` begins emitting snapshots.
-  ui = new UIAgentClient(client);
-  detachUI = ui.attach();
-  streamer = new A11ySnapshotStreamer(ui);
-  streamer.start();
-
   // 3. Connect to the bot.
   try {
     await client.connect({ webrtcUrl: BOT_URL });
+    // 2. Start the managed snapshot stream once the RTVI transport is ready.
+    client.startA11ySnapshotStream();
     connectButton.dataset.state = "connected";
     connectButton.textContent = "Disconnect";
     connectButton.disabled = false;
@@ -111,12 +96,8 @@ async function disconnect() {
 }
 
 function teardownUI() {
-  streamer?.stop();
-  detachUI?.();
+  client?.stopA11ySnapshotStream();
   if (botAudio.srcObject) botAudio.srcObject = null;
-  streamer = undefined;
-  detachUI = undefined;
-  ui = undefined;
   client = undefined;
 }
 

@@ -7,7 +7,7 @@
  * - ``scroll_to`` and ``select_text`` for the agent to point back at
  *   paragraphs (pointing + deixis).
  * - ``set_input_value`` and ``click`` for dictating notes (form-fill).
- * - ``ui.task`` envelopes for the in-flight review card with
+ * - ``ui-task`` envelopes for the in-flight review card with
  *   per-worker progress and a Cancel button (async-tasks).
  * - One **custom command**, ``add_note``, registered locally.
  * - One **client-emitted event**, ``note_click``, sent when the user
@@ -17,10 +17,8 @@
  */
 
 import {
-  A11ySnapshotStreamer,
   PipecatClient,
   RTVIEvent,
-  UIAgentClient,
   findElementByRef,
   findRefForElement,
 } from "@pipecat-ai/client-js";
@@ -38,9 +36,7 @@ const notesEmpty = document.getElementById("notes-empty");
 const articleEl = document.querySelector("article");
 
 let client;
-let ui;
-let streamer;
-let detachUI;
+let unsubscribes = [];
 
 // In-flight review groups, keyed by task_id. Rendered as cards above
 // the notes list while running.
@@ -207,7 +203,7 @@ function handleAddNote(payload) {
   // command back to us — full round-trip, agent-driven.
   if (ref) {
     li.addEventListener("click", () => {
-      ui?.sendEvent("note_click", { ref });
+      client?.sendUIEvent("note_click", { ref });
     });
   }
 
@@ -223,7 +219,7 @@ function handleAddNote(payload) {
 }
 
 // ─────────────────────────────────────────────
-// In-flight review card (ui.task envelopes)
+// In-flight review card (ui-task envelopes)
 // ─────────────────────────────────────────────
 
 function renderReviewCard(group) {
@@ -247,7 +243,7 @@ function renderReviewCard(group) {
     cancel.addEventListener("click", () => {
       cancel.disabled = true;
       cancel.textContent = "Cancelling…";
-      ui?.cancelTask(group.task_id, "user requested");
+      client?.cancelUITask(group.task_id, "user requested");
     });
     group.cancelButton = cancel;
     header.appendChild(cancel);
@@ -362,6 +358,20 @@ function extractRefFromLabel(label) {
   return m ? m[1] : null;
 }
 
+function onUICommand(command, handler) {
+  const listener = (data) => {
+    if (data.command !== command) return;
+    handler(data.payload);
+  };
+  client.on(RTVIEvent.UICommand, listener);
+  return () => client.off(RTVIEvent.UICommand, listener);
+}
+
+function onUITask(handler) {
+  client.on(RTVIEvent.UITask, handler);
+  return () => client.off(RTVIEvent.UITask, handler);
+}
+
 // ─────────────────────────────────────────────
 // Form behavior
 // ─────────────────────────────────────────────
@@ -409,19 +419,18 @@ async function connect() {
     botAudio.srcObject = new MediaStream([track]);
   });
 
-  ui = new UIAgentClient(client);
-  ui.registerCommandHandler("scroll_to", handleScrollTo);
-  ui.registerCommandHandler("select_text", handleSelectText);
-  ui.registerCommandHandler("set_input_value", handleSetInputValue);
-  ui.registerCommandHandler("click", handleClick);
-  ui.registerCommandHandler("add_note", handleAddNote);
-  ui.addTaskListener(handleTaskEnvelope);
-  detachUI = ui.attach();
-  streamer = new A11ySnapshotStreamer(ui);
-  streamer.start();
+  unsubscribes = [
+    onUICommand("scroll_to", handleScrollTo),
+    onUICommand("select_text", handleSelectText),
+    onUICommand("set_input_value", handleSetInputValue),
+    onUICommand("click", handleClick),
+    onUICommand("add_note", handleAddNote),
+    onUITask(handleTaskEnvelope),
+  ];
 
   try {
     await client.connect({ webrtcUrl: BOT_URL });
+    client.startA11ySnapshotStream();
     connectButton.dataset.state = "connected";
     connectButton.textContent = "Disconnect";
     connectButton.disabled = false;
@@ -448,12 +457,10 @@ async function disconnect() {
 }
 
 function teardownUI() {
-  streamer?.stop();
-  detachUI?.();
+  client?.stopA11ySnapshotStream();
+  unsubscribes.forEach((unsubscribe) => unsubscribe());
+  unsubscribes = [];
   if (botAudio.srcObject) botAudio.srcObject = null;
-  streamer = undefined;
-  detachUI = undefined;
-  ui = undefined;
   client = undefined;
 }
 

@@ -109,7 +109,7 @@ Four packages in the stack. Each one earns its keep.
 ┌─ Server ─────────────────────┐    ┌─ Browser ──────────────────────┐
 │                              │    │                                │
 │  pipecat-ai-subagents        │    │  @pipecat-ai/client-react      │
-│   • UIAgent                  │    │   • UIAgentProvider            │
+│   • UIAgent                  │    │   • PipecatClientProvider      │
 │   • attach_ui_bridge         │    │   • useA11ySnapshot            │
 │   • action helpers           │    │   • useUIEventSender           │
 │   • ReplyToolMixin           │    │   • useUICommandHandler        │
@@ -118,7 +118,7 @@ Four packages in the stack. Each one earns its keep.
 │                              │    │                                │
 │  pipecat                     │◄──►│  @pipecat-ai/client-js         │
 │   (RTVI wire format)         │RTVI│                                │
-│   • ui-* message types       │    │   • UIAgentClient              │
+│   • ui-* message types       │    │   • PipecatClient helpers      │
 │   • paired Data/Message      │    │   • A11ySnapshotStreamer       │
 │   • RTVIUI* pipeline frames  │    │   • snapshotDocument /         │
 │   • on_ui_message            │    │     findElementByRef           │
@@ -187,8 +187,8 @@ pipeline.
 
 ### `pipecat-client-web/client-js` — framework-agnostic client
 
-`UIAgentClient` wraps an existing `PipecatClient` with `sendEvent`,
-`registerCommandHandler`, `addTaskListener`, and `cancelTask`.
+`PipecatClient` exposes UI helpers: `sendUIEvent`,
+`registerUICommandHandler`, `addUITaskListener`, and `cancelUITask`.
 `A11ySnapshotStreamer` walks the DOM and emits a structured tree on
 each settle-point. `snapshotDocument()` is the one-off variant.
 `findElementByRef("e42")` resolves a server-supplied snapshot ref
@@ -200,10 +200,9 @@ message type is referenced.
 
 ### `pipecat-client-web/client-react` — React idioms
 
-`UIAgentProvider` binds a `UIAgentClient` to the ambient
-`PipecatClient` with mount/unmount lifecycle. Hooks cover the basics:
-`useUIAgentClient`, `useUIEventSender`, `useUICommandHandler(name,
-handler)`, `useUITasks` (returns the live list of in-flight task
+Hooks bind directly to the ambient `PipecatClient`. They cover the
+basics: `useUIEventSender`, `useUICommandHandler(name, handler)`,
+`useUITasks` (returns the live list of in-flight task
 groups plus `cancelTask`), `useA11ySnapshot({ enabled, debounceMs,
 trackViewport, logSnapshots })`. Standard handlers cover the standard
 commands (`useStandardScrollToHandler`, `useStandardHighlightHandler`,
@@ -280,7 +279,7 @@ The root agent calls `attach_ui_bridge(self, target="ui")` from its
 ```tsx
 // App.tsx
 import {
-  UIAgentProvider,
+  PipecatClientProvider,
   useA11ySnapshot,
   useUICommandHandler,
   useStandardScrollToHandler,
@@ -292,9 +291,7 @@ import {
 function App() {
   return (
     <PipecatClientProvider client={...}>
-      <UIAgentProvider>
-        <Workspace />
-      </UIAgentProvider>
+      <Workspace />
     </PipecatClientProvider>
   );
 }

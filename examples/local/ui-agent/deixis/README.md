@@ -104,5 +104,5 @@ A `.env` in the example folder is the easiest way to set these.
 - Async tasks with toast UI (see `async-tasks/`).
 - Custom command handlers beyond `scroll_to` / `highlight` /
   `select_text` (apps register their own via
-  `ui.registerCommandHandler`; see hello-snapshot for the
+  `client.registerUICommandHandler`; see hello-snapshot for the
   registration shape).

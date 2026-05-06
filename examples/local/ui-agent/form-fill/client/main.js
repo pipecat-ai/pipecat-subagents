@@ -1,9 +1,9 @@
 /**
  * Form fill — vanilla JS client.
  *
- * Same base wiring as pointing/deixis (PipecatClient + UIAgentClient
- * + A11ySnapshotStreamer + bot audio sink). Three command handlers:
- * ``scroll_to``, ``set_input_value``, and ``click``.
+ * Same base wiring as pointing/deixis (PipecatClient
+ * + managed snapshot streaming + bot audio sink). Three command
+ * handlers: ``scroll_to``, ``set_input_value``, and ``click``.
  *
  * ``set_input_value`` writes a string into an ``<input>`` /
  * ``<textarea>``. Crucially it dispatches ``input`` and ``change``
@@ -17,10 +17,8 @@
  */
 
 import {
-  A11ySnapshotStreamer,
   PipecatClient,
   RTVIEvent,
-  UIAgentClient,
   findElementByRef,
 } from "@pipecat-ai/client-js";
 import { SmallWebRTCTransport } from "@pipecat-ai/small-webrtc-transport";
@@ -34,9 +32,7 @@ const form = document.getElementById("application-form");
 const formStatus = document.getElementById("form-status");
 
 let client;
-let ui;
-let streamer;
-let detachUI;
+let unsubscribes = [];
 
 function setStatus(text, autoHideMs = 0) {
   status.textContent = text;
@@ -121,6 +117,15 @@ form.addEventListener("submit", (e) => {
   formStatus.style.color = "#16a34a";
 });
 
+function onUICommand(command, handler) {
+  const listener = (data) => {
+    if (data.command !== command) return;
+    handler(data.payload);
+  };
+  client.on(RTVIEvent.UICommand, listener);
+  return () => client.off(RTVIEvent.UICommand, listener);
+}
+
 async function connect() {
   connectButton.disabled = true;
   setStatus("Connecting…");
@@ -146,16 +151,15 @@ async function connect() {
     botAudio.srcObject = new MediaStream([track]);
   });
 
-  ui = new UIAgentClient(client);
-  ui.registerCommandHandler("scroll_to", handleScrollTo);
-  ui.registerCommandHandler("set_input_value", handleSetInputValue);
-  ui.registerCommandHandler("click", handleClick);
-  detachUI = ui.attach();
-  streamer = new A11ySnapshotStreamer(ui);
-  streamer.start();
+  unsubscribes = [
+    onUICommand("scroll_to", handleScrollTo),
+    onUICommand("set_input_value", handleSetInputValue),
+    onUICommand("click", handleClick),
+  ];
 
   try {
     await client.connect({ webrtcUrl: BOT_URL });
+    client.startA11ySnapshotStream();
     connectButton.dataset.state = "connected";
     connectButton.textContent = "Disconnect";
     connectButton.disabled = false;
@@ -182,12 +186,10 @@ async function disconnect() {
 }
 
 function teardownUI() {
-  streamer?.stop();
-  detachUI?.();
+  client?.stopA11ySnapshotStream();
+  unsubscribes.forEach((unsubscribe) => unsubscribe());
+  unsubscribes = [];
   if (botAudio.srcObject) botAudio.srcObject = null;
-  streamer = undefined;
-  detachUI = undefined;
-  ui = undefined;
   client = undefined;
 }
 

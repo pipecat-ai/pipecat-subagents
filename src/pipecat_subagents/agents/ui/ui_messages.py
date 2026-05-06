@@ -47,7 +47,7 @@ class BusUIEventMessage(BusDataMessage):
     """A UI event sent from the client to a server-side agent.
 
     Emitted by ``attach_ui_bridge`` when the client dispatches an event
-    via ``UIAgentClient.sendEvent(name, payload)``. ``UIAgent`` subclasses
+    via ``PipecatClient.sendUIEvent(event, payload)``. ``UIAgent`` subclasses
     dispatch these to ``@on_ui_event(name)`` handlers.
 
     Parameters:
@@ -65,9 +65,8 @@ class BusUICommandMessage(BusDataMessage):
 
     Published by ``UIAgent.send_command(name, payload)``. The bridge
     installed by ``attach_ui_bridge`` translates this to an
-    ``RTVIServerMessageFrame`` with ``data == {"type": "ui.command",
-    "name": command_name, "payload": payload}`` and pushes it through
-    the root agent's pipeline.
+    ``RTVIUICommandFrame(command=command_name, payload=payload)`` and
+    pushes it through the root agent's pipeline.
 
     Parameters:
         command_name: App-defined command name.
@@ -89,7 +88,7 @@ class BusUITaskGroupStartedMessage(BusDataMessage):
     """A user-facing task group has been dispatched.
 
     Published by ``UIAgent.user_task_group(...)`` on entry. The bridge
-    forwards it to the client as a ``ui.task`` envelope with
+    forwards it to the client as a ``ui-task`` envelope with
     ``kind = "group_started"``.
 
     Parameters:
@@ -114,7 +113,7 @@ class BusUITaskUpdateMessage(BusDataMessage):
     Forwarded by the ``UIAgent`` whenever a worker emits a
     ``BusTaskUpdateMessage`` whose ``task_id`` matches a registered
     user task group. The bridge forwards to the client as a
-    ``ui.task`` envelope with ``kind = "task_update"``.
+    ``ui-task`` envelope with ``kind = "task_update"``.
 
     Parameters:
         task_id: The shared task identifier.
@@ -135,7 +134,7 @@ class BusUITaskCompletedMessage(BusDataMessage):
 
     Forwarded by the ``UIAgent`` whenever a worker's
     ``BusTaskResponseMessage`` arrives for a registered user task
-    group. The bridge forwards to the client as a ``ui.task`` envelope
+    group. The bridge forwards to the client as a ``ui-task`` envelope
     with ``kind = "task_completed"``.
 
     Parameters:
@@ -159,7 +158,7 @@ class BusUITaskGroupCompletedMessage(BusDataMessage):
 
     Published when ``UIAgent.user_task_group(...)`` exits, after every
     worker has responded (or the group has been cancelled). The bridge
-    forwards to the client as a ``ui.task`` envelope with
+    forwards to the client as a ``ui-task`` envelope with
     ``kind = "group_completed"``.
 
     Parameters:
