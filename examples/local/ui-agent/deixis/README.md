@@ -103,6 +103,5 @@ A `.env` in the example folder is the easiest way to set these.
 - Form filling (see `form-fill/`).
 - Async tasks with toast UI (see `async-tasks/`).
 - Custom command handlers beyond `scroll_to` / `highlight` /
-  `select_text` (apps register their own via
-  `client.registerUICommandHandler`; see hello-snapshot for the
-  registration shape).
+  `select_text` (apps subscribe to `RTVIEvent.UICommand` and filter by
+  command name; see hello-snapshot for the subscription shape).

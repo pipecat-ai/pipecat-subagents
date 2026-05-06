@@ -63,7 +63,7 @@ streams progress to the page. A simulated research assistant —
 - `start_user_task_group(...)` for fire-and-forget background work
 - The four `ui-task` envelopes: `group_started`, `task_update`,
   `task_completed`, `group_completed`
-- Client-side `addUITaskListener` and per-card cancel via
+- Client-side `RTVIEvent.UITask` subscription and per-card cancel via
   `cancelUITask(task_id)`
 
 ### [`document-review/`](./document-review/)
@@ -125,8 +125,8 @@ The demos lean on the SDK's public surface:
   `@tool`. See [`UI_AGENT_DESIGN.md`](../../../UI_AGENT_DESIGN.md)
   for the architecture overview.
 - Client: `@pipecat-ai/client-js` — `PipecatClient`,
-  `A11ySnapshotStreamer`, `findElementByRef`, the standard React
-  command handlers (when using React).
+  `startA11ySnapshotStream`, `findElementByRef`, and
+  `RTVIEvent.UICommand` / `RTVIEvent.UITask` event subscriptions.
 
 The demos here use the vanilla JS client throughout. React apps
 follow the same shapes via the React hooks in

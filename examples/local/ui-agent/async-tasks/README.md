@@ -14,7 +14,7 @@ page, and lets the user cancel mid-flight.
   rest.
 - The four **`ui-task` envelopes** the SDK forwards
   (`group_started`, `task_update`, `task_completed`,
-  `group_completed`) and the client-side `addUITaskListener` API for
+  `group_completed`) and the client-side `RTVIEvent.UITask` event for
   consuming them. The client maintains its own state map keyed by
   `task_id` and renders cards with per-worker progress.
 - **Cancellation**: the in-flight card has a Cancel button that

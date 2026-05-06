@@ -119,7 +119,7 @@ Four packages in the stack. Each one earns its keep.
 │  pipecat                     │◄──►│  @pipecat-ai/client-js         │
 │   (RTVI wire format)         │RTVI│                                │
 │   • ui-* message types       │    │   • PipecatClient helpers      │
-│   • paired Data/Message      │    │   • A11ySnapshotStreamer       │
+│   • paired Data/Message      │    │   • managed a11y streaming     │
 │   • RTVIUI* pipeline frames  │    │   • snapshotDocument /         │
 │   • on_ui_message            │    │     findElementByRef           │
 │                              │    │   • RTVIMessageType            │
@@ -188,11 +188,13 @@ pipeline.
 ### `pipecat-client-web/client-js` — framework-agnostic client
 
 `PipecatClient` exposes UI helpers: `sendUIEvent`,
-`registerUICommandHandler`, `addUITaskListener`, and `cancelUITask`.
-`A11ySnapshotStreamer` walks the DOM and emits a structured tree on
-each settle-point. `snapshotDocument()` is the one-off variant.
-`findElementByRef("e42")` resolves a server-supplied snapshot ref
-back to a live DOM element.
+`startA11ySnapshotStream`, `stopA11ySnapshotStream`, and
+`cancelUITask`. Inbound `ui-command` and `ui-task` messages use the
+same callback/event pattern as the rest of the client
+(`onUICommand` / `onUITask`, or `RTVIEvent.UICommand` /
+`RTVIEvent.UITask`). `snapshotDocument()` is the one-off snapshot
+variant. `findElementByRef("e42")` resolves a server-supplied
+snapshot ref back to a live DOM element.
 
 Wire-format symbols live on the existing `RTVIMessageType` enum
 (`UI_EVENT`, `UI_COMMAND`, etc.) — the same way every other RTVI
@@ -200,12 +202,13 @@ message type is referenced.
 
 ### `pipecat-client-web/client-react` — React idioms
 
-Hooks bind directly to the ambient `PipecatClient`. They cover the
-basics: `useUIEventSender`, `useUICommandHandler(name, handler)`,
-`useUITasks` (returns the live list of in-flight task
-groups plus `cancelTask`), `useA11ySnapshot({ enabled, debounceMs,
-trackViewport, logSnapshots })`. Standard handlers cover the standard
-commands (`useStandardScrollToHandler`, `useStandardHighlightHandler`,
+Hooks use the existing React client event path for inbound messages
+and client methods for outbound messages. They cover the basics:
+`useUIEventSender`, `useUICommandHandler(name, handler)`,
+`useUITasks` (returns the live list of in-flight task groups plus
+`cancelTask`), `useA11ySnapshot({ enabled, debounceMs, trackViewport,
+logSnapshots })`. Standard handlers cover the standard commands
+(`useStandardScrollToHandler`, `useStandardHighlightHandler`,
 `useStandardFocusHandler`, `useStandardClickHandler`,
 `useStandardSetInputValueHandler`, `useStandardSelectTextHandler`),
 each resolving the target by snapshot ref first then DOM id. Typed
@@ -409,9 +412,10 @@ infrastructure:
 
 **1. Single LLM, snapshot-aware (no subagents)**
 
-Drop `A11ySnapshotStreamer` into your client, render the snapshot
-into a developer message in your Pipecat pipeline, give your LLM
-tools that emit the typed RTVI frames (`RTVIUICommandFrame`,
+Start `PipecatClient.startA11ySnapshotStream(...)` (or React's
+`useA11ySnapshot`) in your client, render the snapshot into a
+developer message in your Pipecat pipeline, give your LLM tools that
+emit the typed RTVI frames (`RTVIUICommandFrame`,
 `RTVIUITaskFrame`). Less code than wiring up a bus + bridge. Use this
 when you have a single LLM doing both conversation and UI work, no
 multi-agent fan-out.

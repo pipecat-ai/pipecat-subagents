@@ -94,6 +94,5 @@ A `.env` in the example folder is the easiest way to set these.
 - Selection-based deixis (see `deixis/`).
 - Async tasks with toast UI (see `async-tasks/`).
 - Custom command handlers beyond the standard `scroll_to` /
-  `highlight` (apps register their own via
-  `client.registerUICommandHandler`; see hello-snapshot for the
-  registration shape).
+  `highlight` (apps subscribe to `RTVIEvent.UICommand` and filter by
+  command name; see hello-snapshot for the subscription shape).

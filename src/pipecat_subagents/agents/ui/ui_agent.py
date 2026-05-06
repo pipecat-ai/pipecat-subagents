@@ -319,8 +319,8 @@ class UIAgent(LLMContextAgent):
         Publishes a ``BusUICommandMessage`` which the bridge installed
         by ``attach_ui_bridge`` translates into an
         ``RTVIServerMessageFrame`` on the root agent's pipeline.
-        Client-side handlers registered via ``registerUICommandHandler``
-        dispatch on the command name.
+        Client-side handlers subscribed to ``RTVIEvent.UICommand`` (or
+        React's ``useUICommandHandler``) dispatch on the command name.
 
         Args:
             name: App-defined command name (e.g. ``"toast"``,
