@@ -7,8 +7,8 @@
  * element via ``findElementByRef`` (the snapshot ref system the
  * walker assigns) and act on the live DOM node.
  *
- * The React SDK ships ``useStandardScrollToHandler`` and
- * ``useStandardHighlightHandler`` that do this same work in hooks.
+ * The React SDK ships ``useDefaultScrollToHandler`` and
+ * ``useDefaultHighlightHandler`` that do this same work in hooks.
  * Vanilla apps subscribe to ``RTVIEvent.UICommand`` and filter by
  * command name.
  */
@@ -127,7 +127,7 @@ async function connect() {
 
   try {
     await client.connect({ webrtcUrl: BOT_URL });
-    client.startA11ySnapshotStream();
+    client.startUISnapshotStream();
     connectButton.dataset.state = "connected";
     connectButton.textContent = "Disconnect";
     connectButton.disabled = false;
@@ -154,7 +154,7 @@ async function disconnect() {
 }
 
 function teardownUI() {
-  client?.stopA11ySnapshotStream();
+  client?.stopUISnapshotStream();
   unsubscribes.forEach((unsubscribe) => unsubscribe());
   unsubscribes = [];
   if (botAudio.srcObject) botAudio.srcObject = null;

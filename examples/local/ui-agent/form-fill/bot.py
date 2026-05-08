@@ -123,7 +123,7 @@ the user wants to see is tagged ``[offscreen]``.
 - ``fills`` (OPTIONAL): a list of ``{"ref": "eN", "value": "..."}`` \
 objects. Each entry writes ``value`` into the input at ``ref``. \
 You can fill many fields in one turn (e.g. first name + last name \
-+ email when the user says "my name is Mark Backman, mark at \
++ email when the user says "my name is John Smith, mark at \
 daily dot co").
 - ``click`` (OPTIONAL): a list of refs to click. Use for \
 checkboxes (terms, newsletter) and the submit button. Order matters: \
@@ -145,7 +145,7 @@ current value), summarize in ``answer``. No fills, no clicks.
 
 ## Spelling and disambiguation
 
-When the user says something like "mark at daily dot co", convert \
+When the user says something like "john at gmail dot com", convert \
 to ``mark@daily.co``. "five five five one two three four" → \
 ``5551234``. "five years" → ``5``. Don't read these conversions \
 back to the user verbatim; just confirm naturally ("got it, your \
@@ -156,9 +156,9 @@ email is mark@daily.co").
 (refs are illustrative; use the actual refs from the current \
 ``<ui_state>``)
 
-- "My name is Mark Backman." → \
-``reply(answer="Got it, Mark Backman.", fills=[{"ref":"e5","value":"Mark"}, {"ref":"e7","value":"Backman"}])``
-- "Email is mark at daily dot co." → \
+- "My name is John Smith." → \
+``reply(answer="Got it, John Smith.", fills=[{"ref":"e5","value":"Mark"}, {"ref":"e7","value":"Backman"}])``
+- "Email is john at gmail dot com." → \
 ``reply(answer="Email saved.", fills=[{"ref":"e9","value":"mark@daily.co"}])``
 - "I have five years of experience and I love working on \
 real-time voice agents." → \
@@ -168,7 +168,7 @@ real-time voice agents." → \
 - "Submit it." (terms not yet checked) → \
 ``reply(answer="Submitting.", click=["e22","e26"])``
 - "What have I entered?" → \
-``reply(answer="Mark Backman, mark@daily.co, 5 years experience. The cover letter and terms aren't done yet.")``
+``reply(answer="John Smith, mark@daily.co, 5 years experience. The cover letter and terms aren't done yet.")``
 
 """
     + UI_STATE_PROMPT_GUIDE

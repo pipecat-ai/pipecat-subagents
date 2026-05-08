@@ -69,7 +69,7 @@ async function connect() {
   try {
     await client.connect({ webrtcUrl: BOT_URL });
     // 2. Start the managed snapshot stream once the RTVI transport is ready.
-    client.startA11ySnapshotStream();
+    client.startUISnapshotStream();
     connectButton.dataset.state = "connected";
     connectButton.textContent = "Disconnect";
     connectButton.disabled = false;
@@ -96,7 +96,7 @@ async function disconnect() {
 }
 
 function teardownUI() {
-  client?.stopA11ySnapshotStream();
+  client?.stopUISnapshotStream();
   if (botAudio.srcObject) botAudio.srcObject = null;
   client = undefined;
 }

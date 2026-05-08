@@ -110,7 +110,7 @@ Four packages in the stack. Each one earns its keep.
 │                              │    │                                │
 │  pipecat-ai-subagents        │    │  @pipecat-ai/client-react      │
 │   • UIAgent                  │    │   • PipecatClientProvider      │
-│   • attach_ui_bridge         │    │   • useA11ySnapshot            │
+│   • attach_ui_bridge         │    │   • useUISnapshot              │
 │   • action helpers           │    │   • useUIEventSender           │
 │   • ReplyToolMixin           │    │   • useUICommandHandler        │
 │   • multi-agent + bus        │    │   • useUITasks                 │
@@ -188,7 +188,7 @@ pipeline.
 ### `pipecat-client-web/client-js` — framework-agnostic client
 
 `PipecatClient` exposes UI helpers: `sendUIEvent`,
-`startA11ySnapshotStream`, `stopA11ySnapshotStream`, and
+`startUISnapshotStream`, `stopUISnapshotStream`, and
 `cancelUITask`. Inbound `ui-command` and `ui-task` messages use the
 same callback/event pattern as the rest of the client
 (`onUICommand` / `onUITask`, or `RTVIEvent.UICommand` /
@@ -206,11 +206,11 @@ Hooks use the existing React client event path for inbound messages
 and client methods for outbound messages. They cover the basics:
 `useUIEventSender`, `useUICommandHandler(name, handler)`,
 `useUITasks` (returns the live list of in-flight task groups plus
-`cancelTask`), `useA11ySnapshot({ enabled, debounceMs, trackViewport,
+`cancelTask`), `useUISnapshot({ enabled, debounceMs, trackViewport,
 logSnapshots })`. Standard handlers cover the standard commands
-(`useStandardScrollToHandler`, `useStandardHighlightHandler`,
-`useStandardFocusHandler`, `useStandardClickHandler`,
-`useStandardSetInputValueHandler`, `useStandardSelectTextHandler`),
+(`useDefaultScrollToHandler`, `useDefaultHighlightHandler`,
+`useDefaultFocusHandler`, `useDefaultClickHandler`,
+`useDefaultSetInputValueHandler`, `useDefaultSelectTextHandler`),
 each resolving the target by snapshot ref first then DOM id. Typed
 sugar `useToastHandler` and `useNavigateHandler` for the two commands
 apps almost always wire themselves.
@@ -283,10 +283,10 @@ The root agent calls `attach_ui_bridge(self, target="ui")` from its
 // App.tsx
 import {
   PipecatClientProvider,
-  useA11ySnapshot,
+  useUISnapshot,
   useUICommandHandler,
-  useStandardScrollToHandler,
-  useStandardHighlightHandler,
+  useDefaultScrollToHandler,
+  useDefaultHighlightHandler,
   useNavigateHandler,
   type ToastPayload,
 } from "@pipecat-ai/client-react";
@@ -300,9 +300,9 @@ function App() {
 }
 
 function Workspace() {
-  useA11ySnapshot();              // streams the a11y tree to the server
-  useStandardScrollToHandler({ block: "center" });
-  useStandardHighlightHandler({ scrollIntoViewFirst: true });
+  useUISnapshot();                // streams the a11y tree to the server
+  useDefaultScrollToHandler({ block: "center" });
+  useDefaultHighlightHandler({ scrollIntoViewFirst: true });
   useNavigateHandler(useCallback((p) => router.push(p.view), [router]));
   useUICommandHandler<ToastPayload>("toast", showToast);  // app-specific
   return <Routes>...</Routes>;
@@ -412,8 +412,8 @@ infrastructure:
 
 **1. Single LLM, snapshot-aware (no subagents)**
 
-Start `PipecatClient.startA11ySnapshotStream(...)` (or React's
-`useA11ySnapshot`) in your client, render the snapshot into a
+Start `PipecatClient.startUISnapshotStream(...)` (or React's
+`useUISnapshot`) in your client, render the snapshot into a
 developer message in your Pipecat pipeline, give your LLM tools that
 emit the typed RTVI frames (`RTVIUICommandFrame`,
 `RTVIUITaskFrame`). Less code than wiring up a bus + bridge. Use this

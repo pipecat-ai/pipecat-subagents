@@ -11,7 +11,7 @@ rest. When you're ready, say "submit."
   writing into inputs, `click` for checkboxes and submit buttons.
   These are bundled into the same `ReplyToolMixin` that pointing and
   deixis use — `fills` is a list of `{"ref", "value"}` so the LLM
-  can fill several fields in one turn ("my name is Mark Backman"
+  can fill several fields in one turn ("my name is John Smith"
   fills first AND last name in one call), and `click` is a list
   so checkboxes and submit can run in order.
 - That `FormAgent` is a **one-line composition**:
@@ -56,9 +56,9 @@ Open `http://localhost:5173` and click **Connect**.
 
 ## What to try
 
-- *"My name is Mark Backman."* — agent fills first name and last name
+- *"My name is John Smith."* — agent fills first name and last name
   in one call.
-- *"My email is mark at daily dot co."* — agent converts the spoken
+- *"My email is john at gmail dot com."* — agent converts the spoken
   form to `mark@daily.co` and fills the email field.
 - *"My phone is five five five one two three four."* — converts to
   `5551234`.

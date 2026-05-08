@@ -20,8 +20,8 @@ it.
   target is already visible.
 - The `[offscreen]` state tag the walker emits, and the LLM reading
   it to decide whether scrolling is needed.
-- The vanilla-JS equivalents of the React `useStandardScrollToHandler`
-  / `useStandardHighlightHandler` — written inline in `main.js` using
+- The vanilla-JS equivalents of the React `useDefaultScrollToHandler`
+  / `useDefaultHighlightHandler` — written inline in `main.js` using
   the SDK's `findElementByRef`. ~25 lines per handler.
 
 ## What it adds vs. `hello-snapshot`

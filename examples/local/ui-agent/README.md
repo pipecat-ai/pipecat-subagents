@@ -125,7 +125,7 @@ The demos lean on the SDK's public surface:
   `@tool`. See [`UI_AGENT_DESIGN.md`](../../../UI_AGENT_DESIGN.md)
   for the architecture overview.
 - Client: `@pipecat-ai/client-js` — `PipecatClient`,
-  `startA11ySnapshotStream`, `findElementByRef`, and
+  `startUISnapshotStream`, `findElementByRef`, and
   `RTVIEvent.UICommand` / `RTVIEvent.UITask` event subscriptions.
 
 The demos here use the vanilla JS client throughout. React apps

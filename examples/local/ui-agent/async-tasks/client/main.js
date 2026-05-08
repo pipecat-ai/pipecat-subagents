@@ -262,7 +262,7 @@ async function connect() {
 
   try {
     await client.connect({ webrtcUrl: BOT_URL });
-    client.startA11ySnapshotStream();
+    client.startUISnapshotStream();
     connectButton.dataset.state = "connected";
     connectButton.textContent = "Disconnect";
     connectButton.disabled = false;
@@ -289,7 +289,7 @@ async function disconnect() {
 }
 
 function teardownUI() {
-  client?.stopA11ySnapshotStream();
+  client?.stopUISnapshotStream();
   unsubscribeTasks?.();
   if (botAudio.srcObject) botAudio.srcObject = null;
   unsubscribeTasks = undefined;

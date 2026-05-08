@@ -159,11 +159,11 @@ async function connect() {
 
   try {
     await client.connect({ webrtcUrl: BOT_URL });
-    client.startA11ySnapshotStream();
+    client.startUISnapshotStream();
     connectButton.dataset.state = "connected";
     connectButton.textContent = "Disconnect";
     connectButton.disabled = false;
-    setStatus("Connected. Try: 'My name is Mark Backman'", 5000);
+    setStatus("Connected. Try: 'My name is John Smith'", 5000);
   } catch (err) {
     console.error("Connect failed:", err);
     setStatus(`Connect failed: ${err.message ?? err}`, 4000);
@@ -186,7 +186,7 @@ async function disconnect() {
 }
 
 function teardownUI() {
-  client?.stopA11ySnapshotStream();
+  client?.stopUISnapshotStream();
   unsubscribes.forEach((unsubscribe) => unsubscribe());
   unsubscribes = [];
   if (botAudio.srcObject) botAudio.srcObject = null;
