@@ -149,4 +149,4 @@ showcontent = true
 # is install-time-only. Drop this block before merging once pipecat
 # 1.2.0 is on PyPI.
 [tool.uv.sources]
-pipecat-ai = { git = "https://github.com/pipecat-ai/pipecat", branch = "mb/ui-agent-wire-format" }
+pipecat-ai = { git = "https://github.com/pipecat-ai/pipecat" }
