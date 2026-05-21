@@ -10,8 +10,8 @@ in whatever's currently on screen.
   injected into the LLM context as `<ui_state>`.
 - The two-agent UIAgent setup: a root `BaseAgent` that owns the
   transport plus a bridged `UIAgent` that runs the LLM.
-- `attach_ui_bridge` wiring the RTVI client-message channel to the
-  bus in both directions.
+- The `@ui_agent` decorator wiring the RTVI client-message channel to
+  the bus in both directions.
 
 There are **no tools**. The LLM answers directly from what it sees.
 

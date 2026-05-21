@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: BSD 2-Clause License
 #
 
-"""Tests for attach_ui_bridge: inbound + outbound wire translation."""
+"""Tests for the UI bridge: inbound + outbound wire translation."""
 
 import unittest
 from types import SimpleNamespace
@@ -20,7 +20,8 @@ from pipecat.processors.frameworks.rtvi.models import (
     UISnapshotMessage,
 )
 
-from pipecat_subagents.agents import attach_ui_bridge
+from pipecat_subagents.agents import ui_agent
+from pipecat_subagents.agents.ui.ui_bridge import _attach_ui_bridge
 from pipecat_subagents.agents.ui.ui_messages import (
     _UI_CANCEL_TASK_BUS_EVENT_NAME,
     _UI_SNAPSHOT_BUS_EVENT_NAME,
@@ -29,8 +30,8 @@ from pipecat_subagents.agents.ui.ui_messages import (
 )
 
 
-def _make_bridge_fixture(*, target: str | None = None):
-    """Build a mock agent + RTVI processor and call attach_ui_bridge.
+def _make_bridge_fixture(*, target: str | None = None, targets: list[str | None] | None = None):
+    """Build a mock agent + RTVI processor and wire the bridge.
 
     Returns ``(invoke_ui, invoke_bus, bus_send, queue_frame)``:
 
@@ -71,7 +72,9 @@ def _make_bridge_fixture(*, target: str | None = None):
     agent.event_handler = agent_event_handler
     agent.queue_frame = AsyncMock()
 
-    attach_ui_bridge(agent, target=target)
+    if targets is None:
+        targets = [target]
+    _attach_ui_bridge(agent, targets=targets)
 
     ui_handler = captured["rtvi::on_ui_message"]
     bus_handler = captured["agent::on_bus_message"]
@@ -111,6 +114,20 @@ class TestAttachUIBridgeInbound(unittest.IsolatedAsyncioTestCase):
 
         sent: BusUIEventMessage = bus_send.await_args.args[0]
         self.assertIsNone(sent.target)
+
+    async def test_fans_out_one_bus_message_per_target(self):
+        invoke_ui, _invoke_bus, bus_send, _queue_frame = _make_bridge_fixture(targets=["a", "b"])
+
+        await invoke_ui(
+            UIEventMessage(id="m1", data=UIEventData(event="nav_click", payload={"v": 1}))
+        )
+
+        self.assertEqual(bus_send.await_count, 2)
+        sent_targets = [call.args[0].target for call in bus_send.await_args_list]
+        self.assertEqual(sent_targets, ["a", "b"])
+        for call in bus_send.await_args_list:
+            self.assertEqual(call.args[0].event_name, "nav_click")
+            self.assertEqual(call.args[0].payload, {"v": 1})
 
     async def test_snapshot_message_routes_to_internal_event_name(self):
         invoke_ui, _invoke_bus, bus_send, _queue_frame = _make_bridge_fixture()
@@ -158,7 +175,7 @@ class TestAttachUIBridgeInbound(unittest.IsolatedAsyncioTestCase):
         agent.bus = MagicMock()
 
         with self.assertRaises(RuntimeError):
-            attach_ui_bridge(agent)
+            _attach_ui_bridge(agent, targets=[None])
 
 
 class TestAttachUIBridgeOutbound(unittest.IsolatedAsyncioTestCase):
@@ -187,6 +204,75 @@ class TestAttachUIBridgeOutbound(unittest.IsolatedAsyncioTestCase):
         await invoke_bus(SimpleNamespace(command_name="toast", payload={}))
 
         queue_frame.assert_not_awaited()
+
+
+class TestUIAgentDecorator(unittest.IsolatedAsyncioTestCase):
+    def _make_root(self, *names):
+        captured: dict[str, list] = {}
+
+        def rtvi_event_handler(event_name):
+            def deco(fn):
+                captured.setdefault(f"rtvi::{event_name}", []).append(fn)
+                return fn
+
+            return deco
+
+        def agent_event_handler(event_name):
+            def deco(fn):
+                captured.setdefault(f"agent::{event_name}", []).append(fn)
+                return fn
+
+            return deco
+
+        rtvi = SimpleNamespace(event_handler=rtvi_event_handler)
+        ran: list[bool] = []
+
+        @ui_agent(*names)
+        class Root:
+            def __init__(self):
+                self.name = "root"
+                self.pipeline_task = SimpleNamespace(rtvi=rtvi)
+                self.bus = MagicMock()
+                self.bus.send = AsyncMock()
+                self.event_handler = agent_event_handler
+                self.queue_frame = AsyncMock()
+
+            async def on_ready(self):
+                ran.append(True)
+
+        return Root, captured, ran
+
+    async def test_wraps_on_ready_and_wires_bridge(self):
+        Root, captured, ran = self._make_root("ui")
+        root = Root()
+
+        await root.on_ready()
+
+        # The original on_ready still runs.
+        self.assertEqual(ran, [True])
+        # Exactly one inbound and one outbound handler get registered.
+        self.assertEqual(len(captured["rtvi::on_ui_message"]), 1)
+        self.assertEqual(len(captured["agent::on_bus_message"]), 1)
+
+    async def test_multiple_agents_fan_out_with_single_outbound(self):
+        Root, captured, _ran = self._make_root("a", "b")
+        root = Root()
+
+        await root.on_ready()
+
+        # Two named agents still register one inbound + one outbound
+        # handler (outbound must not double-register and duplicate frames).
+        self.assertEqual(len(captured["rtvi::on_ui_message"]), 1)
+        self.assertEqual(len(captured["agent::on_bus_message"]), 1)
+
+        ui_handler = captured["rtvi::on_ui_message"][0]
+        await ui_handler(None, UIEventMessage(id="m", data=UIEventData(event="e", payload={})))
+
+        self.assertEqual(root.bus.send.await_count, 2)
+        self.assertEqual(
+            [call.args[0].target for call in root.bus.send.await_args_list],
+            ["a", "b"],
+        )
 
 
 if __name__ == "__main__":

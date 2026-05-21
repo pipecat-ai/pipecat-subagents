@@ -121,8 +121,8 @@ Optional:
 The demos lean on the SDK's public surface:
 
 - Server: `pipecat_subagents.agents` — `UIAgent`, `LLMAgent`,
-  `ReplyToolMixin`, `attach_ui_bridge`, `@on_ui_event`,
-  `@tool`. See [`UI_AGENT_DESIGN.md`](../../../UI_AGENT_DESIGN.md)
+  `ReplyToolMixin`, `@ui_agent`, `@on_ui_event`, `@tool`,
+  `@task`. See [`UI_AGENT_DESIGN.md`](../../../UI_AGENT_DESIGN.md)
   for the architecture overview.
 - Client: `@pipecat-ai/client-js` — `PipecatClient`,
   `startUISnapshotStream`, `findElementByRef`, and

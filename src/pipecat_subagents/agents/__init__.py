@@ -32,8 +32,8 @@ from pipecat_subagents.agents.ui import (
     UI_STATE_PROMPT_GUIDE,
     ReplyToolMixin,
     UIAgent,
-    attach_ui_bridge,
     on_ui_event,
+    ui_agent,
 )
 from pipecat_subagents.agents.watch_decorator import agent_ready
 
@@ -58,8 +58,8 @@ __all__ = [
     "UIAgent",
     "UI_STATE_PROMPT_GUIDE",
     "agent_ready",
-    "attach_ui_bridge",
     "on_ui_event",
     "task",
     "tool",
+    "ui_agent",
 ]

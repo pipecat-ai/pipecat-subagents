@@ -110,7 +110,7 @@ Four packages in the stack. Each one earns its keep.
 │                              │    │                                │
 │  pipecat-ai-subagents        │    │  @pipecat-ai/client-react      │
 │   • UIAgent                  │    │   • PipecatClientProvider      │
-│   • attach_ui_bridge         │    │   • useUISnapshot              │
+│   • @ui_agent                │    │   • useUISnapshot              │
 │   • action helpers           │    │   • useUIEventSender           │
 │   • ReplyToolMixin           │    │   • useUICommandHandler        │
 │   • multi-agent + bus        │    │   • useUITasks                 │
@@ -169,9 +169,11 @@ patterns. It:
   `send_command` with the standard payloads, and
   **`respond_to_task(...)`** so tools don't have to thread the
   `task_id` through every call.
-- Single-flight task semantics: a per-agent lock held from
-  `on_task_request` to `respond_to_task` keeps overlapping requests
-  queued rather than interleaving their context mutations.
+- Single-flight task semantics: the built-in
+  `@task(name="respond", sequential=True)` handler spans the full LLM
+  round-trip (it blocks until a tool calls `respond_to_task`), so
+  same-name requests serialize rather than interleaving their context
+  mutations. Differently named `@task` handlers run concurrently.
 - **`ReplyToolMixin`** for the canonical bundled-tool shape:
   `reply(answer, scroll_to, highlight, select_text, fills, click)`.
   One tool call per turn, no chaining. Apps that want a different
@@ -180,10 +182,10 @@ patterns. It:
   fan-out with streaming results. Pairs with the client-side
   `useUITasks` hook for cancel and live progress.
 
-`attach_ui_bridge(root_agent)` wires the `on_ui_message` handler to
-the bus and turns `BusUICommandMessage` into `RTVIUICommandFrame` (or
-`RTVIUITaskFrame` for task-lifecycle traffic) on the root agent's
-pipeline.
+The `@ui_agent(*agent_names)` class decorator on the root agent wires
+the `on_ui_message` handler to the bus and turns `BusUICommandMessage`
+into `RTVIUICommandFrame` (or `RTVIUITaskFrame` for task-lifecycle
+traffic) on the root agent's pipeline.
 
 ### `pipecat-client-web/client-js` — framework-agnostic client
 
@@ -274,8 +276,8 @@ Apps with a different shape (the music player's
 `@tool` methods, calling `self.scroll_to(...)`, `self.highlight(...)`,
 etc. as helpers in the tool body.
 
-The root agent calls `attach_ui_bridge(self, target="ui")` from its
-`on_ready`. That's the only wiring step for the protocol.
+The root agent class is decorated with `@ui_agent("ui")`. That's the
+only wiring step for the protocol.
 
 ### Client
 
@@ -423,8 +425,9 @@ multi-agent fan-out.
 **2. Voice + UI separation (subagents UIAgent)**
 
 `VoiceAgent` (LLM, bridged to STT/TTS) + `UIAgent` (LLM, owns screen
-state) on a bus, joined by `attach_ui_bridge`. Voice delegates every
-UI-touching utterance via `self.task("ui", ...)`. The UI agent's LLM
+state) on a bus, joined by the `@ui_agent` decorator. Voice delegates
+every UI-touching utterance via `self.task("ui", name="respond", ...)`.
+The UI agent's LLM
 runs against `<ui_state>` and emits commands; the voice agent speaks
 the result verbatim. Use this when the conversation layer should
 stay focused on TTS/STT and dialog management, and a separate agent
@@ -441,8 +444,8 @@ earns its complexity.
 
 ### Subagents-specific knob
 
-The auto-injection of `<ui_state>` is hard-wired to
-`on_task_request`, so a single bridged `UIAgent` would silently never
+The auto-injection of `<ui_state>` fires at the start of the built-in
+`respond` task, so a single bridged `UIAgent` would silently never
 inject the snapshot. The `UIAgent` constructor raises if you try
 (`bridged != None` with default `auto_inject_ui_state=True`). Pass
 `auto_inject_ui_state=False` only if you really want a bridged

@@ -28,7 +28,7 @@ it.
 
 `hello-snapshot` proved the agent can read the page. This one proves
 it can act on the page. Same canonical UIAgent skeleton (build_llm,
-aggregator-wrapped pipeline, on_task_request); the new parts are the
+aggregator-wrapped pipeline, the built-in `respond` task); the new parts are the
 `ScrollToToolMixin` + `HighlightToolMixin` + `AnswerToolMixin`
 composition on the server and the two command handlers on the
 client.

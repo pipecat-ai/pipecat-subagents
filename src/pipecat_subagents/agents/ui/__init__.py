@@ -13,7 +13,7 @@ snapshots, and server-emitted UI commands, plus an opt-in
 """
 
 from pipecat_subagents.agents.ui.ui_agent import UIAgent
-from pipecat_subagents.agents.ui.ui_bridge import attach_ui_bridge
+from pipecat_subagents.agents.ui.ui_bridge import ui_agent
 from pipecat_subagents.agents.ui.ui_event_decorator import on_ui_event
 from pipecat_subagents.agents.ui.ui_messages import (
     BusUICommandMessage,
@@ -41,6 +41,6 @@ __all__ = [
     "ReplyToolMixin",
     "UIAgent",
     "UI_STATE_PROMPT_GUIDE",
-    "attach_ui_bridge",
     "on_ui_event",
+    "ui_agent",
 ]

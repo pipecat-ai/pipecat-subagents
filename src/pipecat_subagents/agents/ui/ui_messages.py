@@ -7,7 +7,7 @@
 """Subagents-internal bus carriers for the UI Agent Protocol.
 
 These dataclasses are the on-the-bus shape that ``UIAgent`` and the
-bridge installed by ``attach_ui_bridge`` exchange. They are NOT the
+bridge installed by ``@ui_agent`` exchange. They are NOT the
 on-the-wire format the client sees; that lives in
 ``pipecat.processors.frameworks.rtvi.models`` (since pipecat-ai
 1.2.0). The bridge translates between the two.
@@ -46,8 +46,8 @@ _UI_CANCEL_TASK_BUS_EVENT_NAME = "__cancel_task"
 class BusUIEventMessage(BusDataMessage):
     """A UI event sent from the client to a server-side agent.
 
-    Emitted by ``attach_ui_bridge`` when the client dispatches an event
-    via ``PipecatClient.sendUIEvent(event, payload)``. ``UIAgent`` subclasses
+    Emitted by the ``@ui_agent`` bridge when the client dispatches an
+    event via ``PipecatClient.sendUIEvent(event, payload)``. ``UIAgent`` subclasses
     dispatch these to ``@on_ui_event(name)`` handlers.
 
     Parameters:
@@ -64,7 +64,7 @@ class BusUICommandMessage(BusDataMessage):
     """A UI command sent from a server-side agent to the client.
 
     Published by ``UIAgent.send_command(name, payload)``. The bridge
-    installed by ``attach_ui_bridge`` translates this to an
+    installed by ``@ui_agent`` translates this to an
     ``RTVIUICommandFrame(command=command_name, payload=payload)`` and
     pushes it through the root agent's pipeline.
 

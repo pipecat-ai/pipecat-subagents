@@ -22,7 +22,7 @@ Architecture::
     PointingRoot (BaseAgent, root)              -- transport + UI bridge
       ├── VoiceAgent (LLMAgent, bridged)        -- conversational layer
       │     └── @tool answer_about_screen(query)
-      │           └── self.task("ui", payload={"query": query})
+      │           └── self.task("ui", name="respond", payload={"query": query})
       └── PointingAgent (ReplyToolMixin + UIAgent)
             └── inherited: reply(answer, scroll_to=None, highlight=None)
 
@@ -43,7 +43,7 @@ import os
 from dotenv import load_dotenv
 from loguru import logger
 from pipecat.audio.vad.silero import SileroVADAnalyzer
-from pipecat.frames.frames import LLMMessagesAppendFrame, TTSSpeakFrame
+from pipecat.frames.frames import TTSSpeakFrame
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.task import PipelineTask
 from pipecat.processors.aggregators.llm_context import LLMContext
@@ -69,11 +69,10 @@ from pipecat_subagents.agents import (
     TaskError,
     UIAgent,
     agent_ready,
-    attach_ui_bridge,
     tool,
+    ui_agent,
 )
 from pipecat_subagents.bus import AgentBus, BusBridgeProcessor
-from pipecat_subagents.bus.messages import BusTaskRequestMessage
 from pipecat_subagents.runner import AgentRunner
 from pipecat_subagents.types import AgentReadyData
 
@@ -184,7 +183,7 @@ class VoiceAgent(LLMAgent):
         """
         logger.info(f"{self}: answer_about_screen('{query}')")
         try:
-            async with self.task("ui", payload={"query": query}, timeout=10) as t:
+            async with self.task("ui", name="respond", payload={"query": query}, timeout=10) as t:
                 pass
         except TaskError as e:
             logger.warning(f"{self}: ui task failed: {e}")
@@ -222,30 +221,14 @@ class PointingAgent(ReplyToolMixin, UIAgent):
             ),
         )
 
-    async def on_task_request(self, message: BusTaskRequestMessage) -> None:
-        # super() records the in-flight task and auto-injects
-        # <ui_state>; we feed the user's query in afterward.
-        await super().on_task_request(message)
-        query = (message.payload or {}).get("query", "")
-        logger.info(f"{self}: task query '{query}'")
-        await self.queue_frame(
-            LLMMessagesAppendFrame(
-                messages=[{"role": "user", "content": query}],
-                run_llm=True,
-            )
-        )
 
-
+@ui_agent("ui")
 class PointingRoot(BaseAgent):
     """Root agent. Owns the transport and bridges to the voice layer."""
 
     def __init__(self, name: str, *, bus: AgentBus, transport: BaseTransport):
         super().__init__(name, bus=bus)
         self._transport = transport
-
-    async def on_ready(self) -> None:
-        await super().on_ready()
-        attach_ui_bridge(self, target="ui")
 
     @agent_ready(name="voice")
     async def on_voice_ready(self, data: AgentReadyData) -> None:
@@ -270,8 +253,8 @@ class PointingRoot(BaseAgent):
 
         # Register on_client_ready BEFORE the pipeline starts; the
         # event fires when the client's handshake message arrives,
-        # which can land before on_ready runs. See attach_ui_bridge
-        # docstring.
+        # which can land before on_ready runs. See the ui_bridge
+        # module docstring.
         @task.rtvi.event_handler("on_client_ready")
         async def _on_client_ready(_rtvi):
             logger.info("Client ready")

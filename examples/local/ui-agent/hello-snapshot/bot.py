@@ -15,13 +15,13 @@ Architecture::
     HelloRoot (BaseAgent, root)         -- transport + UI bridge
       ├── VoiceAgent (LLMAgent, bridged) -- conversational layer
       │     └── @tool answer_about_screen(query)
-      │           └── self.task("hello", payload={query})
+      │           └── self.task("hello", name="respond", payload={query})
       └── HelloAgent (UIAgent, not bridged) -- snapshot-aware layer
             └── @tool answer(text)
 
 The voice agent has one tool. It forwards every user utterance to the
-UI agent and speaks the result verbatim. The UI agent's
-``on_task_request`` fires, which auto-injects the latest ``<ui_state>``
+UI agent and speaks the result verbatim. The UI agent's built-in
+``respond`` task fires, which auto-injects the latest ``<ui_state>``
 block into its LLM context. The UI agent's LLM picks the ``answer``
 tool with a spoken reply grounded in what's on screen.
 
@@ -50,7 +50,7 @@ import os
 from dotenv import load_dotenv
 from loguru import logger
 from pipecat.audio.vad.silero import SileroVADAnalyzer
-from pipecat.frames.frames import LLMMessagesAppendFrame, TTSSpeakFrame
+from pipecat.frames.frames import TTSSpeakFrame
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.task import PipelineTask
 from pipecat.processors.aggregators.llm_context import LLMContext
@@ -75,11 +75,10 @@ from pipecat_subagents.agents import (
     TaskError,
     UIAgent,
     agent_ready,
-    attach_ui_bridge,
     tool,
+    ui_agent,
 )
 from pipecat_subagents.bus import AgentBus, BusBridgeProcessor
-from pipecat_subagents.bus.messages import BusTaskRequestMessage
 from pipecat_subagents.runner import AgentRunner
 from pipecat_subagents.types import AgentReadyData
 
@@ -164,7 +163,9 @@ class VoiceAgent(LLMAgent):
         """
         logger.info(f"{self}: answer_about_screen('{query}')")
         try:
-            async with self.task("hello", payload={"query": query}, timeout=30) as t:
+            async with self.task(
+                "hello", name="respond", payload={"query": query}, timeout=30
+            ) as t:
                 pass
         except TaskError as e:
             logger.warning(f"{self}: hello task failed: {e}")
@@ -200,22 +201,6 @@ class HelloAgent(UIAgent):
             ),
         )
 
-    async def on_task_request(self, message: BusTaskRequestMessage) -> None:
-        # super() records the in-flight task on ``current_task`` and
-        # auto-injects ``<ui_state>``. After that, append the user's
-        # query as a user message and trigger the LLM. Without
-        # this step the snapshot lands in context but the question
-        # never does — the LLM has nothing to answer.
-        await super().on_task_request(message)
-        query = (message.payload or {}).get("query", "")
-        logger.info(f"{self}: task query '{query}'")
-        await self.queue_frame(
-            LLMMessagesAppendFrame(
-                messages=[{"role": "user", "content": query}],
-                run_llm=True,
-            )
-        )
-
     @tool
     async def answer(self, params: FunctionCallParams, text: str):
         """Speak ``text`` back to the user.
@@ -229,18 +214,18 @@ class HelloAgent(UIAgent):
         await params.result_callback(None)
 
 
+@ui_agent("hello")
 class HelloRoot(BaseAgent):
-    """Root agent. Owns the transport and bridges to the voice layer."""
+    """Root agent. Owns the transport and bridges to the voice layer.
+
+    ``@ui_agent("hello")`` wires inbound UI events (incl. the reserved
+    snapshot event) to HelloAgent — the snapshot is what HelloAgent
+    reasons over — once the pipeline is ready.
+    """
 
     def __init__(self, name: str, *, bus: AgentBus, transport: BaseTransport):
         super().__init__(name, bus=bus)
         self._transport = transport
-
-    async def on_ready(self) -> None:
-        await super().on_ready()
-        # Route inbound UI events (incl. the reserved snapshot event)
-        # at HelloAgent — the snapshot is what HelloAgent reasons over.
-        attach_ui_bridge(self, target="hello")
 
     @agent_ready(name="voice")
     async def on_voice_ready(self, data: AgentReadyData) -> None:

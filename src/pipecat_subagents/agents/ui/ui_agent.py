@@ -32,6 +32,7 @@ from pydantic import BaseModel
 
 from pipecat_subagents.agents.llm.llm_context_agent import LLMContextAgent
 from pipecat_subagents.agents.task_context import TaskGroupError, TaskStatus
+from pipecat_subagents.agents.task_decorator import task
 from pipecat_subagents.agents.ui.ui_event_decorator import _collect_ui_event_handlers
 from pipecat_subagents.agents.ui.ui_messages import (
     _UI_CANCEL_TASK_BUS_EVENT_NAME,
@@ -45,7 +46,6 @@ from pipecat_subagents.agents.ui.ui_task_context import UserTaskGroupContext
 from pipecat_subagents.bus import AgentBus
 from pipecat_subagents.bus.messages import (
     BusMessage,
-    BusTaskCancelMessage,
     BusTaskRequestMessage,
     BusTaskResponseMessage,
     BusTaskUpdateMessage,
@@ -69,8 +69,8 @@ class _UserTaskGroupRegistration:
 class UIAgent(LLMContextAgent):
     """LLM agent that dispatches UI events from the client.
 
-    Receives ``BusUIEventMessage`` (republished by ``attach_ui_bridge``)
-    and dispatches each one to the matching ``@on_ui_event(name)``
+    Receives ``BusUIEventMessage`` (republished by the ``@ui_agent``
+    bridge) and dispatches each one to the matching ``@on_ui_event(name)``
     handler. By default every event is also appended to the LLM context
     as ``<ui_event name="...">payload</ui_event>`` so the agent can
     reason about what the user just did on the next inference.
@@ -80,34 +80,24 @@ class UIAgent(LLMContextAgent):
     A ``UIAgent`` is the delegate side of a voice ↔ UI split: a
     bridged ``LLMAgent`` (the voice layer) receives the user's
     transcript and delegates UI-relevant work to this agent via
-    ``self.task("ui_agent_name", payload={"query": text})``. The UI
-    agent's ``on_task_request`` fires, ``<ui_state>`` is auto-injected,
+    ``self.task("ui_agent_name", name="respond", payload={"query": text})``.
+    The built-in ``respond`` task runs: ``<ui_state>`` is auto-injected,
     the LLM picks a tool, and the task completes with a spoken reply
     the voice agent hands to TTS.
 
-    A working subclass needs two things: an LLM and an
-    ``on_task_request`` override that feeds the user's query into the
-    LLM. The pipeline (LLM wrapped in an aggregator pair) comes from
-    ``LLMContextAgent``; activation, snapshot injection, and tool
-    registration are handled by the defaults.
+    A working subclass needs two things: an LLM and a ``@tool`` that
+    calls ``respond_to_task`` to finish the turn. The built-in
+    ``@task(name="respond", sequential=True)`` handler drives the LLM
+    for you (see ``respond_with_llm``); the pipeline, activation,
+    snapshot injection, and tool registration come from the base
+    classes. Override ``render_query`` to read a non-default payload
+    shape.
 
     Example::
 
         class MyUIAgent(UIAgent):
             def build_llm(self) -> LLMService:
                 return OpenAILLMService(api_key="...")
-
-            async def on_task_request(self, message):
-                # super() records the in-flight task and (if
-                # auto_inject_ui_state is on) injects ``<ui_state>``.
-                # Then feed the user's query into the LLM context with
-                # ``run_llm=True`` so the LLM actually generates.
-                await super().on_task_request(message)
-                query = (message.payload or {}).get("query", "")
-                await self.queue_frame(LLMMessagesAppendFrame(
-                    messages=[{"role": "developer", "content": query}],
-                    run_llm=True,
-                ))
 
             @on_ui_event("nav_click")
             async def on_nav(self, message):
@@ -132,30 +122,35 @@ class UIAgent(LLMContextAgent):
 
     ## Single-flight task semantics
 
-    A ``UIAgent`` owns a single LLM context, one running pipeline, and
-    one notion of "the current screen the user is looking at."
-    Concurrent task processing has no clean meaning under that model:
-    two overlapping tasks would interleave their ``<ui_state>``
-    injections, race on which task is "current" when a tool calls
-    ``respond_to_task``, and corrupt the conversation history. To
-    codify the single-flight invariant, ``on_task_request`` acquires an
-    internal lock that is held for the lifetime of the in-flight task.
-    Task requests that arrive while another is in flight queue and
-    process in arrival order. Concurrent submission is safe; concurrent
-    execution is what gets serialized.
+    A ``UIAgent`` owns a single ``LLMContext`` and one running pipeline
+    (``LLMContextAgent`` builds ``[user_aggregator, llm,
+    assistant_aggregator]``). Every LLM turn reads and mutates that one
+    context, so two ``respond`` turns cannot run at once without
+    interleaving their ``<ui_state>`` injections and corrupting history.
+    Serialization comes from the framework: the built-in handler is
+    ``@task(name="respond", sequential=True)``, so same-name requests
+    queue and run one at a time in arrival order (e.g. when the voice
+    LLM issues parallel tool calls, which pipecat runs concurrently by
+    default).
 
-    The lock is released along two paths: ``respond_to_task`` (the
-    happy path, where a tool fires the response) and
-    ``on_task_cancelled`` (the cancellation path, where ``BaseAgent``
-    sends the CANCELLED response directly and bypasses
-    ``respond_to_task``). A tool that forgets to call
-    ``respond_to_task`` for a non-cancelled task will hold the lock
-    indefinitely and subsequent task requests will block. That's
-    intentional. The hang is a fast-surfacing signal that a tool is
-    missing its terminator. Don't add a watchdog timeout: it would
-    mask the bug instead of exposing it, and the requester's own
-    task timeout already provides error-path liveness on the
-    calling side.
+    For this to hold across the full turn, ``respond_with_llm`` *spans
+    the work*: it drives the LLM and then blocks on an internal future
+    until a ``@tool`` calls ``respond_to_task``. The framework holds the
+    per-name lock for the handler's whole lifetime, so the next
+    ``respond`` request waits until the current turn is fully answered.
+    A tool that never calls ``respond_to_task`` leaves the handler
+    blocked and subsequent ``respond`` requests queued; that hang is an
+    intentional, fast-surfacing signal of a missing terminator, and the
+    requester's task timeout provides error-path liveness. Don't add a
+    watchdog.
+
+    Concurrency is per task name, not per agent. A *different*-named
+    ``@task`` handler runs concurrently with ``respond`` — fine for work
+    that does NOT touch the LLM context (e.g. a pure data fetch or UI
+    action that replies via ``send_task_response`` directly), but two
+    LLM-driving task types on one agent would race on the shared
+    context. For genuinely parallel LLM work, run multiple UIAgents
+    (``@ui_agent("a", "b")`` wires several to one transport).
 
     ## Visibility convention
 
@@ -168,6 +163,12 @@ class UIAgent(LLMContextAgent):
     ``[offscreen]`` nodes as on-the-page-but-not-in-view, typically
     issuing a ``scroll_to`` command before acting on them.
     """
+
+    #: Task name of the built-in LLM ``respond`` handler. Requesters
+    #: dispatch with ``self.task(agent, name=UIAgent.DEFAULT_TASK_NAME,
+    #: payload={"query": ...})``. Kept in sync with the literal in the
+    #: ``@task(name="respond", ...)`` decorator below.
+    DEFAULT_TASK_NAME = "respond"
 
     def __init__(
         self,
@@ -256,8 +257,8 @@ class UIAgent(LLMContextAgent):
         Raises:
             ValueError: If ``bridged`` is set together with the default
                 ``auto_inject_ui_state=True``. The two are
-                incompatible: auto-injection fires on
-                ``on_task_request``, but a bridged ``UIAgent`` receives
+                incompatible: auto-injection fires at the start of the
+                ``respond`` task, but a bridged ``UIAgent`` receives
                 user voice frames through the bridge instead of task
                 messages, so the snapshot would never reach the LLM
                 context. The canonical pattern is a non-bridged
@@ -270,8 +271,8 @@ class UIAgent(LLMContextAgent):
         if bridged is not None and auto_inject_ui_state:
             raise ValueError(
                 f"UIAgent '{name}': bridged + auto_inject_ui_state=True is "
-                "incompatible. Auto-injection fires on on_task_request, but a "
-                "bridged UIAgent receives frames through the bridge — the "
+                "incompatible. Auto-injection fires at the start of the respond "
+                "task, but a bridged UIAgent receives frames through the bridge — the "
                 "snapshot would never land in the LLM context and the agent "
                 "would silently hallucinate. Use the canonical pattern "
                 "(non-bridged UIAgent receiving tasks from a separate "
@@ -297,15 +298,15 @@ class UIAgent(LLMContextAgent):
         # Rendered into LLM context via ``inject_ui_state``.
         self._latest_snapshot: dict[str, Any] | None = None
         # Task currently being processed by this agent. Set in
-        # ``on_task_request``, cleared by ``respond_to_task``. Lets
+        # ``respond_with_llm``, cleared when the task completes. Lets
         # ``@tool`` methods (and the mixin tools) close out the task
         # without having to thread the task id through every call.
         self._current_task: BusTaskRequestMessage | None = None
-        # Single-flight serialization. ``on_task_request`` acquires
-        # this lock and holds it until ``respond_to_task`` fires.
-        # See the "Single-flight task semantics" section in the
-        # class docstring for why.
-        self._task_lock = asyncio.Lock()
+        # Resolved by ``respond_to_task`` to hand the result back to the
+        # in-flight ``respond_with_llm`` handler, which then sends the
+        # task response. See the "Single-flight task semantics" section
+        # in the class docstring.
+        self._pending: asyncio.Future | None = None
         # Registry of in-flight user task groups dispatched by this
         # agent (see ``user_task_group``). Keyed by ``task_id``.
         # ``on_bus_message`` consults this to decide which task
@@ -317,7 +318,7 @@ class UIAgent(LLMContextAgent):
         """Send a named UI command to the client.
 
         Publishes a ``BusUICommandMessage`` which the bridge installed
-        by ``attach_ui_bridge`` translates into an
+        by ``@ui_agent`` translates into an
         ``RTVIServerMessageFrame`` on the root agent's pipeline.
         Client-side handlers subscribed to ``RTVIEvent.UICommand`` (or
         React's ``useUICommandHandler``) dispatch on the command name.
@@ -511,45 +512,69 @@ class UIAgent(LLMContextAgent):
     def current_task(self) -> BusTaskRequestMessage | None:
         """The task this agent is currently processing, or ``None`` when idle.
 
-        Set when ``on_task_request`` runs and cleared by
-        ``respond_to_task``. Lets ``@tool`` methods inspect the
-        in-flight task without threading the message through every
-        call.
+        Set when ``respond_with_llm`` starts and cleared when the task
+        completes. Lets ``@tool`` methods inspect the in-flight task
+        without threading the message through every call.
         """
         return self._current_task
 
-    async def on_task_request(self, message: BusTaskRequestMessage) -> None:
-        """Reset (when configured) and inject ``<ui_state>`` before dispatch.
+    @task(name="respond", sequential=True)
+    async def _respond_task(self, message: BusTaskRequestMessage) -> None:
+        await self.respond_with_llm(message)
 
-        Acquires the single-flight lock, records the in-flight task
-        for ``respond_to_task`` to close out, clears the LLM context
-        when ``keep_history=False``, and injects the current snapshot
-        when ``auto_inject_ui_state=True``. Returns to the subclass,
-        which queues the LLM frame; the lock stays held until
-        ``respond_to_task`` fires from inside a tool. Concurrent task
-        requests block on the lock and process in arrival order.
+    def render_query(self, message: BusTaskRequestMessage) -> str:
+        """Extract the user's query text from a task request.
 
-        The pipeline processes the queued frames in order, so by the
-        time the subclass appends the user's query with
-        ``run_llm=True`` the context contains exactly: current
-        ``<ui_state>`` + query.
+        Override to read a different payload shape. The returned string
+        is appended to the LLM context as a user message before the LLM
+        runs. The default reads ``payload["query"]``.
+
+        Args:
+            message: The inbound task request.
+
+        Returns:
+            The query text to feed into the LLM.
         """
-        await self._task_lock.acquire()
+        return (message.payload or {}).get("query", "")
+
+    async def respond_with_llm(self, message: BusTaskRequestMessage) -> None:
+        """Run one LLM turn for a task and respond when a tool completes it.
+
+        Records the in-flight task for ``respond_to_task`` to close out,
+        clears the LLM context when ``keep_history=False``, injects the
+        current snapshot when ``auto_inject_ui_state=True``, appends the
+        rendered query, and runs the LLM. Then blocks until a ``@tool``
+        calls ``respond_to_task``, and sends that result as the task
+        response.
+
+        This is the body of the built-in ``@task(name="respond",
+        sequential=True)`` handler. Because it spans the full LLM
+        round-trip, the framework's per-name lock serializes same-name
+        ``respond`` requests across the whole turn (see "Single-flight
+        task semantics" in the class docstring). Subclasses that want a
+        differently named LLM task can register their own
+        ``@task(name=..., sequential=True)`` handler that calls this.
+        """
+        self._current_task = message
+        self._pending = asyncio.get_running_loop().create_future()
         try:
-            await super().on_task_request(message)
-            self._current_task = message
             if not self._keep_history:
                 await self.reset_context()
             if self._auto_inject_ui_state:
                 await self.inject_ui_state()
-        except BaseException:
-            # Setup failed before the LLM ever ran. Release so the
-            # next task can proceed; respond_to_task won't fire on
-            # this one.
+            await self.queue_frame(
+                LLMMessagesAppendFrame(
+                    messages=[{"role": "user", "content": self.render_query(message)}],
+                    run_llm=True,
+                )
+            )
+            result = await self._pending
+            await self.send_task_response(
+                message.task_id, response=result["response"], status=result["status"]
+            )
+        finally:
             self._current_task = None
-            if self._task_lock.locked():
-                self._task_lock.release()
-            raise
+            self._pending = None
 
     async def reset_context(self) -> None:
         """Clear the LLM conversation history.
@@ -581,10 +606,10 @@ class UIAgent(LLMContextAgent):
     ) -> None:
         """Complete the in-flight task this agent is processing.
 
-        Convenience wrapper around ``send_task_response`` that looks up
-        the current task from ``current_task``. Clears
-        ``current_task`` after the response is sent so a second call
-        is a no-op.
+        Hands ``response`` (with ``speak`` merged in) to the
+        ``respond_with_llm`` handler waiting on the current task, which
+        sends it as the task response. Typically called from a ``@tool``
+        once the agent has decided how to answer.
 
         ``speak`` is the convention the SDK demos use for "text the
         voice agent should hand verbatim to TTS". When provided it's
@@ -593,7 +618,8 @@ class UIAgent(LLMContextAgent):
         ``response`` dict instead and leave ``speak`` unset.
 
         No-op when there is no task in flight (e.g. the tool was
-        invoked outside a task dispatch).
+        invoked outside a task dispatch) or when the task has already
+        been responded to.
 
         Args:
             response: Result data dict. Merged with the ``speak`` key
@@ -605,45 +631,13 @@ class UIAgent(LLMContextAgent):
             status: Completion status. Defaults to
                 ``TaskStatus.COMPLETED``.
         """
-        message = self._current_task
-        if message is None:
+        pending = self._pending
+        if pending is None or pending.done():
             return
-        self._current_task = None
         payload: dict = dict(response) if response else {}
         if speak is not None:
             payload["speak"] = speak
-        try:
-            await self.send_task_response(message.task_id, response=payload, status=status)
-        finally:
-            # Release the single-flight lock so the next queued task
-            # can proceed. ``locked()`` guard handles the unusual
-            # case where a tool calls ``respond_to_task`` outside the
-            # ``on_task_request`` flow (no lock to release).
-            if self._task_lock.locked():
-                self._task_lock.release()
-
-    async def on_task_cancelled(self, message: BusTaskCancelMessage) -> None:
-        """Release the single-flight lock when the in-flight task is cancelled.
-
-        ``BaseAgent._handle_task_cancel`` sends a ``CANCELLED``
-        response directly via ``send_task_response``, bypassing
-        ``respond_to_task`` and its lock-release. Without this hook
-        the lock would stay held after a cancellation and every
-        subsequent task request would block at ``on_task_request``'s
-        ``_task_lock.acquire()`` forever.
-
-        Idempotent and race-safe: if a tool happens to fire
-        ``respond_to_task`` concurrently and clears the slot first,
-        the ``current_task`` check below short-circuits, and the
-        ``locked()`` guard makes the release a no-op when nothing
-        is held.
-        """
-        await super().on_task_cancelled(message)
-        current = self._current_task
-        if current is not None and current.task_id == message.task_id:
-            self._current_task = None
-            if self._task_lock.locked():
-                self._task_lock.release()
+        pending.set_result({"response": payload, "status": status})
 
     def user_task_group(
         self,

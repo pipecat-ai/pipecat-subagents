@@ -41,12 +41,12 @@ class _StubUIAgent(UIAgent):
         self.captured.append(message)
 
 
-async def _make_agent(**kwargs) -> _StubUIAgent:
+async def _make_agent(cls=_StubUIAgent, **kwargs) -> _StubUIAgent:
     bus = AsyncQueueBus()
     tm = TaskManager()
     tm.setup(TaskManagerParams(loop=asyncio.get_running_loop()))
     bus.set_task_manager(tm)
-    agent = _StubUIAgent("ui", bus=bus, active=False, **kwargs)
+    agent = cls("ui", bus=bus, active=False, **kwargs)
     agent.set_task_manager(tm)
 
     async def _mock_queue_frame(frame, direction=FrameDirection.DOWNSTREAM):
@@ -56,7 +56,38 @@ async def _make_agent(**kwargs) -> _StubUIAgent:
     mock_task = MagicMock()
     mock_task.queue_frame = AsyncMock(side_effect=_mock_queue_frame)
     agent._pipeline_task = mock_task
+    # The respond handler sends the task response itself; mock it so
+    # tests can drive respond_with_llm without wiring _active_tasks.
+    agent.send_task_response = AsyncMock()
     return agent
+
+
+async def _settle() -> None:
+    """Yield enough times for spawned task handlers to run/park."""
+    for _ in range(10):
+        await asyncio.sleep(0)
+
+
+async def _start(agent: _StubUIAgent, message: BusTaskRequestMessage) -> asyncio.Task:
+    """Start a respond turn; it parks at ``await self._pending`` until resolved.
+
+    Returns the handler task. Pair with ``respond_to_task`` + ``await t``
+    (or a cancel) so the background task doesn't outlive the test.
+    """
+    t = asyncio.create_task(agent.respond_with_llm(message))
+    await _settle()
+    return t
+
+
+def _respond_msg(task_id: str, query: str = "hi") -> BusTaskRequestMessage:
+    """A task request routed to the built-in ``respond`` handler."""
+    return BusTaskRequestMessage(
+        source="voice",
+        target="ui",
+        task_name="respond",
+        task_id=task_id,
+        payload={"query": query},
+    )
 
 
 async def _dispatch(agent: _StubUIAgent, message: BusUIEventMessage) -> None:
@@ -184,10 +215,11 @@ class TestUIAgentDispatch(unittest.IsolatedAsyncioTestCase):
             _Bad("ui", bus=AsyncQueueBus())
 
     async def test_bridged_with_default_auto_inject_raises(self):
-        # The default config (auto_inject_ui_state=True) only fires on
-        # on_task_request, but a bridged UIAgent receives frames through
-        # the bridge instead of task messages. The combination would
-        # silently never inject the snapshot — guard at construction.
+        # The default config (auto_inject_ui_state=True) only fires at
+        # the start of the respond task, but a bridged UIAgent receives
+        # frames through the bridge instead of task messages. The
+        # combination would silently never inject the snapshot — guard
+        # at construction.
         class _Plain(UIAgent):
             def build_llm(self):
                 return MagicMock()
@@ -628,56 +660,64 @@ class TestUIAgentSnapshot(unittest.IsolatedAsyncioTestCase):
 
 
 class TestUIAgentAutoInject(unittest.IsolatedAsyncioTestCase):
-    async def test_on_task_request_auto_injects_latest_snapshot(self):
+    async def test_respond_auto_injects_latest_snapshot(self):
         agent = await _make_agent()
         agent._latest_snapshot = _SAMPLE_SNAPSHOT
 
-        await agent.on_task_request(
+        t = await _start(
+            agent,
             BusTaskRequestMessage(
-                source="voice",
-                target="ui",
-                task_name="handle_request",
-                task_id="t1",
-                payload={"query": "hi"},
-            )
+                source="voice", target="ui", task_id="t1", payload={"query": "hi"}
+            ),
         )
 
+        # The <ui_state> injection is appended first, then the query.
         frames = _append_frames(agent)
-        self.assertEqual(len(frames), 1)
-        msg = frames[0].messages[0]
-        self.assertEqual(msg["role"], "developer")
-        self.assertTrue(msg["content"].startswith("<ui_state>"))
+        self.assertEqual(len(frames), 2)
+        self.assertEqual(frames[0].messages[0]["role"], "developer")
+        self.assertTrue(frames[0].messages[0]["content"].startswith("<ui_state>"))
         self.assertFalse(frames[0].run_llm)
+        self.assertEqual(frames[1].messages[0]["content"], "hi")
+        self.assertTrue(frames[1].run_llm)
+
+        await agent.respond_to_task()
+        await t
 
     async def test_auto_inject_ui_state_false_suppresses_injection(self):
         agent = await _make_agent(auto_inject_ui_state=False)
         agent._latest_snapshot = _SAMPLE_SNAPSHOT
 
-        await agent.on_task_request(
+        t = await _start(
+            agent,
             BusTaskRequestMessage(
-                source="voice",
-                target="ui",
-                task_name="handle_request",
-                task_id="t1",
-                payload={"query": "hi"},
-            )
+                source="voice", target="ui", task_id="t1", payload={"query": "hi"}
+            ),
         )
 
-        self.assertEqual(_append_frames(agent), [])
+        # Only the query frame is appended; no <ui_state> injection.
+        frames = _append_frames(agent)
+        self.assertEqual(len(frames), 1)
+        self.assertFalse(frames[0].messages[0]["content"].startswith("<ui_state>"))
+
+        await agent.respond_to_task()
+        await t
 
     async def test_auto_inject_no_op_without_snapshot(self):
         agent = await _make_agent()
-        # No _latest_snapshot set.
-        await agent.on_task_request(
+        # No _latest_snapshot set, so injection is a no-op.
+        t = await _start(
+            agent,
             BusTaskRequestMessage(
-                source="voice",
-                target="ui",
-                task_name="handle_request",
-                task_id="t1",
-                payload={"query": "hi"},
-            )
+                source="voice", target="ui", task_id="t1", payload={"query": "hi"}
+            ),
         )
-        self.assertEqual(_append_frames(agent), [])
+
+        frames = _append_frames(agent)
+        self.assertEqual(len(frames), 1)
+        self.assertFalse(frames[0].messages[0]["content"].startswith("<ui_state>"))
+
+        await agent.respond_to_task()
+        await t
 
 
 def _update_frames(agent: _StubUIAgent) -> list[LLMMessagesUpdateFrame]:
@@ -696,14 +736,11 @@ class TestUIAgentKeepHistory(unittest.IsolatedAsyncioTestCase):
         agent = await _make_agent()
         agent._latest_snapshot = _SAMPLE_SNAPSHOT
 
-        await agent.on_task_request(
+        t = await _start(
+            agent,
             BusTaskRequestMessage(
-                source="voice",
-                target="ui",
-                task_name="handle_request",
-                task_id="t1",
-                payload={"query": "hi"},
-            )
+                source="voice", target="ui", task_id="t1", payload={"query": "hi"}
+            ),
         )
 
         updates = _update_frames(agent)
@@ -711,20 +748,20 @@ class TestUIAgentKeepHistory(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(updates[0].messages, [])
         self.assertFalse(updates[0].run_llm)
 
+        await agent.respond_to_task()
+        await t
+
     async def test_reset_runs_before_inject(self):
         # Order matters: pipeline processes frames in queue order,
         # so the reset must be queued before the <ui_state> append.
         agent = await _make_agent()
         agent._latest_snapshot = _SAMPLE_SNAPSHOT
 
-        await agent.on_task_request(
+        t = await _start(
+            agent,
             BusTaskRequestMessage(
-                source="voice",
-                target="ui",
-                task_name="handle_request",
-                task_id="t1",
-                payload={"query": "hi"},
-            )
+                source="voice", target="ui", task_id="t1", payload={"query": "hi"}
+            ),
         )
 
         all_calls = agent._pipeline_task.queue_frame.call_args_list
@@ -733,24 +770,28 @@ class TestUIAgentKeepHistory(unittest.IsolatedAsyncioTestCase):
         append_idx = frame_types.index("LLMMessagesAppendFrame")
         self.assertLess(update_idx, append_idx)
 
+        await agent.respond_to_task()
+        await t
+
     async def test_keep_history_true_skips_reset(self):
-        # In accumulate mode no reset frame is emitted; the <ui_state>
-        # is appended on top of whatever messages already exist.
+        # In accumulate mode no reset frame is emitted; <ui_state> and
+        # the query are appended on top of whatever already exists.
         agent = await _make_agent(keep_history=True)
         agent._latest_snapshot = _SAMPLE_SNAPSHOT
 
-        await agent.on_task_request(
+        t = await _start(
+            agent,
             BusTaskRequestMessage(
-                source="voice",
-                target="ui",
-                task_name="handle_request",
-                task_id="t1",
-                payload={"query": "hi"},
-            )
+                source="voice", target="ui", task_id="t1", payload={"query": "hi"}
+            ),
         )
 
         self.assertEqual(_update_frames(agent), [])
-        self.assertEqual(len(_append_frames(agent)), 1)
+        # Both the <ui_state> injection and the query are appended.
+        self.assertEqual(len(_append_frames(agent)), 2)
+
+        await agent.respond_to_task()
+        await t
 
     async def test_reset_context_method_emits_update_frame(self):
         # Public escape hatch for keep_history=True apps.
@@ -769,28 +810,23 @@ class TestUIAgentRespondToTask(unittest.IsolatedAsyncioTestCase):
         agent = await _make_agent()
         self.assertIsNone(agent.current_task)
         message = BusTaskRequestMessage(
-            source="voice",
-            target="ui",
-            task_name="handle_request",
-            task_id="t1",
-            payload={"query": "hi"},
+            source="voice", target="ui", task_id="t1", payload={"query": "hi"}
         )
-        await agent.on_task_request(message)
+        t = await _start(agent, message)
         self.assertIs(agent.current_task, message)
+
+        await agent.respond_to_task()
+        await t
 
     async def test_respond_to_task_clears_current_and_sends_response(self):
         agent = await _make_agent()
-        agent.send_task_response = AsyncMock()
-        message = BusTaskRequestMessage(
-            source="voice",
-            target="ui",
-            task_name="handle_request",
-            task_id="t1",
-        )
-        await agent.on_task_request(message)
+        message = BusTaskRequestMessage(source="voice", target="ui", task_id="t1")
+        t = await _start(agent, message)
 
         await agent.respond_to_task(speak="hello")
+        await t
 
+        # The handler (not respond_to_task) sends the response.
         agent.send_task_response.assert_awaited_once()
         call = agent.send_task_response.await_args
         self.assertEqual(call.args[0], "t1")
@@ -799,123 +835,172 @@ class TestUIAgentRespondToTask(unittest.IsolatedAsyncioTestCase):
 
     async def test_respond_to_task_no_op_when_idle(self):
         agent = await _make_agent()
-        agent.send_task_response = AsyncMock()
-        # No on_task_request first; agent is idle.
+        # No task started; agent is idle (no pending future).
         await agent.respond_to_task(speak="hello")
         agent.send_task_response.assert_not_awaited()
 
     async def test_respond_to_task_omits_speak_when_none(self):
         agent = await _make_agent()
-        agent.send_task_response = AsyncMock()
-        await agent.on_task_request(
-            BusTaskRequestMessage(source="voice", target="ui", task_id="t1")
-        )
+        t = await _start(agent, BusTaskRequestMessage(source="voice", target="ui", task_id="t1"))
 
         await agent.respond_to_task()
+        await t
 
         call = agent.send_task_response.await_args
         self.assertEqual(call.kwargs["response"], {})
 
     async def test_respond_to_task_merges_speak_into_response(self):
         agent = await _make_agent()
-        agent.send_task_response = AsyncMock()
-        await agent.on_task_request(
-            BusTaskRequestMessage(source="voice", target="ui", task_id="t1")
-        )
+        t = await _start(agent, BusTaskRequestMessage(source="voice", target="ui", task_id="t1"))
 
         await agent.respond_to_task({"description": "scrolled"}, speak="ok")
+        await t
 
         call = agent.send_task_response.await_args
         self.assertEqual(call.kwargs["response"], {"description": "scrolled", "speak": "ok"})
 
-    async def test_cancellation_releases_lock_for_subsequent_tasks(self):
-        """Cancelling the in-flight task must release the single-flight lock.
+    async def test_cancellation_frees_lock_for_subsequent_tasks(self):
+        """Cancelling a blocked respond handler frees the per-name lock.
 
-        ``BaseAgent._handle_task_cancel`` sends the CANCELLED
-        response directly via ``send_task_response`` and bypasses
-        ``respond_to_task``. Without ``UIAgent.on_task_cancelled``
-        clearing the slot and releasing the lock, the next task
-        request would block forever.
+        The framework cancels the handler task; the ``async with lock``
+        in ``_run_task_handler`` unwinds on ``CancelledError`` (no
+        bespoke ``on_task_cancelled`` needed), so the next ``respond``
+        request can proceed.
         """
         agent = await _make_agent()
-        agent.send_task_response = AsyncMock()
-        msg_a = BusTaskRequestMessage(source="voice", target="ui", task_id="a")
-        msg_b = BusTaskRequestMessage(source="voice", target="ui", task_id="b")
+        msg_a = _respond_msg("a")
+        msg_b = _respond_msg("b")
 
-        await agent.on_task_request(msg_a)
+        await agent._handle_task_request(msg_a)
+        await _settle()
         self.assertIs(agent.current_task, msg_a)
+        self.assertTrue(agent._task_locks["respond"].locked())
 
-        # Simulate the cancellation hook firing for task A. The real
-        # path is ``_handle_task_cancel`` which calls this hook;
-        # invoking it directly is the focused unit test.
-        await agent.on_task_cancelled(
+        await agent._handle_task_cancel(
             BusTaskCancelMessage(source="voice", target="ui", task_id="a")
         )
-
-        # Slot cleared, lock released.
+        await _settle()
         self.assertIsNone(agent.current_task)
-        self.assertFalse(agent._task_lock.locked())
+        self.assertFalse(agent._task_locks["respond"].locked())
 
-        # A subsequent task can now proceed without blocking.
-        await asyncio.wait_for(agent.on_task_request(msg_b), timeout=1.0)
+        # A subsequent respond request now proceeds.
+        await agent._handle_task_request(msg_b)
+        await _settle()
         self.assertIs(agent.current_task, msg_b)
 
-        # Cleanup so the lock isn't left held across tests.
         await agent.respond_to_task(speak="B done")
+        await _settle()
 
-    async def test_cancellation_for_unrelated_task_id_leaves_lock_held(self):
-        """A cancel for some other task_id must not free the active task's lock."""
+    async def test_cancel_unknown_task_id_is_noop(self):
+        """A cancel for a task_id not in flight must not disturb the active one."""
         agent = await _make_agent()
-        agent.send_task_response = AsyncMock()
-        msg_a = BusTaskRequestMessage(source="voice", target="ui", task_id="a")
+        msg_a = _respond_msg("a")
 
-        await agent.on_task_request(msg_a)
-        await agent.on_task_cancelled(
+        await agent._handle_task_request(msg_a)
+        await _settle()
+
+        await agent._handle_task_cancel(
             BusTaskCancelMessage(source="voice", target="ui", task_id="unrelated")
         )
+        await _settle()
 
-        # A is still in flight.
+        # A is still in flight, lock still held.
         self.assertIs(agent.current_task, msg_a)
-        self.assertTrue(agent._task_lock.locked())
+        self.assertTrue(agent._task_locks["respond"].locked())
 
-        # Clean up.
         await agent.respond_to_task(speak="A done")
+        await _settle()
 
-    async def test_concurrent_task_requests_serialize(self):
-        """Two overlapping on_task_request calls must process one at a time.
+    async def test_concurrent_same_name_tasks_serialize(self):
+        """Two same-name respond requests run one at a time via the per-name lock.
 
-        UIAgent's single-flight invariant: while task A is in flight,
-        task B's on_task_request blocks at lock acquisition. Only
-        once A's respond_to_task fires does B proceed and become
-        ``current_task``.
+        While A is in flight, B blocks on ``_task_locks["respond"]`` and
+        its setup does not run (current_task stays A). Only once A's
+        ``respond_to_task`` fires does B proceed.
         """
         agent = await _make_agent()
-        agent.send_task_response = AsyncMock()
-        msg_a = BusTaskRequestMessage(source="voice", target="ui", task_id="a")
-        msg_b = BusTaskRequestMessage(source="voice", target="ui", task_id="b")
+        msg_a = _respond_msg("a")
+        msg_b = _respond_msg("b")
 
-        # A starts and parks on respond_to_task pending.
-        await agent.on_task_request(msg_a)
+        await agent._handle_task_request(msg_a)
+        await _settle()
         self.assertIs(agent.current_task, msg_a)
 
-        # B's setup starts but blocks at the lock. Run it in a task
-        # so we can verify it does not progress until A completes.
-        b_task = asyncio.create_task(agent.on_task_request(msg_b))
-        # Yield so b_task gets a chance to start and block.
-        await asyncio.sleep(0)
-        self.assertFalse(b_task.done())
-        # current_task is still A, not B.
+        # B is dispatched but blocks on the per-name lock.
+        await agent._handle_task_request(msg_b)
+        await _settle()
         self.assertIs(agent.current_task, msg_a)
 
-        # A completes. The lock releases, B unblocks.
+        # A completes -> lock releases -> B proceeds.
         await agent.respond_to_task(speak="A done")
-        await b_task
-
+        await _settle()
         self.assertIs(agent.current_task, msg_b)
 
-        # Clean up so the lock isn't left held across tests.
         await agent.respond_to_task(speak="B done")
+        await _settle()
         self.assertIsNone(agent.current_task)
+
+
+class TestUIAgentRespondTask(unittest.IsolatedAsyncioTestCase):
+    async def test_respond_handler_runs_after_setup(self):
+        agent = await _make_agent()
+        agent._latest_snapshot = _SAMPLE_SNAPSHOT
+
+        t = await _start(
+            agent,
+            BusTaskRequestMessage(
+                source="voice", target="ui", task_id="t1", payload={"query": "hello"}
+            ),
+        )
+
+        # First append is the auto-injected <ui_state>, second is the query.
+        appends = _append_frames(agent)
+        self.assertEqual(len(appends), 2)
+        self.assertTrue(appends[0].messages[0]["content"].startswith("<ui_state>"))
+        self.assertFalse(appends[0].run_llm)
+        self.assertEqual(appends[1].messages[0]["content"], "hello")
+        self.assertTrue(appends[1].run_llm)
+        self.assertEqual(agent.current_task.task_id, "t1")
+
+        await agent.respond_to_task(speak="done")
+        await t
+        self.assertIsNone(agent.current_task)
+        agent.send_task_response.assert_awaited_once()
+
+    async def test_render_query_override(self):
+        class _Custom(_StubUIAgent):
+            def render_query(self, message):
+                return f"Q: {message.payload['q']}"
+
+        agent = await _make_agent(cls=_Custom)
+        t = await _start(
+            agent,
+            BusTaskRequestMessage(source="voice", target="ui", task_id="t1", payload={"q": "hi"}),
+        )
+
+        query_frames = [f for f in _append_frames(agent) if f.run_llm]
+        self.assertEqual(query_frames[0].messages[0]["content"], "Q: hi")
+
+        await agent.respond_to_task()
+        await t
+
+    async def test_handler_failure_clears_state(self):
+        class _Boom(_StubUIAgent):
+            def render_query(self, message):
+                raise RuntimeError("boom")
+
+        agent = await _make_agent(cls=_Boom)
+
+        with self.assertRaises(RuntimeError):
+            await agent.respond_with_llm(
+                BusTaskRequestMessage(
+                    source="voice", target="ui", task_id="t1", payload={"query": "x"}
+                )
+            )
+
+        # A handler that raises before responding must not strand state.
+        self.assertIsNone(agent.current_task)
+        self.assertIsNone(agent._pending)
 
 
 if __name__ == "__main__":

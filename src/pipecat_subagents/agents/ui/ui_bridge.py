@@ -6,8 +6,9 @@
 
 """Bridge between the RTVI UI message channel and the agent bus.
 
-Register with ``attach_ui_bridge(agent)`` from the root agent's
-``on_ready`` hook. The bridge handles both directions:
+Apply the ``@ui_agent(...)`` class decorator to the root agent that
+owns the transport and RTVI processor. The decorator wires the bridge
+when the agent becomes ready. The bridge handles both directions:
 
 - Inbound: typed UI messages from the client (``ui-event``,
   ``ui-snapshot``, ``ui-cancel-task``) are republished onto the bus
@@ -24,6 +25,8 @@ Register with ``attach_ui_bridge(agent)`` from the root agent's
 """
 
 from __future__ import annotations
+
+import functools
 
 from pipecat.processors.frameworks.rtvi.frames import (
     RTVIUICommandFrame,
@@ -52,20 +55,22 @@ from pipecat_subagents.agents.ui.ui_messages import (
 )
 
 
-def attach_ui_bridge(agent: BaseAgent, *, target: str | None = None) -> None:
+def _attach_ui_bridge(agent: BaseAgent, *, targets: list[str | None] | None = None) -> None:
     """Wire the root agent's pipeline to the UI Agent SDK wire protocol.
 
-    Must be called after the pipeline task exists, typically from the
-    root agent's ``on_ready`` hook. The root agent's pipeline task must
-    be built with ``enable_rtvi=True``.
+    Internal helper driven by the ``@ui_agent`` class decorator. Must
+    run after the pipeline task exists; the decorator calls it from the
+    agent's ``on_ready`` hook. The root agent's pipeline task must be
+    built with ``enable_rtvi=True``.
 
     Side effects:
         - Registers an ``on_ui_message`` handler on RTVI. Typed UI
           messages from the client (``ui-event``, ``ui-snapshot``,
-          ``ui-cancel-task``) are republished as ``BusUIEventMessage``;
-          ``ui-snapshot`` and ``ui-cancel-task`` collapse to
-          subagents-internal event names so ``UIAgent`` can dispatch
-          them through its existing bus-event path.
+          ``ui-cancel-task``) are republished as ``BusUIEventMessage``,
+          one per entry in ``targets``; ``ui-snapshot`` and
+          ``ui-cancel-task`` collapse to subagents-internal event names
+          so ``UIAgent`` can dispatch them through its existing
+          bus-event path.
         - Registers an ``on_bus_message`` handler on ``agent``. When a
           ``BusUICommandMessage`` or any of the four ``BusUITask*``
           messages arrive, the bridge pushes the matching typed RTVI
@@ -73,11 +78,11 @@ def attach_ui_bridge(agent: BaseAgent, *, target: str | None = None) -> None:
 
     Args:
         agent: The root agent owning the pipeline task and RTVI processor.
-        target: Optional target agent name for the republished
-            ``BusUIEventMessage``. When ``None`` (the default), the
-            message is broadcast and every ``UIAgent`` on the bus sees
-            it. Set this when multiple UIAgents coexist and only one
-            should handle UI events.
+        targets: Target agent names for the republished
+            ``BusUIEventMessage``. Each inbound UI message fans out to
+            one ``BusUIEventMessage`` per entry. ``None`` (or a ``None``
+            entry) broadcasts so every ``UIAgent`` on the bus sees it.
+            Defaults to ``[None]`` (broadcast).
 
     Raises:
         RuntimeError: If the agent's pipeline task has no RTVI processor.
@@ -90,12 +95,13 @@ def attach_ui_bridge(agent: BaseAgent, *, target: str | None = None) -> None:
         ``on_ready`` to avoid a registration-vs-event race that drops
         the event silently.
     """
+    targets = targets if targets is not None else [None]
     rtvi = getattr(agent.pipeline_task, "rtvi", None)
     if rtvi is None:
         raise RuntimeError(
             f"Agent '{agent.name}' has no RTVI processor. "
             "Ensure build_pipeline_task creates the task with enable_rtvi=True "
-            "before calling attach_ui_bridge."
+            "before applying @ui_agent."
         )
 
     @rtvi.event_handler("on_ui_message")
@@ -106,33 +112,23 @@ def attach_ui_bridge(agent: BaseAgent, *, target: str | None = None) -> None:
         # subagents-internal names for the snapshot and cancel-task
         # cases keeps app @on_ui_event handlers from colliding.
         if isinstance(message, UIEventMessage):
-            await agent.bus.send(
-                BusUIEventMessage(
-                    source=agent.name,
-                    target=target,
-                    event_name=message.data.event,
-                    payload=message.data.payload,
-                )
-            )
+            event_name = message.data.event
+            payload = message.data.payload
         elif isinstance(message, UISnapshotMessage):
-            await agent.bus.send(
-                BusUIEventMessage(
-                    source=agent.name,
-                    target=target,
-                    event_name=_UI_SNAPSHOT_BUS_EVENT_NAME,
-                    payload=message.data.tree.model_dump(exclude_none=True),
-                )
-            )
+            event_name = _UI_SNAPSHOT_BUS_EVENT_NAME
+            payload = message.data.tree.model_dump(exclude_none=True)
         elif isinstance(message, UICancelTaskMessage):
+            event_name = _UI_CANCEL_TASK_BUS_EVENT_NAME
+            payload = {"task_id": message.data.task_id, "reason": message.data.reason}
+        else:
+            return
+        for target in targets:
             await agent.bus.send(
                 BusUIEventMessage(
                     source=agent.name,
                     target=target,
-                    event_name=_UI_CANCEL_TASK_BUS_EVENT_NAME,
-                    payload={
-                        "task_id": message.data.task_id,
-                        "reason": message.data.reason,
-                    },
+                    event_name=event_name,
+                    payload=payload,
                 )
             )
 
@@ -183,3 +179,51 @@ def attach_ui_bridge(agent: BaseAgent, *, target: str | None = None) -> None:
         if frame is None:
             return
         await agent.queue_frame(frame)
+
+
+def ui_agent(*agent_names: str):
+    """Class decorator: bridge a root agent's pipeline to its UIAgents.
+
+    Apply to the root agent class that owns the transport and RTVI
+    processor. When the agent becomes ready, the decorator wires the
+    first-class UI RTVI channels to the agent bus in both directions
+    (see the module docstring), routing inbound client events and
+    snapshots to each named ``UIAgent``.
+
+    The root agent's pipeline task must be built with
+    ``enable_rtvi=True``.
+
+    Example::
+
+        @ui_agent("assistant")
+        class AppRoot(BaseAgent):
+            ...
+
+        # Multiple UIAgents on the same transport:
+        @ui_agent("planner", "researcher")
+        class AppRoot(BaseAgent):
+            ...
+
+    Args:
+        *agent_names: Names of the ``UIAgent`` instances that should
+            receive inbound UI events and snapshots. Each inbound
+            message is delivered to every listed agent. With no names,
+            messages broadcast to every ``UIAgent`` on the bus.
+
+    Returns:
+        The decorated class, with ``on_ready`` wrapped to wire the
+        bridge after the original hook runs.
+    """
+
+    def decorate(cls: type[BaseAgent]) -> type[BaseAgent]:
+        original_on_ready = cls.on_ready
+
+        @functools.wraps(original_on_ready)
+        async def on_ready(self) -> None:
+            await original_on_ready(self)
+            _attach_ui_bridge(self, targets=list(agent_names) or [None])
+
+        cls.on_ready = on_ready
+        return cls
+
+    return decorate

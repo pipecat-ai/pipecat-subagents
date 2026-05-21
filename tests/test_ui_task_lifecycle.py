@@ -30,10 +30,11 @@ from pipecat.processors.frameworks.rtvi.frames import (
 )
 from pipecat.utils.asyncio.task_manager import TaskManager, TaskManagerParams
 
-from pipecat_subagents.agents import UIAgent, attach_ui_bridge
+from pipecat_subagents.agents import UIAgent
 from pipecat_subagents.agents.base_agent import BaseAgent
 from pipecat_subagents.agents.llm.llm_agent import PipelineFlushFrame
 from pipecat_subagents.agents.task_context import TaskStatus
+from pipecat_subagents.agents.ui.ui_bridge import _attach_ui_bridge
 from pipecat_subagents.agents.ui.ui_messages import (
     _UI_CANCEL_TASK_BUS_EVENT_NAME,
     BusUIEventMessage,
@@ -703,7 +704,7 @@ def _make_bridge_fixture():
     agent.event_handler = agent_event_handler
     agent.queue_frame = AsyncMock()
 
-    attach_ui_bridge(agent)
+    _attach_ui_bridge(agent, targets=[None])
 
     bus_handler = captured["agent::on_bus_message"]
 

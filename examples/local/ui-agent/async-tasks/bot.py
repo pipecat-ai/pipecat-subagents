@@ -22,7 +22,7 @@ Architecture::
     AsyncTasksRoot (BaseAgent, root)         -- transport + UI bridge
       ├── VoiceAgent (LLMAgent, bridged)     -- conversational layer
       │     └── @tool answer_about_screen(query)
-      │           └── self.task("ui", payload={"query": query})
+      │           └── self.task("ui", name="respond", payload={"query": query})
       ├── ResearchAgent (UIAgent)
       │     └── @tool reply(answer, research_query=None)
       │           └── (if research_query) creates a background task
@@ -63,7 +63,7 @@ import random
 from dotenv import load_dotenv
 from loguru import logger
 from pipecat.audio.vad.silero import SileroVADAnalyzer
-from pipecat.frames.frames import LLMMessagesAppendFrame, TTSSpeakFrame
+from pipecat.frames.frames import TTSSpeakFrame
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.task import PipelineTask
 from pipecat.processors.aggregators.llm_context import LLMContext
@@ -88,8 +88,8 @@ from pipecat_subagents.agents import (
     TaskError,
     UIAgent,
     agent_ready,
-    attach_ui_bridge,
     tool,
+    ui_agent,
 )
 from pipecat_subagents.bus import AgentBus, BusBridgeProcessor
 from pipecat_subagents.bus.messages import BusTaskRequestMessage
@@ -264,7 +264,7 @@ class VoiceAgent(LLMAgent):
         """
         logger.info(f"{self}: answer_about_screen('{query}')")
         try:
-            async with self.task("ui", payload={"query": query}, timeout=10) as t:
+            async with self.task("ui", name="respond", payload={"query": query}, timeout=10) as t:
                 pass
         except TaskError as e:
             logger.warning(f"{self}: ui task failed: {e}")
@@ -301,19 +301,6 @@ class ResearchAgent(UIAgent):
                 model=os.getenv("OPENAI_MODEL"),
                 system_instruction=UI_PROMPT,
             ),
-        )
-
-    async def on_task_request(self, message: BusTaskRequestMessage) -> None:
-        # super() resets context (keep_history=False), then auto-injects
-        # <ui_state>; we feed the user's query in afterward.
-        await super().on_task_request(message)
-        query = (message.payload or {}).get("query", "")
-        logger.info(f"{self}: task query '{query}'")
-        await self.queue_frame(
-            LLMMessagesAppendFrame(
-                messages=[{"role": "user", "content": query}],
-                run_llm=True,
-            )
         )
 
     @tool
@@ -355,16 +342,13 @@ class ResearchAgent(UIAgent):
         await params.result_callback(None)
 
 
+@ui_agent("ui")
 class AsyncTasksRoot(BaseAgent):
     """Root agent. Owns the transport and bridges to the voice layer."""
 
     def __init__(self, name: str, *, bus: AgentBus, transport: BaseTransport):
         super().__init__(name, bus=bus)
         self._transport = transport
-
-    async def on_ready(self) -> None:
-        await super().on_ready()
-        attach_ui_bridge(self, target="ui")
 
     @agent_ready(name="voice")
     async def on_voice_ready(self, data: AgentReadyData) -> None:
