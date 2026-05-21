@@ -2186,8 +2186,8 @@ wheels = [
 
 [[package]]
 name = "pipecat-ai"
-version = "1.1.1.dev159"
-source = { git = "https://github.com/pipecat-ai/pipecat#95bcebe7747b8daefffbabf25f9ba72a22b809f2" }
+version = "1.2.1"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiofiles" },
     { name = "aiohttp" },
@@ -2208,6 +2208,10 @@ dependencies = [
     { name = "soxr" },
     { name = "transformers" },
     { name = "wait-for2", marker = "python_full_version < '3.12'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/f8/22/19d75d5189b9399a873ab3c55ce2506b7a2d06b7e832b73a04e7d289899b/pipecat_ai-1.2.1.tar.gz", hash = "sha256:5f687e7239f7e20cc240a279f55e3b0ced5c8828b76285ab4ee39db354c8aaa9", size = 11120637, upload-time = "2026-05-15T22:21:10.033Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/4f/cf/2900d4e2aaa2afb8cd7d63405295fc6bfd90779b2e9734066dbe36de2fd7/pipecat_ai-1.2.1-py3-none-any.whl", hash = "sha256:ae31f48d8bf040763b93cfe001d9d77a53e542c8f32d22cd66494171eb4a794f", size = 10770689, upload-time = "2026-05-15T22:21:07.431Z" },
 ]
 
 [package.optional-dependencies]
@@ -2317,8 +2321,8 @@ requires-dist = [
     { name = "claude-agent-sdk", marker = "extra == 'examples'", specifier = ">=0.1.0" },
     { name = "fastapi", marker = "extra == 'websocket'", specifier = ">=0.115.6,<1" },
     { name = "pgmq", marker = "extra == 'pgmq'", specifier = ">=1.0.6,<1.1" },
-    { name = "pipecat-ai", specifier = ">=1.0.0" },
-    { name = "pipecat-ai", extras = ["cartesia", "daily", "deepgram", "openai", "runner", "silero", "webrtc"], marker = "extra == 'examples'", specifier = ">=1.0.0" },
+    { name = "pipecat-ai", specifier = ">=1.2.1" },
+    { name = "pipecat-ai", extras = ["cartesia", "daily", "deepgram", "openai", "runner", "silero", "webrtc"], marker = "extra == 'examples'", specifier = ">=1.2.1" },
     { name = "pipecat-ai-flows", marker = "extra == 'flows'", specifier = ">=1.0.0" },
     { name = "pipecat-ai-subagents", extras = ["flows", "pgmq", "redis", "websocket"], marker = "extra == 'examples'" },
     { name = "redis", extras = ["hiredis"], marker = "extra == 'redis'", specifier = ">=5.0.0" },
