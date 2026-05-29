@@ -4,6 +4,9 @@
 
 [![PyPI](https://img.shields.io/pypi/v/pipecat-ai-subagents)](https://pypi.org/project/pipecat-ai-subagents) ![Tests](https://github.com/pipecat-ai/pipecat-subagents/actions/workflows/tests.yaml/badge.svg) [![codecov](https://codecov.io/gh/pipecat-ai/pipecat-subagents/graph/badge.svg?token=LNVUIVO4Y9)](https://codecov.io/gh/pipecat-ai/pipecat-subagents) [![Docs](https://img.shields.io/badge/Documentation-blue)](https://docs.pipecat.ai/subagents/introduction) [![Discord](https://img.shields.io/discord/1239284677165056021)](https://discord.gg/pipecat)
 
+> [!IMPORTANT]
+> **This repository is archived.** Pipecat Subagents has been integrated directly into [Pipecat](https://github.com/pipecat-ai/pipecat). Please use Pipecat going forward; this repository is no longer maintained.
+
 Pipecat Subagents is a distributed multi-agent framework for [Pipecat](https://github.com/pipecat-ai/pipecat/tree/main#readme). Each agent runs its own Pipecat pipeline and communicates with other agents through a shared message bus, enabling you to decompose complex systems into specialized, coordinating agents that can run locally or across machines.
 
 Whether local or distributed, the programming model is the same: create an `AgentRunner`, connect it to the bus, and add agents.
